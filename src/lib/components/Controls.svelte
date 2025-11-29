@@ -107,6 +107,23 @@
 			{/if}
 		</div>
 
+		<!-- Rules - Grid with a few alive cells -->
+		<button class="control-btn" onclick={openRules} data-tooltip="Edit Rules (E)">
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<!-- 3x3 grid outline -->
+				<rect x="4" y="4" width="16" height="16" rx="1" />
+				<!-- Grid lines -->
+				<line x1="4" y1="9.33" x2="20" y2="9.33" />
+				<line x1="4" y1="14.66" x2="20" y2="14.66" />
+				<line x1="9.33" y1="4" x2="9.33" y2="20" />
+				<line x1="14.66" y1="4" x2="14.66" y2="20" />
+				<!-- A few filled cells - like a glider pattern -->
+				<rect x="10.33" y="5" width="3.33" height="3.33" fill="currentColor" stroke="none" />
+				<rect x="15.66" y="10.33" width="3.33" height="3.33" fill="currentColor" stroke="none" />
+				<rect x="5" y="15.66" width="3.33" height="3.33" fill="currentColor" stroke="none" />
+			</svg>
+		</button>
+
 		<!-- Brush Size -->
 		<div class="control-group">
 			<button
@@ -173,23 +190,19 @@
 			</svg>
 		</button>
 
-		<!-- Reset View -->
-		<button class="control-btn" onclick={onresetview} data-tooltip="Reset View (H)">
+		<!-- Reset View / Zoom to Fit -->
+		<button class="control-btn" onclick={onresetview} data-tooltip="Fit to Screen (H)">
 			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-				<path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-			</svg>
-		</button>
-
-		<!-- Rules - Abstract cellular pattern icon -->
-		<button class="control-btn" onclick={openRules} data-tooltip="Edit Rules (E)">
-			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-				<!-- Abstract connected nodes representing rules/patterns -->
-				<circle cx="6" cy="6" r="2" fill="currentColor" />
-				<circle cx="18" cy="6" r="2" />
-				<circle cx="6" cy="18" r="2" />
-				<circle cx="18" cy="18" r="2" fill="currentColor" />
-				<circle cx="12" cy="12" r="2.5" fill="currentColor" />
-				<path d="M8 6h8M6 8v8M18 8v8M8 18h8" stroke-dasharray="2 2" />
+				<!-- Zoom to fit / fullscreen corners -->
+				<path d="M4 14v4a2 2 0 002 2h4" />
+				<path d="M20 14v4a2 2 0 01-2 2h-4" />
+				<path d="M4 10V6a2 2 0 012-2h4" />
+				<path d="M20 10V6a2 2 0 00-2-2h-4" />
+				<!-- Inward arrows -->
+				<path d="M9 9L4 4m0 0v3m0-3h3" />
+				<path d="M15 9l5-5m0 0v3m0-3h-3" />
+				<path d="M9 15l-5 5m0 0v-3m0 3h3" />
+				<path d="M15 15l5 5m0 0v-3m0 3h-3" />
 			</svg>
 		</button>
 
@@ -213,8 +226,13 @@
 		<!-- Settings -->
 		<button class="control-btn" onclick={openSettings} data-tooltip="Settings">
 			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-				<circle cx="12" cy="12" r="3" />
-				<path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" />
+				<!-- Sliders/tuner icon -->
+				<line x1="4" y1="6" x2="20" y2="6" />
+				<line x1="4" y1="12" x2="20" y2="12" />
+				<line x1="4" y1="18" x2="20" y2="18" />
+				<circle cx="8" cy="6" r="2" fill="currentColor" />
+				<circle cx="16" cy="12" r="2" fill="currentColor" />
+				<circle cx="10" cy="18" r="2" fill="currentColor" />
 			</svg>
 		</button>
 
