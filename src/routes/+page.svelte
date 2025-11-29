@@ -3,13 +3,13 @@
 	import Controls from '$lib/components/Controls.svelte';
 	import RuleEditor from '$lib/components/RuleEditor.svelte';
 	import HelpOverlay from '$lib/components/HelpOverlay.svelte';
+	import Settings from '$lib/components/Settings.svelte';
 	import { getSimulationState, getUIState } from '$lib/stores/simulation.svelte.js';
 
 	const simState = getSimulationState();
 	const uiState = getUIState();
 	
 	let showHelp = $state(false);
-
 	let canvas: Canvas;
 
 	function handleClear() {
@@ -30,6 +30,14 @@
 
 	function handleRuleChange() {
 		canvas.updateRule();
+	}
+
+	function handleGridSizeChange(width: number, height: number) {
+		canvas.resize(width, height);
+	}
+
+	function handleScreenshot() {
+		canvas.screenshot();
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
@@ -67,17 +75,17 @@
 			case 'Home':
 				handleResetView();
 				break;
-		case 'Escape':
-			showHelp = false;
-			uiState.closeAll();
-			break;
-		case 'F1':
-		case 'Slash':
-			if (e.shiftKey || e.code === 'F1') {
-				e.preventDefault();
-				showHelp = !showHelp;
-			}
-			break;
+			case 'Escape':
+				showHelp = false;
+				uiState.closeAll();
+				break;
+			case 'F1':
+			case 'Slash':
+				if (e.shiftKey || e.code === 'F1') {
+					e.preventDefault();
+					showHelp = !showHelp;
+				}
+				break;
 			case 'BracketLeft':
 				simState.brushSize = Math.max(1, simState.brushSize - 1);
 				break;
@@ -101,7 +109,7 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<main class="app">
+<main class="app" class:light-theme={simState.isLightTheme}>
 	<Canvas bind:this={canvas} />
 
 	<!-- Help Button (top-left) -->
@@ -123,6 +131,7 @@
 		onrandomize={handleRandomize}
 		onstep={handleStep}
 		onresetview={handleResetView}
+		onscreenshot={handleScreenshot}
 	/>
 
 	{#if showHelp}
@@ -135,94 +144,77 @@
 			onrulechange={handleRuleChange}
 		/>
 	{/if}
-</main>
 
-<!-- Help tooltip (shown briefly on first load) -->
-<div class="help-hint">
-	<p>
-		<strong>Controls:</strong> Space = Play/Pause | Click = Draw | Right-click = Erase | Scroll = Zoom | Shift+Drag = Pan
-	</p>
-	<p>E = Edit Rules | [ ] = Brush Size | &lt; &gt; = Speed</p>
-</div>
+	{#if uiState.showSettings}
+		<Settings
+			onclose={() => (uiState.showSettings = false)}
+			ongridsizechange={handleGridSizeChange}
+		/>
+	{/if}
+</main>
 
 <style>
 	.app {
 		width: 100%;
 		height: 100vh;
 		overflow: hidden;
+		--ui-bg: rgba(12, 12, 18, 0.7);
+		--ui-bg-hover: rgba(20, 20, 30, 0.8);
+		--ui-border: rgba(255, 255, 255, 0.08);
+		--ui-border-hover: rgba(255, 255, 255, 0.15);
+		--ui-text: #888;
+		--ui-text-hover: #fff;
+		--ui-accent: #2dd4bf;
+		--ui-accent-bg: rgba(45, 212, 191, 0.15);
+		--ui-accent-border: rgba(45, 212, 191, 0.25);
+	}
+
+	.app.light-theme {
+		--ui-bg: rgba(255, 255, 255, 0.85);
+		--ui-bg-hover: rgba(240, 240, 245, 0.95);
+		--ui-border: rgba(0, 0, 0, 0.1);
+		--ui-border-hover: rgba(0, 0, 0, 0.2);
+		--ui-text: #555;
+		--ui-text-hover: #1a1a1a;
+		--ui-accent: #0891b2;
+		--ui-accent-bg: rgba(8, 145, 178, 0.15);
+		--ui-accent-border: rgba(8, 145, 178, 0.3);
 	}
 
 	.help-button {
 		position: fixed;
 		top: 1rem;
 		left: 1rem;
-		width: 40px;
-		height: 40px;
+		width: 34px;
+		height: 34px;
 		border: none;
-		background: rgba(20, 20, 30, 0.85);
-		backdrop-filter: blur(10px);
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 10px;
-		color: #a0a0a0;
+		background: var(--ui-bg);
+		backdrop-filter: blur(12px);
+		border: 1px solid var(--ui-border);
+		border-radius: 8px;
+		color: var(--ui-text);
 		cursor: pointer;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		transition: all 0.2s;
+		transition: all 0.15s;
 		z-index: 100;
 	}
 
 	.help-button:hover {
-		background: rgba(30, 30, 45, 0.9);
-		color: #fff;
-		border-color: rgba(255, 255, 255, 0.2);
+		background: var(--ui-bg-hover);
+		color: var(--ui-text-hover);
+		border-color: var(--ui-border-hover);
 	}
 
 	.help-button.active {
-		background: rgba(45, 212, 191, 0.2);
-		color: #2dd4bf;
-		border-color: rgba(45, 212, 191, 0.3);
+		background: var(--ui-accent-bg);
+		color: var(--ui-accent);
+		border-color: var(--ui-accent-border);
 	}
 
 	.help-button svg {
-		width: 20px;
-		height: 20px;
-	}
-
-	.help-hint {
-		position: fixed;
-		bottom: 3.5rem;
-		left: 50%;
-		transform: translateX(-50%);
-		background: rgba(20, 20, 30, 0.9);
-		backdrop-filter: blur(10px);
-		padding: 0.5rem 1rem;
-		border-radius: 8px;
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		font-size: 0.75rem;
-		color: #888;
-		text-align: center;
-		z-index: 50;
-		opacity: 1;
-		animation: fadeOut 8s forwards;
-		pointer-events: none;
-	}
-
-	.help-hint p {
-		margin: 0.25rem 0;
-	}
-
-	.help-hint strong {
-		color: #a0a0a0;
-	}
-
-	@keyframes fadeOut {
-		0%,
-		70% {
-			opacity: 1;
-		}
-		100% {
-			opacity: 0;
-		}
+		width: 18px;
+		height: 18px;
 	}
 </style>

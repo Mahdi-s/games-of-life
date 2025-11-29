@@ -101,7 +101,11 @@
 		}
 
 		// Sync view state
-		simulation.setView({ showGrid: simState.showGrid });
+		simulation.setView({
+			showGrid: simState.showGrid,
+			isLightTheme: simState.isLightTheme,
+			aliveColor: simState.aliveColor
+		});
 
 		// Always render
 		simulation.render(canvasWidth, canvasHeight);
@@ -205,6 +209,34 @@
 
 	export function getSimulation(): Simulation | null {
 		return simulation;
+	}
+
+	export function screenshot() {
+		if (!canvas) return;
+		
+		// Create a link and trigger download
+		const link = document.createElement('a');
+		link.download = `cellular-automaton-gen${simState.generation}.png`;
+		link.href = canvas.toDataURL('image/png');
+		link.click();
+	}
+
+	export function resize(width: number, height: number) {
+		if (!ctx || !simulation) return;
+		
+		// Update store
+		simState.gridWidth = width;
+		simState.gridHeight = height;
+		
+		// Recreate simulation with new size
+		simulation.destroy();
+		simulation = new Simulation(ctx, {
+			width,
+			height,
+			rule: simState.currentRule
+		});
+		simulation.randomize(0.15);
+		simState.resetGeneration();
 	}
 </script>
 

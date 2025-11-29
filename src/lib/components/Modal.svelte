@@ -44,8 +44,7 @@
 	.modal-backdrop {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.3);
-		backdrop-filter: blur(3px);
+		background: transparent;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -54,20 +53,17 @@
 	}
 
 	.modal {
-		background: rgba(22, 22, 32, 0.92);
-		backdrop-filter: blur(20px);
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 16px;
-		max-width: 680px;
+		background: rgba(12, 12, 18, 0.72);
+		backdrop-filter: blur(16px);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		border-radius: 12px;
+		max-width: 620px;
 		width: 100%;
 		max-height: 85vh;
 		overflow: hidden;
 		display: flex;
 		flex-direction: column;
-		box-shadow: 
-			0 0 0 1px rgba(255, 255, 255, 0.05),
-			0 20px 60px rgba(0, 0, 0, 0.4),
-			0 0 100px rgba(45, 212, 191, 0.05);
+		box-shadow: 0 12px 48px rgba(0, 0, 0, 0.35);
 	}
 
 	.modal-header {

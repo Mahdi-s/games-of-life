@@ -4,9 +4,18 @@
 	}
 
 	let { onclose }: Props = $props();
+
+	function handleBackdropClick(e: MouseEvent) {
+		if (e.target === e.currentTarget) {
+			onclose();
+		}
+	}
 </script>
 
-<div class="help-overlay" role="dialog" aria-modal="true">
+<svelte:window onkeydown={(e) => e.key === 'Escape' && onclose()} />
+
+<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
+<div class="help-overlay" role="dialog" aria-modal="true" onclick={handleBackdropClick}>
 	<div class="help-panel">
 		<div class="help-header">
 			<h2>Keyboard Shortcuts</h2>
@@ -18,89 +27,44 @@
 		</div>
 
 		<div class="help-content">
-			<section class="shortcut-group">
-				<h3>Simulation</h3>
-				<div class="shortcut-list">
-					<div class="shortcut">
-						<kbd>Space</kbd>
-						<span>Play / Pause</span>
-					</div>
-					<div class="shortcut">
-						<kbd>S</kbd>
-						<span>Step forward one generation</span>
-					</div>
-					<div class="shortcut">
-						<kbd>&lt;</kbd> <kbd>&gt;</kbd>
-						<span>Decrease / Increase speed</span>
-					</div>
-				</div>
-			</section>
+			<div class="columns">
+				<!-- Left Column -->
+				<div class="column">
+					<section class="shortcut-group">
+						<h3>Simulation</h3>
+						<div class="shortcut"><kbd>Space</kbd><span>Play / Pause</span></div>
+						<div class="shortcut"><kbd>S</kbd><span>Step one generation</span></div>
+						<div class="shortcut"><kbd>,</kbd> <kbd>.</kbd><span>Speed -/+</span></div>
+					</section>
 
-			<section class="shortcut-group">
-				<h3>Drawing</h3>
-				<div class="shortcut-list">
-					<div class="shortcut">
-						<kbd>Click</kbd>
-						<span>Draw cells</span>
-					</div>
-					<div class="shortcut">
-						<kbd>Right-click</kbd>
-						<span>Erase cells</span>
-					</div>
-					<div class="shortcut">
-						<kbd>[</kbd> <kbd>]</kbd>
-						<span>Decrease / Increase brush size</span>
-					</div>
-					<div class="shortcut">
-						<kbd>C</kbd>
-						<span>Clear grid</span>
-					</div>
-					<div class="shortcut">
-						<kbd>R</kbd>
-						<span>Randomize grid</span>
-					</div>
+					<section class="shortcut-group">
+						<h3>Drawing</h3>
+						<div class="shortcut"><kbd>Click</kbd><span>Draw cells</span></div>
+						<div class="shortcut"><kbd>Right-click</kbd><span>Erase cells</span></div>
+						<div class="shortcut"><kbd>[</kbd> <kbd>]</kbd><span>Brush size -/+</span></div>
+						<div class="shortcut"><kbd>C</kbd><span>Clear grid</span></div>
+						<div class="shortcut"><kbd>R</kbd><span>Randomize</span></div>
+					</section>
 				</div>
-			</section>
 
-			<section class="shortcut-group">
-				<h3>Navigation</h3>
-				<div class="shortcut-list">
-					<div class="shortcut">
-						<kbd>Scroll</kbd>
-						<span>Zoom in / out</span>
-					</div>
-					<div class="shortcut">
-						<kbd>Shift</kbd> + <kbd>Drag</kbd>
-						<span>Pan around</span>
-					</div>
-					<div class="shortcut">
-						<kbd>Home</kbd>
-						<span>Reset view to default</span>
-					</div>
-					<div class="shortcut">
-						<kbd>G</kbd>
-						<span>Toggle grid lines</span>
-					</div>
+				<!-- Right Column -->
+				<div class="column">
+					<section class="shortcut-group">
+						<h3>Navigation</h3>
+						<div class="shortcut"><kbd>Scroll</kbd><span>Zoom in/out</span></div>
+						<div class="shortcut"><kbd>Shift</kbd>+<kbd>Drag</kbd><span>Pan</span></div>
+						<div class="shortcut"><kbd>Home</kbd><span>Reset view</span></div>
+						<div class="shortcut"><kbd>G</kbd><span>Toggle grid</span></div>
+					</section>
+
+					<section class="shortcut-group">
+						<h3>Dialogs</h3>
+						<div class="shortcut"><kbd>E</kbd><span>Edit rules</span></div>
+						<div class="shortcut"><kbd>?</kbd><span>This help</span></div>
+						<div class="shortcut"><kbd>Esc</kbd><span>Close</span></div>
+					</section>
 				</div>
-			</section>
-
-			<section class="shortcut-group">
-				<h3>Settings</h3>
-				<div class="shortcut-list">
-					<div class="shortcut">
-						<kbd>E</kbd>
-						<span>Open rule editor</span>
-					</div>
-					<div class="shortcut">
-						<kbd>Esc</kbd>
-						<span>Close dialogs</span>
-					</div>
-				</div>
-			</section>
-		</div>
-
-		<div class="help-footer">
-			<p>Click anywhere outside or press <kbd>Esc</kbd> to close</p>
+			</div>
 		</div>
 	</div>
 </div>
@@ -109,37 +73,34 @@
 	.help-overlay {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.4);
-		backdrop-filter: blur(2px);
+		background: transparent;
 		display: flex;
 		align-items: flex-start;
 		justify-content: flex-start;
 		z-index: 500;
-		padding: 4.5rem 1rem 1rem 1rem;
+		padding: 4rem 1rem 1rem 1rem;
 	}
 
 	.help-panel {
-		background: rgba(20, 20, 30, 0.95);
-		backdrop-filter: blur(20px);
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 12px;
-		max-width: 420px;
-		width: 100%;
-		box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
-		overflow: hidden;
+		background: rgba(12, 12, 18, 0.75);
+		backdrop-filter: blur(12px);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		border-radius: 10px;
+		width: 380px;
+		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 	}
 
 	.help-header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 1rem 1.25rem;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+		padding: 0.6rem 0.9rem;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 	}
 
 	.help-header h2 {
 		margin: 0;
-		font-size: 1rem;
+		font-size: 0.8rem;
 		font-weight: 600;
 		color: #e0e0e0;
 	}
@@ -147,11 +108,11 @@
 	.close-btn {
 		background: none;
 		border: none;
-		color: #888;
+		color: #666;
 		cursor: pointer;
-		padding: 0.25rem;
+		padding: 0.15rem;
 		display: flex;
-		transition: color 0.2s;
+		transition: color 0.15s;
 	}
 
 	.close-btn:hover {
@@ -159,18 +120,22 @@
 	}
 
 	.close-btn svg {
-		width: 18px;
-		height: 18px;
+		width: 14px;
+		height: 14px;
 	}
 
 	.help-content {
-		padding: 1rem 1.25rem;
-		max-height: 60vh;
-		overflow-y: auto;
+		padding: 0.6rem 0.9rem;
+	}
+
+	.columns {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1rem;
 	}
 
 	.shortcut-group {
-		margin-bottom: 1.25rem;
+		margin-bottom: 0.7rem;
 	}
 
 	.shortcut-group:last-child {
@@ -178,59 +143,37 @@
 	}
 
 	.shortcut-group h3 {
-		margin: 0 0 0.5rem;
-		font-size: 0.75rem;
+		margin: 0 0 0.35rem;
+		font-size: 0.6rem;
 		font-weight: 600;
 		color: #2dd4bf;
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-
-	.shortcut-list {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
+		letter-spacing: 0.04em;
 	}
 
 	.shortcut {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		font-size: 0.85rem;
+		gap: 0.3rem;
+		font-size: 0.7rem;
+		margin-bottom: 0.25rem;
 	}
 
 	.shortcut span {
-		color: #a0a0a0;
+		color: #888;
+		margin-left: auto;
 	}
 
 	kbd {
 		display: inline-block;
-		padding: 0.2rem 0.5rem;
-		background: rgba(255, 255, 255, 0.1);
-		border: 1px solid rgba(255, 255, 255, 0.15);
-		border-radius: 4px;
-		font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
-		font-size: 0.75rem;
-		color: #e0e0e0;
-		min-width: 1.5rem;
+		padding: 0.1rem 0.3rem;
+		background: rgba(255, 255, 255, 0.08);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 3px;
+		font-family: 'SF Mono', Monaco, Consolas, monospace;
+		font-size: 0.6rem;
+		color: #ccc;
+		min-width: 1.1rem;
 		text-align: center;
-	}
-
-	.help-footer {
-		padding: 0.75rem 1.25rem;
-		border-top: 1px solid rgba(255, 255, 255, 0.05);
-		text-align: center;
-	}
-
-	.help-footer p {
-		margin: 0;
-		font-size: 0.75rem;
-		color: #666;
-	}
-
-	.help-footer kbd {
-		padding: 0.1rem 0.35rem;
-		font-size: 0.7rem;
 	}
 </style>
-

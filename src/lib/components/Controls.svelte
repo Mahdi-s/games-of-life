@@ -6,152 +6,156 @@
 		onrandomize: () => void;
 		onstep: () => void;
 		onresetview: () => void;
+		onscreenshot: () => void;
 	}
 
-	let { onclear, onrandomize, onstep, onresetview }: Props = $props();
+	let { onclear, onrandomize, onstep, onresetview, onscreenshot }: Props = $props();
 
 	const simState = getSimulationState();
 	const uiState = getUIState();
 
+	let collapsed = $state(false);
 	let showSpeedSlider = $state(false);
 	let showBrushSlider = $state(false);
 </script>
 
-<div class="controls">
-	<!-- Play/Pause -->
-	<button
-		class="control-btn primary"
-		onclick={() => simState.togglePlay()}
-		title={simState.isPlaying ? 'Pause (Space)' : 'Play (Space)'}
-	>
-		{#if simState.isPlaying}
-			<svg viewBox="0 0 24 24" fill="currentColor">
-				<rect x="6" y="4" width="4" height="16" rx="1" />
-				<rect x="14" y="4" width="4" height="16" rx="1" />
-			</svg>
-		{:else}
-			<svg viewBox="0 0 24 24" fill="currentColor">
-				<path d="M8 5.14v14l11-7-11-7z" />
-			</svg>
-		{/if}
-	</button>
-
-	<!-- Step -->
-	<button
-		class="control-btn"
-		onclick={onstep}
-		title="Step (S)"
-		disabled={simState.isPlaying}
-	>
-		<svg viewBox="0 0 24 24" fill="currentColor">
-			<path d="M6 18l8.5-6L6 6v12zm2-8.14L11.03 12 8 14.14V9.86zM16 6h2v12h-2V6z" />
-		</svg>
-	</button>
-
-	<div class="separator"></div>
-
-	<!-- Speed -->
-	<div class="control-group">
-		<button
-			class="control-btn"
-			onclick={() => (showSpeedSlider = !showSpeedSlider)}
-			title="Speed"
-			class:active={showSpeedSlider}
-		>
+<div class="controls" class:collapsed>
+	{#if collapsed}
+		<!-- Collapsed state - just show expand button -->
+		<button class="control-btn" onclick={() => (collapsed = false)} title="Expand toolbar">
 			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-				<circle cx="12" cy="12" r="10" />
-				<path d="M12 6v6l4 2" />
+				<path d="M15 19l-7-7 7-7" />
 			</svg>
 		</button>
-		{#if showSpeedSlider}
-			<div class="slider-popup">
-				<label>
-					<span>Speed: {simState.speed} fps</span>
-					<input
-						type="range"
-						min="1"
-						max="120"
-						bind:value={simState.speed}
-					/>
-				</label>
-			</div>
-		{/if}
-	</div>
-
-	<!-- Brush Size -->
-	<div class="control-group">
+	{:else}
+		<!-- Play/Pause -->
 		<button
-			class="control-btn"
-			onclick={() => (showBrushSlider = !showBrushSlider)}
-			title="Brush Size"
-			class:active={showBrushSlider}
+			class="control-btn primary"
+			onclick={() => simState.togglePlay()}
+			title={simState.isPlaying ? 'Pause (Space)' : 'Play (Space)'}
 		>
-			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-				<circle cx="12" cy="12" r={Math.min(8, simState.brushSize)} />
+			{#if simState.isPlaying}
+				<svg viewBox="0 0 24 24" fill="currentColor">
+					<rect x="6" y="4" width="4" height="16" rx="1" />
+					<rect x="14" y="4" width="4" height="16" rx="1" />
+				</svg>
+			{:else}
+				<svg viewBox="0 0 24 24" fill="currentColor">
+					<path d="M8 5.14v14l11-7-11-7z" />
+				</svg>
+			{/if}
+		</button>
+
+		<!-- Step -->
+		<button class="control-btn" onclick={onstep} title="Step (S)" disabled={simState.isPlaying}>
+			<svg viewBox="0 0 24 24" fill="currentColor">
+				<path d="M6 18l8.5-6L6 6v12zm2-8.14L11.03 12 8 14.14V9.86zM16 6h2v12h-2V6z" />
 			</svg>
 		</button>
-		{#if showBrushSlider}
-			<div class="slider-popup">
-				<label>
-					<span>Brush: {simState.brushSize}px</span>
-					<input
-						type="range"
-						min="1"
-						max="50"
-						bind:value={simState.brushSize}
-					/>
-				</label>
-			</div>
-		{/if}
-	</div>
 
-	<div class="separator"></div>
+		<div class="sep"></div>
 
-	<!-- Clear -->
-	<button class="control-btn" onclick={onclear} title="Clear (C)">
-		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-			<path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-		</svg>
-	</button>
+		<!-- Speed -->
+		<div class="control-group">
+			<button
+				class="control-btn"
+				onclick={() => (showSpeedSlider = !showSpeedSlider)}
+				title="Speed"
+				class:active={showSpeedSlider}
+			>
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+					<circle cx="12" cy="12" r="10" />
+					<path d="M12 6v6l4 2" />
+				</svg>
+			</button>
+			{#if showSpeedSlider}
+				<div class="slider-popup">
+					<span>{simState.speed} fps</span>
+					<input type="range" min="1" max="120" bind:value={simState.speed} />
+				</div>
+			{/if}
+		</div>
 
-	<!-- Randomize -->
-	<button class="control-btn" onclick={onrandomize} title="Randomize (R)">
-		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-			<path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-		</svg>
-	</button>
+		<!-- Brush Size -->
+		<div class="control-group">
+			<button
+				class="control-btn"
+				onclick={() => (showBrushSlider = !showBrushSlider)}
+				title="Brush Size"
+				class:active={showBrushSlider}
+			>
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+					<circle cx="12" cy="12" r={Math.min(8, simState.brushSize)} />
+				</svg>
+			</button>
+			{#if showBrushSlider}
+				<div class="slider-popup">
+					<span>{simState.brushSize}px</span>
+					<input type="range" min="1" max="50" bind:value={simState.brushSize} />
+				</div>
+			{/if}
+		</div>
 
-	<!-- Reset View -->
-	<button class="control-btn" onclick={onresetview} title="Reset View (Home)">
-		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-			<path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-		</svg>
-	</button>
+		<div class="sep"></div>
 
-	<div class="separator"></div>
+		<!-- Clear -->
+		<button class="control-btn" onclick={onclear} title="Clear (C)">
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+			</svg>
+		</button>
 
-	<!-- Grid Toggle -->
-	<button
-		class="control-btn"
-		onclick={() => (simState.showGrid = !simState.showGrid)}
-		title="Toggle Grid (G)"
-		class:active={simState.showGrid}
-	>
-		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-			<path d="M3 3h18v18H3V3zm6 0v18M15 3v18M3 9h18M3 15h18" />
-		</svg>
-	</button>
+		<!-- Randomize -->
+		<button class="control-btn" onclick={onrandomize} title="Randomize (R)">
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+			</svg>
+		</button>
 
-	<!-- Rules -->
-	<button
-		class="control-btn"
-		onclick={() => (uiState.showRuleEditor = true)}
-		title="Edit Rules (E)"
-	>
-		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-			<path d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-		</svg>
-	</button>
+		<!-- Reset View -->
+		<button class="control-btn" onclick={onresetview} title="Reset View (Home)">
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+			</svg>
+		</button>
+
+		<div class="sep"></div>
+
+		<!-- Screenshot -->
+		<button class="control-btn" onclick={onscreenshot} title="Screenshot">
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2v11z" />
+				<circle cx="12" cy="13" r="4" />
+			</svg>
+		</button>
+
+		<!-- Settings -->
+		<button class="control-btn" onclick={() => (uiState.showSettings = true)} title="Settings">
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<circle cx="12" cy="12" r="3" />
+				<path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" />
+			</svg>
+		</button>
+
+		<!-- Rules - Better icon: pattern/grid icon -->
+		<button class="control-btn" onclick={() => (uiState.showRuleEditor = true)} title="Edit Rules (E)">
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<rect x="3" y="3" width="7" height="7" rx="1" />
+				<rect x="14" y="3" width="7" height="7" rx="1" />
+				<rect x="3" y="14" width="7" height="7" rx="1" />
+				<rect x="14" y="14" width="7" height="7" rx="1" />
+			</svg>
+		</button>
+
+		<div class="sep"></div>
+
+		<!-- Collapse -->
+		<button class="control-btn collapse-btn" onclick={() => (collapsed = true)} title="Collapse toolbar">
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<path d="M9 5l7 7-7 7" />
+			</svg>
+		</button>
+	{/if}
 </div>
 
 <!-- Generation Counter -->
@@ -170,64 +174,77 @@
 		top: 1rem;
 		right: 1rem;
 		display: flex;
-		gap: 0.5rem;
+		gap: 0.35rem;
 		align-items: center;
-		background: rgba(20, 20, 30, 0.85);
-		backdrop-filter: blur(10px);
-		padding: 0.5rem;
-		border-radius: 12px;
-		border: 1px solid rgba(255, 255, 255, 0.1);
+		background: var(--ui-bg, rgba(12, 12, 18, 0.7));
+		backdrop-filter: blur(12px);
+		padding: 0.4rem;
+		border-radius: 10px;
+		border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.08));
 		z-index: 100;
 	}
 
+	.controls.collapsed {
+		padding: 0.3rem;
+	}
+
 	.control-btn {
-		width: 40px;
-		height: 40px;
+		width: 34px;
+		height: 34px;
 		border: none;
 		background: transparent;
-		color: #a0a0a0;
+		color: var(--ui-text, #888);
 		cursor: pointer;
-		border-radius: 8px;
+		border-radius: 6px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		transition: all 0.2s;
+		transition: all 0.15s;
 	}
 
 	.control-btn:hover:not(:disabled) {
-		background: rgba(255, 255, 255, 0.1);
-		color: #fff;
+		background: var(--ui-border, rgba(255, 255, 255, 0.08));
+		color: var(--ui-text-hover, #fff);
 	}
 
 	.control-btn:disabled {
-		opacity: 0.4;
+		opacity: 0.35;
 		cursor: not-allowed;
 	}
 
 	.control-btn.primary {
-		background: rgba(45, 212, 191, 0.2);
-		color: #2dd4bf;
+		background: var(--ui-accent-bg, rgba(45, 212, 191, 0.15));
+		color: var(--ui-accent, #2dd4bf);
 	}
 
 	.control-btn.primary:hover {
-		background: rgba(45, 212, 191, 0.3);
+		background: var(--ui-accent-bg, rgba(45, 212, 191, 0.25));
+		filter: brightness(1.15);
 	}
 
 	.control-btn.active {
-		background: rgba(255, 255, 255, 0.15);
-		color: #fff;
+		background: var(--ui-border, rgba(255, 255, 255, 0.12));
+		color: var(--ui-text-hover, #fff);
 	}
 
 	.control-btn svg {
-		width: 20px;
-		height: 20px;
+		width: 18px;
+		height: 18px;
 	}
 
-	.separator {
+	.collapse-btn {
+		opacity: 0.5;
+	}
+
+	.collapse-btn:hover {
+		opacity: 1;
+	}
+
+	.sep {
 		width: 1px;
-		height: 24px;
-		background: rgba(255, 255, 255, 0.1);
-		margin: 0 0.25rem;
+		height: 20px;
+		background: var(--ui-border, rgba(255, 255, 255, 0.08));
+		margin: 0 0.15rem;
 	}
 
 	.control-group {
@@ -236,44 +253,42 @@
 
 	.slider-popup {
 		position: absolute;
-		top: calc(100% + 0.5rem);
+		top: calc(100% + 0.4rem);
 		right: 0;
-		background: rgba(20, 20, 30, 0.95);
-		backdrop-filter: blur(10px);
-		padding: 0.75rem 1rem;
-		border-radius: 8px;
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		min-width: 160px;
-	}
-
-	.slider-popup label {
+		background: var(--ui-bg, rgba(12, 12, 18, 0.9));
+		backdrop-filter: blur(12px);
+		padding: 0.5rem 0.7rem;
+		border-radius: 6px;
+		border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.08));
+		min-width: 120px;
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: 0.4rem;
 	}
 
 	.slider-popup span {
-		font-size: 0.8rem;
-		color: #a0a0a0;
+		font-size: 0.7rem;
+		color: var(--ui-text, #888);
+		text-align: center;
 	}
 
 	.slider-popup input[type='range'] {
 		width: 100%;
-		accent-color: #2dd4bf;
+		accent-color: var(--ui-accent, #2dd4bf);
 	}
 
 	.generation {
 		position: fixed;
 		bottom: 1rem;
 		left: 1rem;
-		background: rgba(20, 20, 30, 0.85);
-		backdrop-filter: blur(10px);
-		padding: 0.5rem 0.75rem;
-		border-radius: 8px;
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		font-size: 0.85rem;
-		color: #a0a0a0;
-		font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+		background: var(--ui-bg, rgba(12, 12, 18, 0.7));
+		backdrop-filter: blur(12px);
+		padding: 0.4rem 0.6rem;
+		border-radius: 6px;
+		border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.08));
+		font-size: 0.75rem;
+		color: var(--ui-text, #888);
+		font-family: 'SF Mono', Monaco, Consolas, monospace;
 		z-index: 100;
 	}
 
@@ -281,14 +296,13 @@
 		position: fixed;
 		bottom: 1rem;
 		right: 1rem;
-		background: rgba(20, 20, 30, 0.85);
-		backdrop-filter: blur(10px);
-		padding: 0.5rem 0.75rem;
-		border-radius: 8px;
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		font-size: 0.85rem;
-		color: #a0a0a0;
+		background: var(--ui-bg, rgba(12, 12, 18, 0.7));
+		backdrop-filter: blur(12px);
+		padding: 0.4rem 0.6rem;
+		border-radius: 6px;
+		border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.08));
+		font-size: 0.75rem;
+		color: var(--ui-text, #888);
 		z-index: 100;
 	}
 </style>
-

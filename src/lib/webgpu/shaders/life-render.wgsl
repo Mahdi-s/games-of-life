@@ -16,6 +16,10 @@ struct RenderParams {
     zoom: f32,           // Zoom level (cells visible across canvas width)
     num_states: f32,     // For color interpolation
     show_grid: f32,      // 1.0 to show grid lines
+    is_light_theme: f32, // 1.0 for light theme, 0.0 for dark
+    alive_r: f32,        // Alive cell color (RGB)
+    alive_g: f32,
+    alive_b: f32,
     _padding1: f32,
     _padding2: f32,
     _padding3: f32,
@@ -59,38 +63,126 @@ fn get_cell_state(grid_x: i32, grid_y: i32) -> u32 {
     return cell_state[u32(grid_x) + u32(grid_y) * u32(params.grid_width)];
 }
 
+// Background color based on theme
+fn get_bg_color() -> vec3<f32> {
+    if (params.is_light_theme > 0.5) {
+        return vec3<f32>(0.95, 0.95, 0.97);
+    }
+    return vec3<f32>(0.05, 0.05, 0.08);
+}
+
+// Grid line color based on theme
+fn get_grid_color() -> vec3<f32> {
+    if (params.is_light_theme > 0.5) {
+        return vec3<f32>(0.85, 0.85, 0.88);
+    }
+    return vec3<f32>(0.08, 0.08, 0.12);
+}
+
+// Convert RGB to HSL
+fn rgb_to_hsl(rgb: vec3<f32>) -> vec3<f32> {
+    let max_c = max(max(rgb.r, rgb.g), rgb.b);
+    let min_c = min(min(rgb.r, rgb.g), rgb.b);
+    let l = (max_c + min_c) / 2.0;
+    
+    if (max_c == min_c) {
+        return vec3<f32>(0.0, 0.0, l);
+    }
+    
+    let d = max_c - min_c;
+    let s = select(d / (2.0 - max_c - min_c), d / (max_c + min_c), l > 0.5);
+    
+    var h: f32;
+    if (max_c == rgb.r) {
+        h = (rgb.g - rgb.b) / d + select(0.0, 6.0, rgb.g < rgb.b);
+    } else if (max_c == rgb.g) {
+        h = (rgb.b - rgb.r) / d + 2.0;
+    } else {
+        h = (rgb.r - rgb.g) / d + 4.0;
+    }
+    h /= 6.0;
+    
+    return vec3<f32>(h, s, l);
+}
+
+// Convert HSL to RGB
+fn hsl_to_rgb(hsl: vec3<f32>) -> vec3<f32> {
+    if (hsl.y == 0.0) {
+        return vec3<f32>(hsl.z, hsl.z, hsl.z);
+    }
+    
+    let q = select(hsl.z + hsl.y - hsl.z * hsl.y, hsl.z * (1.0 + hsl.y), hsl.z < 0.5);
+    let p = 2.0 * hsl.z - q;
+    
+    let r = hue_to_rgb(p, q, hsl.x + 1.0/3.0);
+    let g = hue_to_rgb(p, q, hsl.x);
+    let b = hue_to_rgb(p, q, hsl.x - 1.0/3.0);
+    
+    return vec3<f32>(r, g, b);
+}
+
+fn hue_to_rgb(p: f32, q: f32, t_in: f32) -> f32 {
+    var t = t_in;
+    if (t < 0.0) { t += 1.0; }
+    if (t > 1.0) { t -= 1.0; }
+    if (t < 1.0/6.0) { return p + (q - p) * 6.0 * t; }
+    if (t < 1.0/2.0) { return q; }
+    if (t < 2.0/3.0) { return p + (q - p) * (2.0/3.0 - t) * 6.0; }
+    return p;
+}
+
 // Color palette for cell states
 fn state_to_color(state: u32, num_states: u32) -> vec3<f32> {
+    let alive_color = vec3<f32>(params.alive_r, params.alive_g, params.alive_b);
+    let bg = get_bg_color();
+    
     if (state == 0u) {
-        // Dead - dark background
-        return vec3<f32>(0.05, 0.05, 0.08);
+        return bg;
     }
     
     if (num_states == 2u) {
-        // Standard 2-state: bright cyan/white for alive
-        return vec3<f32>(0.2, 0.9, 0.95);
+        // Standard 2-state: use alive color
+        return alive_color;
     }
     
     // Multi-state (Generations): gradient from alive to dying
     if (state == 1u) {
-        // Alive - bright
-        return vec3<f32>(0.2, 0.95, 0.9);
+        return alive_color;
     }
     
-    // Dying states - gradient from warm to cool
-    let dying_progress = f32(state - 1u) / f32(num_states - 2u);
+    // Dying states - more distinct color progression
+    let dying_progress = f32(state - 1u) / f32(num_states - 1u);
     
-    // Interpolate through a nice gradient: cyan -> purple -> red -> orange
-    if (dying_progress < 0.33) {
-        let t = dying_progress * 3.0;
-        return mix(vec3<f32>(0.2, 0.9, 0.95), vec3<f32>(0.7, 0.3, 0.9), t);
-    } else if (dying_progress < 0.66) {
-        let t = (dying_progress - 0.33) * 3.0;
-        return mix(vec3<f32>(0.7, 0.3, 0.9), vec3<f32>(0.95, 0.3, 0.3), t);
-    } else {
-        let t = (dying_progress - 0.66) * 3.0;
-        return mix(vec3<f32>(0.95, 0.3, 0.3), vec3<f32>(0.3, 0.15, 0.1), t);
-    }
+    // Convert alive color to HSL
+    let alive_hsl = rgb_to_hsl(alive_color);
+    
+    // Shift hue more aggressively through a color wheel segment
+    // This creates more visually distinct intermediate states
+    var dying_hue = alive_hsl.x + 0.25 * dying_progress; // Quarter hue rotation
+    if (dying_hue > 1.0) { dying_hue -= 1.0; }
+    
+    // Keep saturation high initially, then drop off
+    let sat_curve = 1.0 - dying_progress * dying_progress;
+    let dying_sat = alive_hsl.y * max(sat_curve, 0.2);
+    
+    // Lightness: stay visible longer, then fade
+    let light_factor = select(
+        1.0 - dying_progress * 0.5, // Dark theme: start bright, gradually dim
+        mix(alive_hsl.z, 0.35, dying_progress * 0.8), // Light theme: move to gray
+        params.is_light_theme > 0.5
+    );
+    let dying_light = select(
+        mix(alive_hsl.z, 0.15, dying_progress * dying_progress),
+        light_factor,
+        params.is_light_theme > 0.5
+    );
+    
+    let dying_hsl = vec3<f32>(dying_hue, dying_sat, dying_light);
+    let dying_rgb = hsl_to_rgb(dying_hsl);
+    
+    // Only blend with background at the very end
+    let bg_blend = dying_progress * dying_progress * dying_progress; // Cubic for late blend
+    return mix(dying_rgb, bg, bg_blend * 0.6);
 }
 
 @fragment
@@ -132,11 +224,10 @@ fn fragment_main(input: VertexOutput) -> @location(0) vec4<f32> {
             if (frac_x < line_thickness || frac_x > (1.0 - line_thickness) ||
                 frac_y < line_thickness || frac_y > (1.0 - line_thickness)) {
                 // Grid lines - darker overlay
-                color = mix(color, vec3<f32>(0.08, 0.08, 0.12), 0.5);
+                color = mix(color, get_grid_color(), 0.5);
             }
         }
     }
     
     return vec4<f32>(color, 1.0);
 }
-

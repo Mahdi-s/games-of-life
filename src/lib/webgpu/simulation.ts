@@ -22,6 +22,8 @@ export interface ViewState {
 	offsetY: number;
 	zoom: number;
 	showGrid: boolean;
+	isLightTheme: boolean;
+	aliveColor: [number, number, number]; // RGB 0-1
 }
 
 export class Simulation {
@@ -73,7 +75,9 @@ export class Simulation {
 			offsetX: 0,
 			offsetY: 0,
 			zoom: Math.min(config.width, config.height),
-			showGrid: true
+			showGrid: true,
+			isLightTheme: false,
+			aliveColor: [0.2, 0.9, 0.95] // Default cyan
 		};
 
 		this.initializePipelines();
@@ -187,10 +191,10 @@ export class Simulation {
 			usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
 		});
 
-		// Render params buffer (12 f32 values = 48 bytes)
+		// Render params buffer (16 f32 values = 64 bytes)
 		this.renderParamsBuffer = this.device.createBuffer({
 			label: 'Render Params Buffer',
-			size: 48,
+			size: 64,
 			usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
 		});
 
@@ -264,6 +268,10 @@ export class Simulation {
 			this.view.zoom,
 			this.rule.numStates,
 			this.view.showGrid ? 1.0 : 0.0,
+			this.view.isLightTheme ? 1.0 : 0.0,
+			this.view.aliveColor[0],
+			this.view.aliveColor[1],
+			this.view.aliveColor[2],
 			0, // padding
 			0,
 			0
@@ -484,7 +492,9 @@ export class Simulation {
 			offsetX: 0,
 			offsetY: 0,
 			zoom: Math.min(this.width, this.height),
-			showGrid: this.view.showGrid
+			showGrid: this.view.showGrid,
+			isLightTheme: this.view.isLightTheme,
+			aliveColor: this.view.aliveColor
 		};
 	}
 

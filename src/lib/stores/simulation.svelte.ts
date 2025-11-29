@@ -19,6 +19,10 @@ let showGrid = $state(true);
 let gridWidth = $state(1024);
 let gridHeight = $state(1024);
 
+// Visual settings
+let isLightTheme = $state(false);
+let aliveColor = $state<[number, number, number]>([0.2, 0.9, 0.95]); // Cyan default
+
 export function getSimulationState() {
 	return {
 		get isPlaying() {
@@ -82,6 +86,20 @@ export function getSimulationState() {
 		},
 		set gridHeight(value: number) {
 			gridHeight = value;
+		},
+
+		get isLightTheme() {
+			return isLightTheme;
+		},
+		set isLightTheme(value: boolean) {
+			isLightTheme = value;
+		},
+
+		get aliveColor() {
+			return aliveColor;
+		},
+		set aliveColor(value: [number, number, number]) {
+			aliveColor = value;
 		},
 
 		// Actions
