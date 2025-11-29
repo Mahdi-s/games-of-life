@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { initWebGPU, type WebGPUContext, type WebGPUError } from '../webgpu/context.js';
 	import { Simulation } from '../webgpu/simulation.js';
-	import { getSimulationState } from '../stores/simulation.svelte.js';
+	import { getSimulationState, GRID_SCALES, type GridScale } from '../stores/simulation.svelte.js';
 
 	const simState = getSimulationState();
 
@@ -29,6 +29,29 @@
 	let animationId: number | null = null;
 	let lastStepTime = 0;
 
+	/**
+	 * Calculate grid dimensions from scale and screen aspect ratio
+	 * The baseCells value represents the shorter dimension
+	 */
+	function calculateGridDimensions(scale: GridScale, screenWidth: number, screenHeight: number): { width: number; height: number } {
+		const scaleConfig = GRID_SCALES.find(s => s.name === scale) ?? GRID_SCALES[2]; // Default to medium
+		const baseCells = scaleConfig.baseCells;
+		
+		const aspect = screenWidth / screenHeight;
+		
+		if (aspect >= 1) {
+			// Landscape or square: height is the shorter dimension
+			const height = baseCells;
+			const width = Math.round(baseCells * aspect);
+			return { width, height };
+		} else {
+			// Portrait: width is the shorter dimension
+			const width = baseCells;
+			const height = Math.round(baseCells / aspect);
+			return { width, height };
+		}
+	}
+
 	onMount(() => {
 		initializeWebGPU();
 
@@ -54,14 +77,28 @@
 		}
 
 		ctx = result.value;
+		
+		// Calculate initial grid size based on screen dimensions and scale
+		const screenWidth = window.innerWidth;
+		const screenHeight = window.innerHeight;
+		const { width, height } = calculateGridDimensions(simState.gridScale, screenWidth, screenHeight);
+		simState.gridWidth = width;
+		simState.gridHeight = height;
+		
 		simulation = new Simulation(ctx, {
-			width: simState.gridWidth,
-			height: simState.gridHeight,
+			width,
+			height,
 			rule: simState.currentRule
 		});
 
 		// Initial randomization for visual appeal
 		simulation.randomize(0.15);
+		
+		// Reset view to fit grid (will use canvas dimensions once available)
+		// The first render will update canvas dimensions, then we can reset properly
+		requestAnimationFrame(() => {
+			simulation?.resetView(canvasWidth, canvasHeight);
+		});
 
 		// Start animation loop
 		animationLoop(performance.now());
@@ -381,7 +418,7 @@
 	}
 
 	export function resetView() {
-		simulation?.resetView();
+		simulation?.resetView(canvasWidth, canvasHeight);
 	}
 
 	export function updateRule() {
@@ -418,6 +455,43 @@
 		});
 		simulation.randomize(0.15);
 		simState.resetGeneration();
+		
+		// Update alive cells count
+		simulation.countAliveCellsAsync().then(count => {
+			simState.aliveCells = count;
+		});
+	}
+	
+	export function setScale(scale: GridScale) {
+		if (!ctx || !simulation) return;
+		
+		// Calculate new dimensions based on current screen size
+		const screenWidth = window.innerWidth;
+		const screenHeight = window.innerHeight;
+		const { width, height } = calculateGridDimensions(scale, screenWidth, screenHeight);
+		
+		// Update store
+		simState.gridScale = scale;
+		simState.gridWidth = width;
+		simState.gridHeight = height;
+		
+		// Recreate simulation with new size
+		simulation.destroy();
+		simulation = new Simulation(ctx, {
+			width,
+			height,
+			rule: simState.currentRule
+		});
+		simulation.randomize(0.15);
+		simState.resetGeneration();
+		
+		// Reset view to fit the new grid
+		simulation.resetView(canvasWidth, canvasHeight);
+		
+		// Update alive cells count
+		simulation.countAliveCellsAsync().then(count => {
+			simState.aliveCells = count;
+		});
 	}
 </script>
 

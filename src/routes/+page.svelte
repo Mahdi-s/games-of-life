@@ -6,7 +6,7 @@
 	import Settings from '$lib/components/Settings.svelte';
 	import InitializeModal from '$lib/components/InitializeModal.svelte';
 	import InfoOverlay from '$lib/components/InfoOverlay.svelte';
-	import { getSimulationState, getUIState } from '$lib/stores/simulation.svelte.js';
+	import { getSimulationState, getUIState, type GridScale } from '$lib/stores/simulation.svelte.js';
 
 	const simState = getSimulationState();
 	const uiState = getUIState();
@@ -56,8 +56,8 @@
 		canvas.updateRule();
 	}
 
-	function handleGridSizeChange(width: number, height: number) {
-		canvas.resize(width, height);
+	function handleScaleChange(scale: GridScale) {
+		canvas.setScale(scale);
 	}
 
 	function handleScreenshot() {
@@ -173,7 +173,7 @@
 	{#if uiState.showSettings}
 		<Settings
 			onclose={() => (uiState.showSettings = false)}
-			ongridsizechange={handleGridSizeChange}
+			onscalechange={handleScaleChange}
 		/>
 	{/if}
 </main>

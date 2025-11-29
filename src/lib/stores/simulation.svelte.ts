@@ -8,16 +8,27 @@ import { getDefaultRule } from '../utils/rules.js';
 
 // Simulation state
 let isPlaying = $state(false);
-let speed = $state(10); // Steps per second
+let speed = $state(30); // Steps per second (default 30 fps)
 let brushSize = $state(3);
 let brushState = $state(1); // 1 = draw alive, 0 = erase
 let currentRule = $state<CARule>(getDefaultRule());
 let generation = $state(0);
 let showGrid = $state(true);
 
-// Grid configuration
-let gridWidth = $state(1024);
-let gridHeight = $state(1024);
+// Grid scale presets - base cell count for the shorter dimension
+export type GridScale = 'tiny' | 'small' | 'medium' | 'large' | 'huge';
+export const GRID_SCALES: { name: GridScale; label: string; baseCells: number }[] = [
+	{ name: 'tiny', label: 'Tiny', baseCells: 128 },
+	{ name: 'small', label: 'Small', baseCells: 256 },
+	{ name: 'medium', label: 'Medium', baseCells: 512 },
+	{ name: 'large', label: 'Large', baseCells: 1024 },
+	{ name: 'huge', label: 'Huge', baseCells: 2048 }
+];
+
+// Grid configuration - now calculated from scale
+let gridScale = $state<GridScale>('small');
+let gridWidth = $state(256);
+let gridHeight = $state(256);
 
 // Visual settings
 let isLightTheme = $state(false);
@@ -98,6 +109,13 @@ export function getSimulationState() {
 		},
 		set gridHeight(value: number) {
 			gridHeight = value;
+		},
+
+		get gridScale() {
+			return gridScale;
+		},
+		set gridScale(value: GridScale) {
+			gridScale = value;
 		},
 
 		get isLightTheme() {

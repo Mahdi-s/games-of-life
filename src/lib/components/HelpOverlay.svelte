@@ -75,10 +75,9 @@
 		inset: 0;
 		background: transparent;
 		display: flex;
-		align-items: flex-start;
-		justify-content: flex-end;
+		align-items: center;
+		justify-content: center;
 		z-index: 500;
-		padding: 3.5rem 1rem 1rem 1rem;
 	}
 
 	.help-panel {

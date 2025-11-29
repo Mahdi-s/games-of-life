@@ -564,13 +564,41 @@ export class Simulation {
 	}
 
 	/**
-	 * Reset view to show entire grid
+	 * Reset view to show entire grid, fitting it to the canvas
+	 * @param canvasWidth - Canvas width in pixels (optional, uses stored value if not provided)
+	 * @param canvasHeight - Canvas height in pixels (optional, uses stored value if not provided)
 	 */
-	resetView(): void {
+	resetView(canvasWidth?: number, canvasHeight?: number): void {
+		// Calculate zoom to fit entire grid in view
+		// zoom represents cells visible across the screen width
+		// We need to ensure both dimensions fit
+		
+		let zoom: number;
+		if (canvasWidth && canvasHeight) {
+			const canvasAspect = canvasWidth / canvasHeight;
+			const gridAspect = this.width / this.height;
+			
+			if (gridAspect >= canvasAspect) {
+				// Grid is wider than canvas - fit to width
+				zoom = this.width;
+			} else {
+				// Grid is taller than canvas - fit to height
+				// zoom = cells visible across width
+				// cells visible across height = zoom / canvasAspect
+				// We want cells visible across height = grid height
+				// So: zoom / canvasAspect = this.height
+				// zoom = this.height * canvasAspect
+				zoom = this.height * canvasAspect;
+			}
+		} else {
+			// Fallback to minimum dimension (old behavior)
+			zoom = Math.min(this.width, this.height);
+		}
+		
 		this.view = {
 			offsetX: 0,
 			offsetY: 0,
-			zoom: Math.min(this.width, this.height),
+			zoom,
 			showGrid: this.view.showGrid,
 			isLightTheme: this.view.isLightTheme,
 			aliveColor: this.view.aliveColor,

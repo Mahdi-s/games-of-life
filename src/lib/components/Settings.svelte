@@ -1,25 +1,18 @@
 <script lang="ts">
-	import { getSimulationState } from '../stores/simulation.svelte.js';
+	import { getSimulationState, GRID_SCALES, type GridScale } from '../stores/simulation.svelte.js';
 
 	interface Props {
 		onclose: () => void;
-		ongridsizechange: (width: number, height: number) => void;
+		onscalechange: (scale: GridScale) => void;
 	}
 
-	let { onclose, ongridsizechange }: Props = $props();
+	let { onclose, onscalechange }: Props = $props();
 
 	const simState = getSimulationState();
 
 	// Confirmation dialog state
 	let showConfirm = $state(false);
-	let pendingSize = $state<{ w: number; h: number } | null>(null);
-
-	const gridSizes = [
-		{ label: '512²', w: 512, h: 512 },
-		{ label: '1024²', w: 1024, h: 1024 },
-		{ label: '2048²', w: 2048, h: 2048 },
-		{ label: '4096²', w: 4096, h: 4096 }
-	];
+	let pendingScale = $state<GridScale | null>(null);
 
 	// Different palettes for dark and light themes
 	const darkThemeColors: { name: string; color: [number, number, number]; hex: string }[] = [
@@ -65,30 +58,33 @@
 		simState.aliveColor = newPalette[safeIndex].color;
 	}
 
-	function requestGridSize(w: number, h: number) {
-		if (w === simState.gridWidth && h === simState.gridHeight) return;
+	function requestScale(scale: GridScale) {
+		if (scale === simState.gridScale) return;
 		
 		// Pause if playing
 		if (simState.isPlaying) {
 			simState.pause();
 		}
 		
-		pendingSize = { w, h };
+		pendingScale = scale;
 		showConfirm = true;
 	}
 
 	function confirmResize() {
-		if (pendingSize) {
-			ongridsizechange(pendingSize.w, pendingSize.h);
+		if (pendingScale) {
+			onscalechange(pendingScale);
 		}
 		showConfirm = false;
-		pendingSize = null;
+		pendingScale = null;
 	}
 
 	function cancelResize() {
 		showConfirm = false;
-		pendingSize = null;
+		pendingScale = null;
 	}
+	
+	// Get current dimensions for display
+	const currentDimensions = $derived(`${simState.gridWidth}×${simState.gridHeight}`);
 </script>
 
 <svelte:window onkeydown={(e) => e.key === 'Escape' && (showConfirm ? cancelResize() : onclose())} />
@@ -98,8 +94,8 @@
 	{#if showConfirm}
 		<!-- Confirmation Dialog -->
 		<div class="confirm-dialog">
-			<p>Changing grid size will clear the simulation.</p>
-			<p class="sub">A new {pendingSize?.w}×{pendingSize?.h} grid will be randomly initialized.</p>
+			<p>Changing grid scale will clear the simulation.</p>
+			<p class="sub">A new grid will be created to fit your screen.</p>
 			<div class="confirm-btns">
 				<button class="btn secondary" onclick={cancelResize}>Cancel</button>
 				<button class="btn primary" onclick={confirmResize}>Continue</button>
@@ -199,17 +195,20 @@
 					</div>
 				</div>
 
-				<!-- Grid Size -->
+				<!-- Grid Scale -->
 				<div class="row col">
-					<span class="label">Grid Size</span>
+					<div class="label-row">
+						<span class="label">Grid Scale</span>
+						<span class="dim-hint">{currentDimensions}</span>
+					</div>
 					<div class="sizes">
-						{#each gridSizes as size}
+						{#each GRID_SCALES as scale}
 							<button
 								class="size"
-								class:selected={simState.gridWidth === size.w && simState.gridHeight === size.h}
-								onclick={() => requestGridSize(size.w, size.h)}
+								class:selected={simState.gridScale === scale.name}
+								onclick={() => requestScale(scale.name)}
 							>
-								{size.label}
+								{scale.label}
 							</button>
 						{/each}
 					</div>
@@ -294,6 +293,19 @@
 	.label {
 		font-size: 0.7rem;
 		color: var(--ui-text, #888);
+	}
+
+	.label-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		width: 100%;
+	}
+
+	.dim-hint {
+		font-size: 0.6rem;
+		color: var(--ui-text, #555);
+		font-family: 'SF Mono', Monaco, monospace;
 	}
 
 	/* Toggle */
