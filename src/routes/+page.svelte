@@ -127,8 +127,8 @@
 </script>
 
 <svelte:head>
-	<title>Cellular Automaton</title>
-	<meta name="description" content="WebGPU-powered cellular automaton visualizer with customizable rules" />
+	<title>Games of Life</title>
+	<meta name="description" content="WebGPU-powered cellular automaton visualizer with customizable rules - explore Conway's Game of Life and beyond" />
 </svelte:head>
 
 <svelte:window onkeydown={handleKeydown} />
