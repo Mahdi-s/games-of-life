@@ -29,6 +29,12 @@ let lastInitCategory = $state('random');
 let lastInitTiling = $state(true);
 let lastInitSpacing = $state(50); // Actual cell spacing on main grid
 
+// Boundary mode
+let wrapBoundary = $state(true); // true = toroidal wrap, false = fixed edges
+
+// Stats
+let aliveCells = $state(0);
+
 export function getSimulationState() {
 	return {
 		get isPlaying() {
@@ -134,6 +140,20 @@ export function getSimulationState() {
 		},
 		set lastInitSpacing(value: number) {
 			lastInitSpacing = value;
+		},
+
+		get wrapBoundary() {
+			return wrapBoundary;
+		},
+		set wrapBoundary(value: boolean) {
+			wrapBoundary = value;
+		},
+
+		get aliveCells() {
+			return aliveCells;
+		},
+		set aliveCells(value: number) {
+			aliveCells = value;
 		},
 
 		// Actions

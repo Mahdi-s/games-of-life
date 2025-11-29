@@ -454,6 +454,11 @@
 		<div class="header">
 			<span class="title">Initialize Grid</span>
 			<span class="rule-badge">{simState.currentRule.name}</span>
+			<button class="init-btn" onclick={handleInitialize} title="Apply initialization">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+					<path d="M5 12l5 5L20 7" />
+				</svg>
+			</button>
 			<button class="close-btn" onclick={onclose} aria-label="Close">✕</button>
 		</div>
 
@@ -622,10 +627,6 @@
 			{/if}
 		</div>
 
-		<div class="footer">
-			<button class="btn cancel" onclick={onclose}>Cancel</button>
-			<button class="btn apply" onclick={handleInitialize}>Initialize</button>
-		</div>
 	</div>
 </div>
 
@@ -674,6 +675,31 @@
 		margin-right: 0.5rem;
 	}
 
+	.init-btn {
+		width: 28px;
+		height: 28px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--ui-accent, #2dd4bf);
+		border: none;
+		color: #0a0a0f;
+		cursor: pointer;
+		border-radius: 6px;
+		margin-left: auto;
+		transition: all 0.15s;
+	}
+
+	.init-btn:hover {
+		filter: brightness(1.1);
+		transform: scale(1.05);
+	}
+
+	.init-btn svg {
+		width: 16px;
+		height: 16px;
+	}
+
 	.close-btn {
 		width: 24px;
 		height: 24px;
@@ -686,6 +712,7 @@
 		font-size: 0.9rem;
 		cursor: pointer;
 		border-radius: 4px;
+		margin-left: 0.3rem;
 	}
 
 	.close-btn:hover {
@@ -899,41 +926,4 @@
 		flex-shrink: 0;
 	}
 
-	.footer {
-		display: flex;
-		justify-content: flex-end;
-		gap: 0.4rem;
-		padding-top: 0.4rem;
-		border-top: 1px solid var(--ui-border, rgba(255, 255, 255, 0.06));
-	}
-
-	.btn {
-		padding: 0.4rem 0.9rem;
-		border-radius: 5px;
-		font-size: 0.75rem;
-		font-weight: 500;
-		cursor: pointer;
-		transition: all 0.15s;
-	}
-
-	.btn.cancel {
-		background: transparent;
-		border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.1));
-		color: var(--ui-text, #888);
-	}
-
-	.btn.cancel:hover {
-		background: var(--ui-border, rgba(255, 255, 255, 0.05));
-		color: var(--ui-text-hover, #e0e0e0);
-	}
-
-	.btn.apply {
-		background: var(--ui-accent, #2dd4bf);
-		border: none;
-		color: var(--ui-apply-text, #0a0a0f);
-	}
-
-	.btn.apply:hover {
-		filter: brightness(1.15);
-	}
 </style>

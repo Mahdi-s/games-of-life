@@ -170,6 +170,35 @@
 					</div>
 				</div>
 
+				<!-- Boundary Mode -->
+				<div class="row">
+					<span class="label">Boundary</span>
+					<div class="boundary-btns">
+						<button 
+							class="boundary-btn" 
+							class:active={simState.wrapBoundary} 
+							onclick={() => (simState.wrapBoundary = true)}
+							title="Wrap (Toroidal)"
+						>
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								<circle cx="12" cy="12" r="9" />
+								<path d="M12 3c-2 3-2 9 0 18M12 3c2 3 2 9 0 18M3 12h18" />
+							</svg>
+						</button>
+						<button 
+							class="boundary-btn" 
+							class:active={!simState.wrapBoundary} 
+							onclick={() => (simState.wrapBoundary = false)}
+							title="Fixed Edges"
+						>
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								<rect x="3" y="3" width="18" height="18" rx="2" />
+								<path d="M3 3l18 18M21 3l-18 18" />
+							</svg>
+						</button>
+					</div>
+				</div>
+
 				<!-- Grid Size -->
 				<div class="row col">
 					<span class="label">Grid Size</span>
@@ -337,6 +366,42 @@
 	}
 
 	.theme-btn.active {
+		background: var(--ui-accent-bg, rgba(45, 212, 191, 0.15));
+		border-color: var(--ui-accent-border, rgba(45, 212, 191, 0.3));
+		color: var(--ui-accent, #2dd4bf);
+	}
+
+	/* Boundary buttons */
+	.boundary-btns {
+		display: flex;
+		gap: 0.3rem;
+	}
+
+	.boundary-btn {
+		width: 28px;
+		height: 28px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--ui-border, rgba(255, 255, 255, 0.05));
+		border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.08));
+		border-radius: 5px;
+		color: var(--ui-text, #666);
+		cursor: pointer;
+		transition: all 0.1s;
+	}
+
+	.boundary-btn svg {
+		width: 14px;
+		height: 14px;
+	}
+
+	.boundary-btn:hover {
+		background: var(--ui-border-hover, rgba(255, 255, 255, 0.08));
+		color: var(--ui-text-hover, #fff);
+	}
+
+	.boundary-btn.active {
 		background: var(--ui-accent-bg, rgba(45, 212, 191, 0.15));
 		border-color: var(--ui-accent-border, rgba(45, 212, 191, 0.3));
 		color: var(--ui-accent, #2dd4bf);

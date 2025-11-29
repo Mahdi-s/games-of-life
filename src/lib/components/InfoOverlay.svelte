@@ -35,8 +35,12 @@
 		requestAnimationFrame(updateFPS);
 	});
 
-	const gridSize = $derived(`${simState.gridWidth}×${simState.gridHeight}`);
-	const totalCells = $derived((simState.gridWidth * simState.gridHeight).toLocaleString());
+	// Alive cells - show ~ prefix when running since we can't track GPU changes in real-time
+	const aliveCellsDisplay = $derived(
+		simState.isPlaying 
+			? `~${simState.aliveCells.toLocaleString()}` 
+			: simState.aliveCells.toLocaleString()
+	);
 </script>
 
 {#if collapsed}
@@ -60,13 +64,14 @@
 		</div>
 
 		<div class="info-content">
-			<!-- Rule -->
+			<!-- Rule - same icon as Rule Editor button -->
 			<div class="info-row">
 				<div class="info-label">
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<circle cx="6" cy="6" r="2" /><circle cx="18" cy="6" r="2" />
-						<circle cx="6" cy="18" r="2" /><circle cx="18" cy="18" r="2" />
-						<path d="M6 8v8M18 8v8M8 6h8M8 18h8" />
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+						<circle cx="5" cy="5" r="2" /><circle cx="12" cy="5" r="2" /><circle cx="19" cy="5" r="2" />
+						<circle cx="5" cy="12" r="2" /><circle cx="19" cy="12" r="2" />
+						<circle cx="5" cy="19" r="2" /><circle cx="12" cy="19" r="2" /><circle cx="19" cy="19" r="2" />
+						<path d="M7 5h3M14 5h3M5 7v3M19 7v3M5 14v3M19 14v3M7 19h3M14 19h3" />
 					</svg>
 				</div>
 				{#if simState.currentRule.name && simState.currentRule.name !== simState.currentRule.ruleString}
@@ -76,21 +81,23 @@
 				{/if}
 			</div>
 
-			<!-- Generation -->
+			<!-- Generation - clock icon like Speed button -->
 			<div class="info-row">
 				<div class="info-label">
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<path d="M12 8v4l2 2" /><circle cx="12" cy="12" r="9" />
+						<circle cx="12" cy="12" r="9" />
+						<path d="M12 6v6l4 2" />
 					</svg>
 				</div>
 				<span class="info-value mono">{simState.generation.toLocaleString()}</span>
 			</div>
 
-			<!-- Speed -->
+			<!-- Speed - same clock icon -->
 			<div class="info-row">
 				<div class="info-label">
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+						<circle cx="12" cy="12" r="9" />
+						<path d="M12 6v6l4 2" />
 					</svg>
 				</div>
 				<span class="info-value">
@@ -101,28 +108,16 @@
 				</span>
 			</div>
 
-			<!-- Grid -->
+			<!-- Alive cells - filled squares -->
 			<div class="info-row">
 				<div class="info-label">
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<rect x="3" y="3" width="18" height="18" rx="2" />
-						<path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
+					<svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+						<rect x="3" y="3" width="7" height="7" rx="1" />
+						<rect x="14" y="3" width="7" height="7" rx="1" />
+						<rect x="3" y="14" width="7" height="7" rx="1" />
 					</svg>
 				</div>
-				<span class="info-value mono">{gridSize}</span>
-			</div>
-
-			<!-- Total cells -->
-			<div class="info-row">
-				<div class="info-label">
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<rect x="4" y="4" width="6" height="6" rx="1" />
-						<rect x="14" y="4" width="6" height="6" rx="1" />
-						<rect x="4" y="14" width="6" height="6" rx="1" />
-						<rect x="14" y="14" width="6" height="6" rx="1" />
-					</svg>
-				</div>
-				<span class="info-value mono">{totalCells}</span>
+				<span class="info-value mono alive">{aliveCellsDisplay}</span>
 			</div>
 
 			<!-- Status -->
@@ -307,6 +302,10 @@
 	}
 
 	.info-value.status.playing {
+		color: var(--ui-accent, #2dd4bf);
+	}
+
+	.info-value.alive {
 		color: var(--ui-accent, #2dd4bf);
 	}
 </style>

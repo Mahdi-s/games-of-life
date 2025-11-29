@@ -27,6 +27,7 @@ export interface ViewState {
 	brushX: number;      // Brush center in grid coordinates
 	brushY: number;
 	brushRadius: number; // Brush radius in cells (-1 to hide)
+	wrapBoundary: boolean; // true = toroidal, false = fixed edges
 }
 
 export class Simulation {
@@ -58,6 +59,7 @@ export class Simulation {
 	private cellBuffers!: [GPUBuffer, GPUBuffer];
 	private computeParamsBuffer!: GPUBuffer;
 	private renderParamsBuffer!: GPUBuffer;
+	private readbackBuffer!: GPUBuffer;
 
 	// Double-buffer step counter
 	private stepCount = 0;
@@ -83,7 +85,8 @@ export class Simulation {
 			aliveColor: [0.2, 0.9, 0.95], // Default cyan
 			brushX: -1000,
 			brushY: -1000,
-			brushRadius: -1 // Hidden by default
+			brushRadius: -1, // Hidden by default
+			wrapBoundary: true // Default to toroidal wrapping
 		};
 
 		this.initializePipelines();
@@ -177,18 +180,26 @@ export class Simulation {
 		const cellBufferSize = cellCount * 4; // u32 per cell
 
 		// Create two cell state buffers for ping-pong
+		// COPY_SRC allows reading back data for alive cell counting
 		this.cellBuffers = [
 			this.device.createBuffer({
 				label: 'Cell State Buffer A',
 				size: cellBufferSize,
-				usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+				usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
 			}),
 			this.device.createBuffer({
 				label: 'Cell State Buffer B',
 				size: cellBufferSize,
-				usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+				usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
 			})
 		];
+
+		// Staging buffer for reading back cell data
+		this.readbackBuffer = this.device.createBuffer({
+			label: 'Readback Buffer',
+			size: cellBufferSize,
+			usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+		});
 
 		// Compute params buffer (6 u32 values, padded to 32 bytes)
 		this.computeParamsBuffer = this.device.createBuffer({
@@ -258,7 +269,7 @@ export class Simulation {
 			this.rule.birthMask,
 			this.rule.surviveMask,
 			this.rule.numStates,
-			0 // padding
+			this.view.wrapBoundary ? 1 : 0
 		]);
 		this.device.queue.writeBuffer(this.computeParamsBuffer, 0, params);
 	}
@@ -383,6 +394,7 @@ export class Simulation {
 		this.device.queue.writeBuffer(this.cellBuffers[0], 0, zeros);
 		this.device.queue.writeBuffer(this.cellBuffers[1], 0, zeros);
 		this.pendingPaints.clear();
+		this._aliveCells = 0;
 	}
 
 	/**
@@ -391,11 +403,15 @@ export class Simulation {
 	randomize(density = 0.25): void {
 		const cellCount = this.width * this.height;
 		const data = new Uint32Array(cellCount);
+		let alive = 0;
 
 		for (let i = 0; i < cellCount; i++) {
-			data[i] = Math.random() < density ? 1 : 0;
+			const isAlive = Math.random() < density ? 1 : 0;
+			data[i] = isAlive;
+			if (isAlive) alive++;
 		}
 
+		this._aliveCells = alive;
 		const currentBuffer = this.cellBuffers[this.stepCount % 2];
 		this.device.queue.writeBuffer(currentBuffer, 0, data);
 		this.pendingPaints.clear();
@@ -410,6 +426,57 @@ export class Simulation {
 	}
 
 	/**
+	 * Alive cells count - tracked during operations
+	 */
+	private _aliveCells = 0;
+	private _isCountingCells = false;
+
+	countAliveCells(): number {
+		return this._aliveCells;
+	}
+
+	/**
+	 * Update alive cells count (call after bulk setCell operations)
+	 */
+	updateAliveCellsCount(count: number): void {
+		this._aliveCells = count;
+	}
+
+	/**
+	 * Async method to read back cell data from GPU and count alive cells
+	 * Call this when paused to get accurate count
+	 */
+	async countAliveCellsAsync(): Promise<number> {
+		if (this._isCountingCells) return this._aliveCells;
+		this._isCountingCells = true;
+
+		try {
+			const currentBuffer = this.cellBuffers[this.stepCount % 2];
+			const bufferSize = this.width * this.height * 4;
+
+			// Copy current cell buffer to readback buffer
+			const commandEncoder = this.device.createCommandEncoder();
+			commandEncoder.copyBufferToBuffer(currentBuffer, 0, this.readbackBuffer, 0, bufferSize);
+			this.device.queue.submit([commandEncoder.finish()]);
+
+			// Map the readback buffer and count alive cells
+			await this.readbackBuffer.mapAsync(GPUMapMode.READ);
+			const data = new Uint32Array(this.readbackBuffer.getMappedRange());
+			
+			let count = 0;
+			for (let i = 0; i < data.length; i++) {
+				if (data[i] === 1) count++;
+			}
+			
+			this.readbackBuffer.unmap();
+			this._aliveCells = count;
+			return count;
+		} finally {
+			this._isCountingCells = false;
+		}
+	}
+
+	/**
 	 * Get current rule
 	 */
 	getRule(): CARule {
@@ -420,7 +487,13 @@ export class Simulation {
 	 * Update view state
 	 */
 	setView(view: Partial<ViewState>): void {
+		const boundaryChanged = view.wrapBoundary !== undefined && view.wrapBoundary !== this.view.wrapBoundary;
 		this.view = { ...this.view, ...view };
+		
+		// If boundary mode changed, update compute params
+		if (boundaryChanged) {
+			this.updateComputeParams();
+		}
 	}
 
 	/**
@@ -503,7 +576,8 @@ export class Simulation {
 			aliveColor: this.view.aliveColor,
 			brushX: this.view.brushX,
 			brushY: this.view.brushY,
-			brushRadius: this.view.brushRadius
+			brushRadius: this.view.brushRadius,
+			wrapBoundary: this.view.wrapBoundary
 		};
 	}
 
@@ -522,6 +596,7 @@ export class Simulation {
 		this.cellBuffers[1].destroy();
 		this.computeParamsBuffer.destroy();
 		this.renderParamsBuffer.destroy();
+		this.readbackBuffer.destroy();
 	}
 }
 

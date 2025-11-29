@@ -112,12 +112,28 @@
 			aliveColor: simState.aliveColor,
 			brushX: showBrush ? gridMouseX : -1000,
 			brushY: showBrush ? gridMouseY : -1000,
-			brushRadius: showBrush ? simState.brushSize : -1
+			brushRadius: showBrush ? simState.brushSize : -1,
+			wrapBoundary: simState.wrapBoundary
 		});
 
 		// Always render
 		simulation.render(canvasWidth, canvasHeight);
+
+		// Update alive cells count (sync version for display)
+		simState.aliveCells = simulation.countAliveCells();
 	}
+
+	// Track previous playing state to trigger count update when paused
+	let wasPlaying = false;
+	$effect(() => {
+		if (wasPlaying && !simState.isPlaying && simulation) {
+			// Just paused - get accurate count from GPU
+			simulation.countAliveCellsAsync().then(count => {
+				simState.aliveCells = count;
+			});
+		}
+		wasPlaying = simState.isPlaying;
+	});
 
 	// Keyboard handlers for shift key
 	function handleKeyDown(e: KeyboardEvent) {
@@ -190,6 +206,12 @@
 	}
 
 	function handleMouseUp() {
+		if (isDrawing && simulation && !simState.isPlaying) {
+			// After painting while paused, update the count
+			simulation.countAliveCellsAsync().then(count => {
+				simState.aliveCells = count;
+			});
+		}
 		isDrawing = false;
 		isPanning = false;
 	}
@@ -223,13 +245,20 @@
 
 	// Expose simulation methods
 	export function clear() {
-		simulation?.clear();
+		if (!simulation) return;
+		simulation.clear();
 		simState.resetGeneration();
+		simState.aliveCells = 0;
 	}
 
 	export function randomize(density: number = 0.15) {
-		simulation?.randomize(density);
+		if (!simulation) return;
+		simulation.randomize(density);
 		simState.resetGeneration();
+		// Randomize already sets _aliveCells, but do async count for accuracy
+		simulation.countAliveCellsAsync().then(count => {
+			simState.aliveCells = count;
+		});
 	}
 
 	export function initialize(type: string, options?: { density?: number; tiled?: boolean; spacing?: number }) {
@@ -299,6 +328,7 @@
 
 		const gridW = simState.gridWidth;
 		const gridH = simState.gridHeight;
+		let aliveCells = 0;
 
 		if (options?.tiled && options.spacing) {
 			// Tile the pattern across the grid
@@ -312,6 +342,7 @@
 						const y = ty + dy;
 						if (x >= 0 && x < gridW && y >= 0 && y < gridH) {
 							simulation.setCell(x, y, 1);
+							aliveCells++;
 						}
 					}
 				}
@@ -321,14 +352,32 @@
 			const cx = Math.floor(gridW / 2);
 			const cy = Math.floor(gridH / 2);
 			for (const [dx, dy] of pattern) {
-				simulation.setCell(cx + dx, cy + dy, 1);
+				const x = cx + dx;
+				const y = cy + dy;
+				if (x >= 0 && x < gridW && y >= 0 && y < gridH) {
+					simulation.setCell(x, y, 1);
+					aliveCells++;
+				}
 			}
 		}
+
+		// Update the alive cells count
+		simulation.updateAliveCellsCount(aliveCells);
+		
+		// Also do an async count to ensure accuracy after GPU operations settle
+		simulation.countAliveCellsAsync().then(count => {
+			simState.aliveCells = count;
+		});
 	}
 
 	export function stepOnce() {
-		simulation?.step();
+		if (!simulation) return;
+		simulation.step();
 		simState.incrementGeneration();
+		// Update alive cells count after step
+		simulation.countAliveCellsAsync().then(count => {
+			simState.aliveCells = count;
+		});
 	}
 
 	export function resetView() {

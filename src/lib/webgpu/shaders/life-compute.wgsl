@@ -7,23 +7,29 @@ struct Params {
     birth_mask: u32,      // Bit i = 1 means birth with i neighbors
     survive_mask: u32,    // Bit i = 1 means survive with i neighbors
     num_states: u32,      // 2 for Life-like, 3+ for Generations
-    _padding: u32,
+    wrap_boundary: u32,   // 1 = toroidal wrap, 0 = fixed edges (cells outside are dead)
 }
 
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read> cell_state_in: array<u32>;
 @group(0) @binding(2) var<storage, read_write> cell_state_out: array<u32>;
 
-// Get cell index with toroidal wrapping
-fn get_index(x: i32, y: i32) -> u32 {
-    let wrapped_x = ((x % i32(params.width)) + i32(params.width)) % i32(params.width);
-    let wrapped_y = ((y % i32(params.height)) + i32(params.height)) % i32(params.height);
-    return u32(wrapped_x) + u32(wrapped_y) * params.width;
-}
-
-// Get cell state at position (with wrapping)
+// Get cell state at position
 fn get_cell(x: i32, y: i32) -> u32 {
-    return cell_state_in[get_index(x, y)];
+    if (params.wrap_boundary == 1u) {
+        // Toroidal wrapping
+        let wrapped_x = ((x % i32(params.width)) + i32(params.width)) % i32(params.width);
+        let wrapped_y = ((y % i32(params.height)) + i32(params.height)) % i32(params.height);
+        let idx = u32(wrapped_x) + u32(wrapped_y) * params.width;
+        return cell_state_in[idx];
+    } else {
+        // Fixed edges - cells outside are dead
+        if (x < 0 || x >= i32(params.width) || y < 0 || y >= i32(params.height)) {
+            return 0u;
+        }
+        let idx = u32(x) + u32(y) * params.width;
+        return cell_state_in[idx];
+    }
 }
 
 // Check if a cell is "alive" (state == 1 for Generations rules)
