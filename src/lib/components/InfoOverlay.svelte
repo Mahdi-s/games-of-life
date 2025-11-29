@@ -64,14 +64,17 @@
 		</div>
 
 		<div class="info-content">
-			<!-- Rule - same icon as Rule Editor button -->
+			<!-- Rule - 3x3 grid with a few cells (matches toolbar) -->
 			<div class="info-row">
 				<div class="info-label">
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-						<circle cx="5" cy="5" r="2" /><circle cx="12" cy="5" r="2" /><circle cx="19" cy="5" r="2" />
-						<circle cx="5" cy="12" r="2" /><circle cx="19" cy="12" r="2" />
-						<circle cx="5" cy="19" r="2" /><circle cx="12" cy="19" r="2" /><circle cx="19" cy="19" r="2" />
-						<path d="M7 5h3M14 5h3M5 7v3M19 7v3M5 14v3M19 14v3M7 19h3M14 19h3" />
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<rect x="4" y="4" width="16" height="16" rx="1" />
+						<line x1="4" y1="9.33" x2="20" y2="9.33" />
+						<line x1="4" y1="14.66" x2="20" y2="14.66" />
+						<line x1="9.33" y1="4" x2="9.33" y2="20" />
+						<line x1="14.66" y1="4" x2="14.66" y2="20" />
+						<rect x="10.33" y="5" width="3.33" height="3.33" fill="currentColor" stroke="none" />
+						<rect x="15.66" y="10.33" width="3.33" height="3.33" fill="currentColor" stroke="none" />
 					</svg>
 				</div>
 				{#if simState.currentRule.name && simState.currentRule.name !== simState.currentRule.ruleString}
@@ -81,23 +84,25 @@
 				{/if}
 			</div>
 
-			<!-- Generation - clock icon like Speed button -->
+			<!-- Generation - counter/hash icon -->
 			<div class="info-row">
 				<div class="info-label">
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<circle cx="12" cy="12" r="9" />
-						<path d="M12 6v6l4 2" />
+						<line x1="4" y1="9" x2="20" y2="9" />
+						<line x1="4" y1="15" x2="20" y2="15" />
+						<line x1="10" y1="3" x2="8" y2="21" />
+						<line x1="16" y1="3" x2="14" y2="21" />
 					</svg>
 				</div>
 				<span class="info-value mono">{simState.generation.toLocaleString()}</span>
 			</div>
 
-			<!-- Speed - same clock icon -->
+			<!-- Speed - clock icon (matches toolbar) -->
 			<div class="info-row">
 				<div class="info-label">
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 						<circle cx="12" cy="12" r="9" />
-						<path d="M12 6v6l4 2" />
+						<path d="M12 7v5l3 2" />
 					</svg>
 				</div>
 				<span class="info-value">
@@ -108,27 +113,26 @@
 				</span>
 			</div>
 
-			<!-- Alive cells - filled squares -->
+			<!-- Alive cells - brush/cells icon -->
 			<div class="info-row">
 				<div class="info-label">
-					<svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
-						<rect x="3" y="3" width="7" height="7" rx="1" />
-						<rect x="14" y="3" width="7" height="7" rx="1" />
-						<rect x="3" y="14" width="7" height="7" rx="1" />
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<circle cx="12" cy="12" r="3" fill="currentColor" />
+						<circle cx="12" cy="12" r="8" />
 					</svg>
 				</div>
 				<span class="info-value mono alive">{aliveCellsDisplay}</span>
 			</div>
 
-			<!-- Status -->
+			<!-- Status - play/pause icon (matches toolbar) -->
 			<div class="info-row">
 				<div class="info-label">
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+					<svg viewBox="0 0 24 24" fill="currentColor">
 						{#if simState.isPlaying}
-							<path d="M5 3l14 9-14 9V3z" fill="currentColor" />
+							<path d="M8 5v14l11-7-11-7z" />
 						{:else}
-							<rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" />
-							<rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" />
+							<rect x="6" y="4" width="4" height="16" rx="1" />
+							<rect x="14" y="4" width="4" height="16" rx="1" />
 						{/if}
 					</svg>
 				</div>
