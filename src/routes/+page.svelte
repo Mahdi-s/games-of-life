@@ -265,6 +265,8 @@
 		--ui-input-bg: rgba(0, 0, 0, 0.3);
 		--ui-canvas-bg: #0a0a0f;
 		--ui-apply-text: #0a0a0f;
+		--slider-track-bg: rgba(255, 255, 255, 0.2);
+		--slider-track-border: rgba(255, 255, 255, 0.15);
 		/* --ui-accent, --ui-accent-bg, --ui-accent-border are set via inline style */
 	}
 
@@ -278,6 +280,8 @@
 		--ui-input-bg: rgba(255, 255, 255, 0.5);
 		--ui-canvas-bg: #f0f0f3;
 		--ui-apply-text: #ffffff;
+		--slider-track-bg: rgba(0, 0, 0, 0.15);
+		--slider-track-border: rgba(0, 0, 0, 0.1);
 		/* accent colors come from inline style based on selected color */
 	}
 </style>
