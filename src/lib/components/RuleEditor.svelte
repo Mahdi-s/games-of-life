@@ -390,33 +390,36 @@
 		top: calc(100% + 3px);
 		left: 0;
 		right: 0;
-		background: var(--ui-bg, rgba(16, 16, 24, 0.98));
-		border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.1));
+		background: rgba(16, 16, 24, 0.95);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		border: 1px solid rgba(255, 255, 255, 0.15);
 		border-radius: 5px;
 		max-height: 180px;
 		overflow-y: auto;
 		z-index: 20;
+		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
 	}
 
 	.dropdown-item {
 		width: 100%;
 		display: flex;
 		justify-content: space-between;
-		padding: 0.35rem 0.6rem;
+		padding: 0.4rem 0.6rem;
 		background: transparent;
 		border: none;
-		color: var(--ui-text, #999);
+		color: #d0d0d0;
 		font-size: 0.7rem;
 		cursor: pointer;
 	}
 
-	.dropdown-item:hover { background: var(--ui-border, rgba(255, 255, 255, 0.05)); color: var(--ui-text-hover, #e0e0e0); }
-	.dropdown-item.selected { background: var(--ui-accent-bg, rgba(45, 212, 191, 0.15)); color: var(--ui-accent, #2dd4bf); }
+	.dropdown-item:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+	.dropdown-item.selected { background: var(--ui-accent-bg, rgba(45, 212, 191, 0.2)); color: var(--ui-accent, #2dd4bf); }
 
 	.item-code {
 		font-family: 'SF Mono', Monaco, monospace;
 		font-size: 0.6rem;
-		color: var(--ui-text, #555);
+		color: #888;
 	}
 
 	.close-btn {
