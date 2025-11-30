@@ -210,11 +210,11 @@ function startMiniSim(accentColor: string, isLight: boolean): void {
 		initMiniSim(accentColor);
 		renderMiniSim(accentColor, isLight);
 		
-		// Run simulation
+		// Run simulation at ~20fps for smooth animation
 		miniSimInterval = window.setInterval(() => {
 			stepMiniSim();
 			renderMiniSim(accentColor, isLight);
-		}, 150);
+		}, 50);
 	}, 100);
 }
 
@@ -401,8 +401,8 @@ function getTourSteps(): DriveStep[] {
 			popover: {
 				title: titleWithIcon(icons.canvas, 'The Canvas'),
 				description: mobile 
-					? 'This is where cells live and evolve. Tap to draw, pinch to zoom, and use two fingers to pan.'
-					: 'This is where cells live and evolve. Click to draw, scroll to zoom, and Shift+drag to pan.',
+					? 'This is where cells live and evolve. Tap to draw cells, pinch to zoom, and drag with two fingers to pan around.'
+					: 'This is where cells live and evolve. Click to draw, right-click to erase, scroll to zoom, and Shift+drag to pan.',
 				side: 'over',
 				align: 'center'
 			}
@@ -412,7 +412,9 @@ function getTourSteps(): DriveStep[] {
 			element: '#tour-play-btn',
 			popover: {
 				title: titleWithIcon(icons.play, 'Play / Pause'),
-				description: 'Start or stop the simulation. Watch cells evolve according to the rules of life.',
+				description: mobile
+					? 'Start or stop the simulation. Watch cells evolve according to the current rule.'
+					: 'Start or stop the simulation (Space). Watch cells evolve according to the current rule.',
 				side: popoverSide,
 				align: 'center'
 			}
@@ -422,7 +424,9 @@ function getTourSteps(): DriveStep[] {
 			element: '#tour-step-btn',
 			popover: {
 				title: titleWithIcon(icons.play, 'Step Forward'),
-				description: 'Advance the simulation by one generation. Great for studying patterns frame by frame.',
+				description: mobile
+					? 'Advance the simulation one generation at a time. Great for studying patterns frame by frame.'
+					: 'Advance by one generation (S). Great for studying patterns frame by frame.',
 				side: popoverSide,
 				align: 'center'
 			}
@@ -432,7 +436,9 @@ function getTourSteps(): DriveStep[] {
 			element: '#tour-speed-btn',
 			popover: {
 				title: titleWithIcon(icons.clock, 'Speed Control'),
-				description: 'Adjust how fast the simulation runs. Click to open a slider.',
+				description: mobile
+					? 'Tap to adjust simulation speed from 1 to 120 fps.'
+					: 'Adjust simulation speed (< > keys). Click to open a slider.',
 				side: popoverSide,
 				align: 'center'
 			}
@@ -442,7 +448,9 @@ function getTourSteps(): DriveStep[] {
 			element: '#tour-rules-btn',
 			popover: {
 				title: titleWithIcon(icons.rules, 'Rule Editor'),
-				description: 'Change the rules of life. Try presets like HighLife, Day & Night, or create your own.',
+				description: mobile
+					? 'Change the rules! Choose from 50+ presets like Star Wars, Day & Night, or create your own with different neighborhoods.'
+					: 'Change the rules (E)! Choose from 50+ presets, search by name, filter by category, or create your own with different neighborhoods.',
 				side: popoverSide,
 				align: 'center'
 			}
@@ -452,7 +460,9 @@ function getTourSteps(): DriveStep[] {
 			element: '#tour-brush-btn',
 			popover: {
 				title: titleWithIcon(icons.brush, 'Brush Tool'),
-				description: 'Adjust brush size and switch between draw and erase modes to create patterns.',
+				description: mobile
+					? 'Tap to switch between draw and erase modes, and adjust brush size.'
+					: 'Adjust brush size ([ ] keys) and switch between draw and erase modes.',
 				side: popoverSide,
 				align: 'center'
 			}
@@ -462,7 +472,9 @@ function getTourSteps(): DriveStep[] {
 			element: '#tour-clear-btn',
 			popover: {
 				title: titleWithIcon(icons.trash, 'Clear Grid'),
-				description: 'Wipe the canvas clean and start fresh.',
+				description: mobile
+					? 'Wipe the canvas clean and start fresh.'
+					: 'Wipe the canvas clean (D). Start fresh with a blank grid.',
 				side: popoverSide,
 				align: 'center'
 			}
@@ -472,7 +484,9 @@ function getTourSteps(): DriveStep[] {
 			element: '#tour-init-btn',
 			popover: {
 				title: titleWithIcon(icons.refresh, 'Initialize'),
-				description: 'Load preset patterns like gliders, oscillators, or fill with random cells.',
+				description: mobile
+					? 'Load patterns like gliders, spaceships, and oscillators. Enable auto-seeding to keep the simulation alive.'
+					: 'Load patterns (I) like gliders, spaceships, and oscillators. Enable auto-seeding to keep the simulation alive forever.',
 				side: popoverSide,
 				align: 'center'
 			}
@@ -482,7 +496,9 @@ function getTourSteps(): DriveStep[] {
 			element: '#tour-fit-btn',
 			popover: {
 				title: titleWithIcon(icons.canvas, 'Fit to Screen'),
-				description: 'Reset the view to show the entire grid centered on screen.',
+				description: mobile
+					? 'Reset the view to show the entire grid centered on screen.'
+					: 'Reset the view (F) to show the entire grid centered on screen.',
 				side: popoverSide,
 				align: 'center'
 			}
@@ -492,7 +508,7 @@ function getTourSteps(): DriveStep[] {
 			element: '#tour-screenshot-btn',
 			popover: {
 				title: titleWithIcon(icons.camera, 'Screenshot'),
-				description: 'Save the current canvas as an image file.',
+				description: 'Capture and save the current canvas as a PNG image.',
 				side: popoverSide,
 				align: 'center'
 			}
@@ -504,7 +520,7 @@ function getTourSteps(): DriveStep[] {
 				title: titleWithIcon(icons.help, 'Help'),
 				description: mobile 
 					? 'View touch controls and tips. Restart this tour anytime from here.'
-					: 'View keyboard shortcuts and tips. Restart this tour anytime from here.',
+					: 'View all keyboard shortcuts (?) and tips. Restart this tour anytime from here.',
 				side: popoverSide,
 				align: 'center'
 			}
@@ -514,7 +530,9 @@ function getTourSteps(): DriveStep[] {
 			element: '#tour-settings-btn',
 			popover: {
 				title: titleWithIcon(icons.settings, 'Settings'),
-				description: 'Customize colors, switch themes, adjust grid size, and set boundary behavior.',
+				description: mobile
+					? 'Switch between dark/light themes, choose colors, adjust grid size, and set edge wrapping.'
+					: 'Switch themes (T), cycle colors (C), adjust grid size, and set edge wrapping behavior.',
 				side: popoverSide,
 				align: 'center'
 			}
@@ -524,7 +542,7 @@ function getTourSteps(): DriveStep[] {
 			element: '#tour-about-btn',
 			popover: {
 				title: titleWithIcon(icons.heart, 'About'),
-				description: 'Learn more about Games of Life and access the GitHub repository.',
+				description: 'Learn more about Games of Life, see quick start tips, and access the source code.',
 				side: popoverSide,
 				align: 'center'
 			}
@@ -533,7 +551,9 @@ function getTourSteps(): DriveStep[] {
 		{
 			popover: {
 				title: titleWithIcon(icons.check, 'Ready to Explore!'),
-				description: 'You\'re all set. Press Play to watch cells come alive!',
+				description: mobile
+					? 'You\'re all set! Tap Play to watch cells come alive. Try different rules for amazing patterns!'
+					: 'You\'re all set! Press Space to play. Try pressing C to cycle colors and T to toggle themes!',
 				side: 'over',
 				align: 'center'
 			}
