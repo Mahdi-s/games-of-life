@@ -726,11 +726,12 @@
 	/* Rotate canvas 90 degrees when device orientation changes from initial */
 	canvas.rotated {
 		position: absolute;
-		top: 50%;
-		left: 50%;
-		width: 100vh;
-		height: 100vw;
-		transform: translate(-50%, -50%) rotate(90deg);
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		transform-origin: top left;
+		transform: rotate(90deg) translateY(-100%);
 	}
 
 	canvas.pan-ready {
