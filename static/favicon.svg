@@ -1,37 +1,67 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
-  <!-- Dark background -->
+  <style>
+    .outline { fill: #2dd4bf; }
+    .fill { fill: #2dd4bf; opacity: 0.3; }
+    .layer-1 { animation: wave 1.8s ease-in-out infinite 0s; }
+    .layer-2 { animation: wave 1.8s ease-in-out infinite 0.15s; }
+    .layer-3 { animation: wave 1.8s ease-in-out infinite 0.3s; }
+    .layer-4 { animation: wave 1.8s ease-in-out infinite 0.45s; }
+    @keyframes wave {
+      0%, 100% { opacity: 0.2; }
+      40%, 60% { opacity: 0.55; }
+    }
+  </style>
+  
+  <!-- Background -->
   <rect width="16" height="16" fill="#0a0a0f"/>
-  <!-- Pixelated heart - centered with two shades -->
-  <!-- Outer glow / half-alive cells (dimmer) -->
-  <rect x="1" y="2" width="1" height="1" fill="#167a70"/>
-  <rect x="5" y="1" width="1" height="1" fill="#167a70"/>
-  <rect x="6" y="2" width="1" height="1" fill="#167a70"/>
-  <rect x="9" y="2" width="1" height="1" fill="#167a70"/>
-  <rect x="10" y="1" width="1" height="1" fill="#167a70"/>
-  <rect x="14" y="2" width="1" height="1" fill="#167a70"/>
-  <rect x="1" y="5" width="1" height="1" fill="#167a70"/>
-  <rect x="14" y="5" width="1" height="1" fill="#167a70"/>
-  <rect x="2" y="7" width="1" height="1" fill="#167a70"/>
-  <rect x="13" y="7" width="1" height="1" fill="#167a70"/>
-  <rect x="3" y="8" width="1" height="1" fill="#167a70"/>
-  <rect x="12" y="8" width="1" height="1" fill="#167a70"/>
-  <rect x="4" y="9" width="1" height="1" fill="#167a70"/>
-  <rect x="11" y="9" width="1" height="1" fill="#167a70"/>
-  <rect x="5" y="10" width="1" height="1" fill="#167a70"/>
-  <rect x="10" y="10" width="1" height="1" fill="#167a70"/>
-  <rect x="6" y="11" width="1" height="1" fill="#167a70"/>
-  <rect x="9" y="11" width="1" height="1" fill="#167a70"/>
-  <rect x="7" y="12" width="2" height="1" fill="#167a70"/>
-  <!-- Main heart - alive cells (bright cyan) -->
-  <rect x="2" y="2" width="3" height="1" fill="#2dd4bf"/>
-  <rect x="11" y="2" width="3" height="1" fill="#2dd4bf"/>
-  <rect x="2" y="3" width="5" height="1" fill="#2dd4bf"/>
-  <rect x="9" y="3" width="5" height="1" fill="#2dd4bf"/>
-  <rect x="2" y="4" width="12" height="1" fill="#2dd4bf"/>
-  <rect x="2" y="5" width="12" height="1" fill="#2dd4bf"/>
-  <rect x="3" y="6" width="10" height="1" fill="#2dd4bf"/>
-  <rect x="4" y="7" width="8" height="1" fill="#2dd4bf"/>
-  <rect x="5" y="8" width="6" height="1" fill="#2dd4bf"/>
-  <rect x="6" y="9" width="4" height="1" fill="#2dd4bf"/>
-  <rect x="7" y="10" width="2" height="1" fill="#2dd4bf"/>
+  
+  <!-- OUTLINE -->
+  <!-- Row 2: top of lobes -->
+  <rect class="outline" x="3" y="2" width="3" height="1"/>
+  <rect class="outline" x="10" y="2" width="3" height="1"/>
+  <!-- Row 3: sides of lobes -->
+  <rect class="outline" x="2" y="3" width="1" height="1"/>
+  <rect class="outline" x="6" y="3" width="1" height="1"/>
+  <rect class="outline" x="9" y="3" width="1" height="1"/>
+  <rect class="outline" x="13" y="3" width="1" height="1"/>
+  <!-- Row 4: outer sides + center dip -->
+  <rect class="outline" x="2" y="4" width="1" height="1"/>
+  <rect class="outline" x="7" y="4" width="2" height="1"/>
+  <rect class="outline" x="13" y="4" width="1" height="1"/>
+  <!-- Row 5-6: sides -->
+  <rect class="outline" x="2" y="5" width="1" height="2"/>
+  <rect class="outline" x="13" y="5" width="1" height="2"/>
+  <!-- Row 7 -->
+  <rect class="outline" x="3" y="7" width="1" height="1"/>
+  <rect class="outline" x="12" y="7" width="1" height="1"/>
+  <!-- Row 8 -->
+  <rect class="outline" x="4" y="8" width="1" height="1"/>
+  <rect class="outline" x="11" y="8" width="1" height="1"/>
+  <!-- Row 9 -->
+  <rect class="outline" x="5" y="9" width="1" height="1"/>
+  <rect class="outline" x="10" y="9" width="1" height="1"/>
+  <!-- Row 10 -->
+  <rect class="outline" x="6" y="10" width="1" height="1"/>
+  <rect class="outline" x="9" y="10" width="1" height="1"/>
+  <!-- Row 11: bottom tip -->
+  <rect class="outline" x="7" y="11" width="2" height="1"/>
+  
+  <!-- INNER FILL (layered for animation) -->
+  <!-- Layer 1: top lobes interior -->
+  <rect class="fill layer-1" x="3" y="3" width="3" height="1"/>
+  <rect class="fill layer-1" x="10" y="3" width="3" height="1"/>
+  <rect class="fill layer-1" x="3" y="4" width="4" height="1"/>
+  <rect class="fill layer-1" x="9" y="4" width="4" height="1"/>
+  
+  <!-- Layer 2: middle section -->
+  <rect class="fill layer-2" x="3" y="5" width="10" height="1"/>
+  <rect class="fill layer-2" x="3" y="6" width="10" height="1"/>
+  
+  <!-- Layer 3: lower middle -->
+  <rect class="fill layer-3" x="4" y="7" width="8" height="1"/>
+  <rect class="fill layer-3" x="5" y="8" width="6" height="1"/>
+  
+  <!-- Layer 4: bottom -->
+  <rect class="fill layer-4" x="6" y="9" width="4" height="1"/>
+  <rect class="fill layer-4" x="7" y="10" width="2" height="1"/>
 </svg>

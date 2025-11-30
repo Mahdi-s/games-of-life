@@ -162,23 +162,40 @@ function isMobile(): boolean {
 
 // SVG Icons matching the app's iconography
 const icons = {
-	// Pixelated heart logo
+	// Classic pixelated heart - outline + filled interior
 	heart: `<svg viewBox="0 0 16 16" class="tour-icon tour-icon-heart">
-		<rect class="heart-dim" x="1" y="2" width="1" height="1"/>
-		<rect class="heart-dim" x="5" y="1" width="1" height="1"/>
-		<rect class="heart-dim" x="10" y="1" width="1" height="1"/>
-		<rect class="heart-dim" x="14" y="2" width="1" height="1"/>
-		<rect class="heart-bright" x="2" y="2" width="3" height="1"/>
-		<rect class="heart-bright" x="11" y="2" width="3" height="1"/>
-		<rect class="heart-bright" x="2" y="3" width="5" height="1"/>
-		<rect class="heart-bright" x="9" y="3" width="5" height="1"/>
-		<rect class="heart-bright" x="2" y="4" width="12" height="1"/>
-		<rect class="heart-bright" x="2" y="5" width="12" height="1"/>
-		<rect class="heart-bright" x="3" y="6" width="10" height="1"/>
-		<rect class="heart-bright" x="4" y="7" width="8" height="1"/>
-		<rect class="heart-bright" x="5" y="8" width="6" height="1"/>
-		<rect class="heart-bright" x="6" y="9" width="4" height="1"/>
-		<rect class="heart-bright" x="7" y="10" width="2" height="1"/>
+		<!-- Outline -->
+		<rect class="heart-bright" x="3" y="2" width="3" height="1"/>
+		<rect class="heart-bright" x="10" y="2" width="3" height="1"/>
+		<rect class="heart-bright" x="2" y="3" width="1" height="1"/>
+		<rect class="heart-bright" x="6" y="3" width="1" height="1"/>
+		<rect class="heart-bright" x="9" y="3" width="1" height="1"/>
+		<rect class="heart-bright" x="13" y="3" width="1" height="1"/>
+		<rect class="heart-bright" x="2" y="4" width="1" height="1"/>
+		<rect class="heart-bright" x="7" y="4" width="2" height="1"/>
+		<rect class="heart-bright" x="13" y="4" width="1" height="1"/>
+		<rect class="heart-bright" x="2" y="5" width="1" height="2"/>
+		<rect class="heart-bright" x="13" y="5" width="1" height="2"/>
+		<rect class="heart-bright" x="3" y="7" width="1" height="1"/>
+		<rect class="heart-bright" x="12" y="7" width="1" height="1"/>
+		<rect class="heart-bright" x="4" y="8" width="1" height="1"/>
+		<rect class="heart-bright" x="11" y="8" width="1" height="1"/>
+		<rect class="heart-bright" x="5" y="9" width="1" height="1"/>
+		<rect class="heart-bright" x="10" y="9" width="1" height="1"/>
+		<rect class="heart-bright" x="6" y="10" width="1" height="1"/>
+		<rect class="heart-bright" x="9" y="10" width="1" height="1"/>
+		<rect class="heart-bright" x="7" y="11" width="2" height="1"/>
+		<!-- Inner fill -->
+		<rect class="heart-dim" x="3" y="3" width="3" height="1"/>
+		<rect class="heart-dim" x="10" y="3" width="3" height="1"/>
+		<rect class="heart-dim" x="3" y="4" width="4" height="1"/>
+		<rect class="heart-dim" x="9" y="4" width="4" height="1"/>
+		<rect class="heart-dim" x="3" y="5" width="10" height="1"/>
+		<rect class="heart-dim" x="3" y="6" width="10" height="1"/>
+		<rect class="heart-dim" x="4" y="7" width="8" height="1"/>
+		<rect class="heart-dim" x="5" y="8" width="6" height="1"/>
+		<rect class="heart-dim" x="6" y="9" width="4" height="1"/>
+		<rect class="heart-dim" x="7" y="10" width="2" height="1"/>
 	</svg>`,
 	// Play icon
 	play: `<svg viewBox="0 0 24 24" fill="currentColor" class="tour-icon">

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getSimulationState, getUIState } from '../stores/simulation.svelte.js';
+	import HeartIcon from './HeartIcon.svelte';
 
 	interface Props {
 		onclear: () => void;
@@ -239,42 +240,9 @@
 			</svg>
 		</button>
 
-		<!-- About / Logo - pixelated heart with two shades -->
+		<!-- About / Logo -->
 		<button class="control-btn logo-btn" onclick={onabout} data-tooltip="About">
-			<svg viewBox="0 0 16 16" class="heart-icon">
-				<!-- Outer glow / half-alive cells (dimmer shade) -->
-				<rect class="heart-dim" x="1" y="2" width="1" height="1"/>
-				<rect class="heart-dim" x="5" y="1" width="1" height="1"/>
-				<rect class="heart-dim" x="6" y="2" width="1" height="1"/>
-				<rect class="heart-dim" x="9" y="2" width="1" height="1"/>
-				<rect class="heart-dim" x="10" y="1" width="1" height="1"/>
-				<rect class="heart-dim" x="14" y="2" width="1" height="1"/>
-				<rect class="heart-dim" x="1" y="5" width="1" height="1"/>
-				<rect class="heart-dim" x="14" y="5" width="1" height="1"/>
-				<rect class="heart-dim" x="2" y="7" width="1" height="1"/>
-				<rect class="heart-dim" x="13" y="7" width="1" height="1"/>
-				<rect class="heart-dim" x="3" y="8" width="1" height="1"/>
-				<rect class="heart-dim" x="12" y="8" width="1" height="1"/>
-				<rect class="heart-dim" x="4" y="9" width="1" height="1"/>
-				<rect class="heart-dim" x="11" y="9" width="1" height="1"/>
-				<rect class="heart-dim" x="5" y="10" width="1" height="1"/>
-				<rect class="heart-dim" x="10" y="10" width="1" height="1"/>
-				<rect class="heart-dim" x="6" y="11" width="1" height="1"/>
-				<rect class="heart-dim" x="9" y="11" width="1" height="1"/>
-				<rect class="heart-dim" x="7" y="12" width="2" height="1"/>
-				<!-- Main heart - alive cells (bright) -->
-				<rect class="heart-bright" x="2" y="2" width="3" height="1"/>
-				<rect class="heart-bright" x="11" y="2" width="3" height="1"/>
-				<rect class="heart-bright" x="2" y="3" width="5" height="1"/>
-				<rect class="heart-bright" x="9" y="3" width="5" height="1"/>
-				<rect class="heart-bright" x="2" y="4" width="12" height="1"/>
-				<rect class="heart-bright" x="2" y="5" width="12" height="1"/>
-				<rect class="heart-bright" x="3" y="6" width="10" height="1"/>
-				<rect class="heart-bright" x="4" y="7" width="8" height="1"/>
-				<rect class="heart-bright" x="5" y="8" width="6" height="1"/>
-				<rect class="heart-bright" x="6" y="9" width="4" height="1"/>
-				<rect class="heart-bright" x="7" y="10" width="2" height="1"/>
-			</svg>
+			<HeartIcon size={18} animated={true} />
 		</button>
 
 		<!-- Collapse/Expand toggle -->
@@ -585,29 +553,6 @@
 		display: none;
 	}
 
-	/* Heart icon styling with two shades */
-	.heart-icon {
-		width: 18px;
-		height: 18px;
-	}
-
-	.heart-icon .heart-bright {
-		fill: var(--ui-accent, #2dd4bf);
-	}
-
-	.heart-icon .heart-dim {
-		fill: var(--ui-accent, #2dd4bf);
-		opacity: 0.4;
-	}
-
-	.logo-btn:hover .heart-icon .heart-bright {
-		fill: var(--ui-accent, #2dd4bf);
-		filter: brightness(1.2);
-	}
-
-	.logo-btn:hover .heart-icon .heart-dim {
-		opacity: 0.6;
-	}
 
 	/* Mobile: vertical toolbar anchored to bottom-right */
 	@media (max-width: 768px) {
