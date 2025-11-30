@@ -1,9 +1,10 @@
 <script lang="ts">
 	interface Props {
 		onclose: () => void;
+		onstarttour: () => void;
 	}
 
-	let { onclose }: Props = $props();
+	let { onclose, onstarttour }: Props = $props();
 
 	// Detect if we're on a touch device
 	const isMobile = typeof window !== 'undefined' && 
@@ -13,6 +14,12 @@
 		if (e.target === e.currentTarget) {
 			onclose();
 		}
+	}
+
+	function handleStartTour() {
+		onclose();
+		// Small delay to let the modal close animation complete
+		setTimeout(() => onstarttour(), 150);
 	}
 </script>
 
@@ -148,6 +155,19 @@
 					</div>
 				</div>
 			{/if}
+			
+			<!-- Tour button -->
+			<button class="tour-btn" onclick={handleStartTour}>
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+					<!-- Route/path icon representing a tour -->
+					<circle cx="6" cy="6" r="2"/>
+					<circle cx="18" cy="10" r="2"/>
+					<circle cx="12" cy="18" r="2"/>
+					<path d="M6 8v2a4 4 0 004 4h2"/>
+					<path d="M16 10h-2a4 4 0 00-4 4v2"/>
+				</svg>
+				<span>Take a Tour</span>
+			</button>
 		</div>
 	</div>
 </div>
@@ -308,6 +328,34 @@
 		border-left: 2px solid var(--ui-accent, #2dd4bf);
 		padding-left: 0.5rem;
 		margin-bottom: 0.25rem;
+	}
+
+	/* Tour button */
+	.tour-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		margin-top: 0.6rem;
+		padding: 0.4rem 0.7rem;
+		background: var(--ui-accent-bg, rgba(45, 212, 191, 0.1));
+		color: var(--ui-accent, #2dd4bf);
+		border: 1px solid var(--ui-accent-border, rgba(45, 212, 191, 0.2));
+		border-radius: 5px;
+		font-size: 0.68rem;
+		font-weight: 500;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.tour-btn:hover {
+		background: var(--ui-accent-bg-hover, rgba(45, 212, 191, 0.2));
+		border-color: var(--ui-accent-border, rgba(45, 212, 191, 0.35));
+		filter: brightness(1.1);
+	}
+
+	.tour-btn svg {
+		width: 14px;
+		height: 14px;
 	}
 
 	/* Mobile adjustments */

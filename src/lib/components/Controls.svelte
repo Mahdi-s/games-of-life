@@ -63,6 +63,7 @@
 <div class="controls" class:collapsed>
 	<!-- Play/Pause -->
 		<button
+			id="tour-play-btn"
 			class="control-btn primary"
 			onclick={() => simState.togglePlay()}
 			data-tooltip={simState.isPlaying ? 'Pause (Space)' : 'Play (Space)'}
@@ -89,6 +90,7 @@
 		<!-- Speed -->
 		<div class="control-group">
 			<button
+				id="tour-speed-btn"
 				class="control-btn"
 				onclick={toggleSpeed}
 				data-tooltip="Speed"
@@ -108,7 +110,7 @@
 		</div>
 
 		<!-- Rules - Grid with a few alive cells -->
-		<button class="control-btn" onclick={openRules} data-tooltip="Edit Rules (E)">
+		<button id="tour-rules-btn" class="control-btn" onclick={openRules} data-tooltip="Edit Rules (E)">
 			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 				<!-- 3x3 grid outline -->
 				<rect x="4" y="4" width="16" height="16" rx="1" />
@@ -127,6 +129,7 @@
 		<!-- Brush Size -->
 		<div class="control-group">
 			<button
+				id="tour-brush-btn"
 				class="control-btn"
 				onclick={toggleBrush}
 				data-tooltip="Brush"
@@ -184,7 +187,7 @@
 		</button>
 
 		<!-- Initialize -->
-		<button class="control-btn" onclick={openInitialize} data-tooltip="Initialize (I)">
+		<button id="tour-init-btn" class="control-btn" onclick={openInitialize} data-tooltip="Initialize (I)">
 			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 				<path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
 			</svg>
@@ -215,7 +218,7 @@
 		</button>
 
 		<!-- Help -->
-		<button class="control-btn" class:active={showHelp} onclick={handleHelp} data-tooltip="Help (?)">
+		<button id="tour-help-btn" class="control-btn" class:active={showHelp} onclick={handleHelp} data-tooltip="Help (?)">
 			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 				<circle cx="12" cy="12" r="10" />
 				<path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" />
@@ -224,7 +227,7 @@
 		</button>
 
 		<!-- Settings -->
-		<button class="control-btn" onclick={openSettings} data-tooltip="Settings">
+		<button id="tour-settings-btn" class="control-btn" onclick={openSettings} data-tooltip="Settings">
 			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 				<!-- Sliders/tuner icon -->
 				<line x1="4" y1="6" x2="20" y2="6" />

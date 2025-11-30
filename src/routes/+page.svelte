@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import Canvas from '$lib/components/Canvas.svelte';
 	import Controls from '$lib/components/Controls.svelte';
 	import RuleEditor from '$lib/components/RuleEditor.svelte';
@@ -8,6 +9,8 @@
 	import InfoOverlay from '$lib/components/InfoOverlay.svelte';
 	import AboutModal from '$lib/components/AboutModal.svelte';
 	import { getSimulationState, getUIState, type GridScale } from '$lib/stores/simulation.svelte.js';
+	import { hasTourBeenCompleted, startTour, getTourStyles } from '$lib/utils/tour.js';
+	import 'driver.js/dist/driver.css';
 
 	const simState = getSimulationState();
 	const uiState = getUIState();
@@ -16,6 +19,7 @@
 	let showInitialize = $state(false);
 	let showAbout = $state(false);
 	let canvas: Canvas;
+	let tourStyleElement: HTMLStyleElement | null = null;
 
 	// Convert alive color (0-1 RGB) to CSS color strings
 	const accentColor = $derived.by(() => {
@@ -80,6 +84,51 @@
 			return `rgba(${Math.round(r * 255 * 0.2)}, ${Math.round(g * 255 * 0.2)}, ${Math.round(b * 255 * 0.2)}, 0.2)`;
 		}
 		return `rgba(${Math.round(r * 255 * 0.4 + 80)}, ${Math.round(g * 255 * 0.4 + 80)}, ${Math.round(b * 255 * 0.4 + 80)}, 0.3)`;
+	});
+
+	// Update tour styles when theme or color changes
+	function updateTourStyles() {
+		if (!tourStyleElement) {
+			tourStyleElement = document.createElement('style');
+			tourStyleElement.id = 'tour-styles';
+			document.head.appendChild(tourStyleElement);
+		}
+		tourStyleElement.textContent = getTourStyles(accentColor, simState.isLightTheme);
+	}
+
+	// Start the tour
+	function handleStartTour() {
+		updateTourStyles();
+		startTour({
+			accentColor,
+			isLightTheme: simState.isLightTheme
+		});
+	}
+
+	// Auto-start tour on first visit
+	onMount(() => {
+		// Small delay to ensure everything is rendered
+		setTimeout(() => {
+			if (!hasTourBeenCompleted()) {
+				handleStartTour();
+			}
+		}, 500);
+
+		return () => {
+			// Cleanup tour styles
+			if (tourStyleElement) {
+				tourStyleElement.remove();
+			}
+		};
+	});
+
+	// Update tour styles when theme/color changes
+	$effect(() => {
+		// Track dependencies
+		accentColor;
+		simState.isLightTheme;
+		// Update styles
+		updateTourStyles();
 	});
 
 	function handleClear() {
@@ -222,7 +271,7 @@
 	/>
 
 	{#if showHelp}
-		<HelpOverlay onclose={() => (showHelp = false)} />
+		<HelpOverlay onclose={() => (showHelp = false)} onstarttour={handleStartTour} />
 	{/if}
 
 	{#if showInitialize}
@@ -247,7 +296,7 @@
 	{/if}
 
 	{#if showAbout}
-		<AboutModal onclose={() => (showAbout = false)} />
+		<AboutModal onclose={() => (showAbout = false)} onstarttour={handleStartTour} />
 	{/if}
 </main>
 
