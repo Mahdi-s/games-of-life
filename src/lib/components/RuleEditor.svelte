@@ -782,6 +782,14 @@
 
 	.select-btn .select-value {
 		flex: 1;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	/* Ensure chevron is always at the far right */
+	.select-btn .chevron {
+		margin-left: auto;
 	}
 
 	.select-btn:hover { 
@@ -940,9 +948,9 @@
 	/* Main row */
 	.main-row {
 		display: flex;
-		justify-content: center;
-		gap: 1rem;
+		justify-content: space-between;
 		padding: 0.3rem 0;
+		flex-wrap: nowrap; /* Never wrap - scale down instead */
 	}
 
 	.grid-col, .preview-col {
@@ -950,6 +958,8 @@
 		flex-direction: column;
 		align-items: center;
 		gap: 0.2rem;
+		flex-shrink: 1;
+		min-width: 0;
 	}
 
 	.label {
@@ -969,12 +979,15 @@
 		margin-bottom: 0.15rem;
 	}
 
-	/* Grid - fixed 108px height to match preview canvas */
+	/* Grid - 108px default, scales down on mobile */
 	.grid {
 		display: grid;
 		gap: 2px;
 		width: 108px;
 		height: 108px;
+		flex-shrink: 1;
+		min-width: 60px;
+		min-height: 60px;
 	}
 
 	/* Moore: 9 cells in 3x3, each ~35px */
@@ -1036,6 +1049,8 @@
 		display: flex;
 		gap: 0.4rem;
 		align-items: stretch;
+		flex-shrink: 1;
+		min-width: 0;
 	}
 
 	.canvas {
@@ -1043,13 +1058,16 @@
 		height: 108px;
 		border-radius: 5px;
 		background: var(--ui-canvas-bg, #0a0a0f);
+		flex-shrink: 1;
+		min-width: 60px;
+		min-height: 60px;
 	}
 
 	.preview-btns {
 		display: flex;
 		flex-direction: column;
 		justify-content: space-between;
-		height: 108px;
+		/* Height matches canvas via align-items: stretch on parent */
 	}
 
 	.pbtn {
@@ -1175,25 +1193,93 @@
 		.editor {
 			max-width: 95vw;
 			padding: 0.6rem;
+			gap: 0.5rem;
 		}
 
+		.header {
+			margin-bottom: 0;
+		}
+
+		/* Keep selectors on ONE row - make them compact */
 		.selectors-row {
-			flex-wrap: wrap;
+			flex-wrap: nowrap;
+			gap: 0.3rem;
 		}
 
+		.select-btn {
+			padding: 0.3rem 0.4rem;
+			gap: 0.2rem;
+			font-size: 0.65rem;
+		}
+
+		.select-label {
+			display: none; /* Hide labels on mobile to save space */
+		}
+
+		.select-value {
+			font-size: 0.7rem;
+		}
+
+		.select-num {
+			font-size: 0.6rem;
+		}
+
+		.chevron {
+			width: 10px;
+			height: 10px;
+		}
+
+		/* Rule dropdown should take remaining space */
 		.dropdown-wrapper.flex-1 {
-			flex: 1 1 100%;
-			order: -1;
+			flex: 1;
+			min-width: 0; /* Allow shrinking */
+		}
+
+		.dropdown-wrapper.flex-1 .select-value {
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+			max-width: 100px;
 		}
 
 		.main-row {
-			flex-wrap: wrap;
-			gap: 0.8rem;
+			justify-content: space-between;
+		}
+
+		/* Scale down grids and preview on mobile */
+		.grid {
+			width: 80px;
+			height: 80px;
+			min-width: 55px;
+			min-height: 55px;
+			gap: 1px;
+		}
+
+		.canvas {
+			width: 80px;
+			height: 80px;
+			min-width: 55px;
+			min-height: 55px;
+		}
+
+		.cell {
+			font-size: 0.55rem;
+		}
+
+		.pbtn {
+			width: 22px;
+			height: 22px;
+			padding: 4px;
+		}
+
+		.pbtn svg {
+			width: 10px;
+			height: 10px;
 		}
 
 		.footer {
 			flex-wrap: wrap;
-			gap: 0.5rem;
+			gap: 0.4rem;
 		}
 
 		.actions {

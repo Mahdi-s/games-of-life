@@ -43,6 +43,31 @@
 
 
 	/**
+	 * Get the actual visible viewport dimensions
+	 * Uses visualViewport API on mobile for accurate dimensions that account for browser UI
+	 */
+	function getVisibleViewportSize(): { width: number; height: number } {
+		// On mobile, visualViewport gives the actual visible area excluding browser UI
+		if (window.visualViewport) {
+			return {
+				width: window.visualViewport.width,
+				height: window.visualViewport.height
+			};
+		}
+		// Fallback to container dimensions, then window
+		if (container && container.clientWidth > 0 && container.clientHeight > 0) {
+			return {
+				width: container.clientWidth,
+				height: container.clientHeight
+			};
+		}
+		return {
+			width: window.innerWidth,
+			height: window.innerHeight
+		};
+	}
+
+	/**
 	 * Calculate grid dimensions from scale and screen aspect ratio
 	 * The baseCells value represents the shorter dimension
 	 */
@@ -76,11 +101,10 @@
 		function handleOrientationChange() {
 			// Small delay to let browser update dimensions
 			setTimeout(() => {
-				if (!simulation || !ctx || !lastOrientation || !container) return;
+				if (!simulation || !ctx || !lastOrientation) return;
 				
-				const containerWidth = container.clientWidth || window.innerWidth;
-				const containerHeight = container.clientHeight || window.innerHeight;
-				const currentOrientation = containerWidth >= containerHeight ? 'landscape' : 'portrait';
+				const viewport = getVisibleViewportSize();
+				const currentOrientation = viewport.width >= viewport.height ? 'landscape' : 'portrait';
 				
 				// Only transpose if orientation actually changed
 				if (currentOrientation !== lastOrientation) {
@@ -125,15 +149,14 @@
 
 		ctx = result.value;
 		
-		// Calculate initial grid size based on CONTAINER dimensions (not window)
-		// The container is the actual visible canvas area, excluding toolbar etc.
-		const containerWidth = container.clientWidth || window.innerWidth;
-		const containerHeight = container.clientHeight || window.innerHeight;
+		// Calculate initial grid size based on actual visible viewport
+		// Uses visualViewport API on mobile for accurate dimensions
+		const viewport = getVisibleViewportSize();
 		
 		// Remember current orientation
-		lastOrientation = containerWidth >= containerHeight ? 'landscape' : 'portrait';
+		lastOrientation = viewport.width >= viewport.height ? 'landscape' : 'portrait';
 		
-		const { width, height } = calculateGridDimensions(simState.gridScale, containerWidth, containerHeight);
+		const { width, height } = calculateGridDimensions(simState.gridScale, viewport.width, viewport.height);
 		simState.gridWidth = width;
 		simState.gridHeight = height;
 		
@@ -691,10 +714,10 @@
 		});
 		
 		// Use current actual canvas dimensions for reset view
-		// The canvas dimensions should have been updated by the resize observer
+		const viewport = getVisibleViewportSize();
 		const dpr = window.devicePixelRatio || 1;
-		const actualWidth = Math.floor(container.clientWidth * dpr);
-		const actualHeight = Math.floor(container.clientHeight * dpr);
+		const actualWidth = Math.floor(viewport.width * dpr);
+		const actualHeight = Math.floor(viewport.height * dpr);
 		simulation.resetView(actualWidth, actualHeight);
 	}
 
@@ -742,10 +765,9 @@
 	export function setScale(scale: GridScale) {
 		if (!ctx || !simulation) return;
 		
-		// Calculate new dimensions based on container size (not window)
-		const containerWidth = container.clientWidth || window.innerWidth;
-		const containerHeight = container.clientHeight || window.innerHeight;
-		const { width, height } = calculateGridDimensions(scale, containerWidth, containerHeight);
+		// Calculate new dimensions based on visible viewport
+		const viewport = getVisibleViewportSize();
+		const { width, height } = calculateGridDimensions(scale, viewport.width, viewport.height);
 		
 		// Update store
 		simState.gridScale = scale;
