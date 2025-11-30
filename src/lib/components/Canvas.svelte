@@ -36,9 +36,8 @@
 	let animationId: number | null = null;
 	let lastStepTime = 0;
 
-	// Track initial orientation to detect rotation
-	let initialOrientation: 'portrait' | 'landscape' | null = null;
-	let isRotated = $state(false);
+	// Track orientation for transpose on change
+	let lastOrientation: 'portrait' | 'landscape' | null = null;
 
 
 	/**
@@ -71,21 +70,25 @@
 		const resizeObserver = new ResizeObserver(handleResize);
 		resizeObserver.observe(container);
 
-		// Handle orientation change on mobile - just rotate the canvas
+		// Handle orientation change - transpose the grid
 		function handleOrientationChange() {
-			if (!initialOrientation) return;
-			
-			const screenWidth = window.innerWidth;
-			const screenHeight = window.innerHeight;
-			const currentOrientation = screenWidth >= screenHeight ? 'landscape' : 'portrait';
-			
-			// Check if orientation flipped from initial
-			isRotated = currentOrientation !== initialOrientation;
+			// Small delay to let browser update dimensions
+			setTimeout(() => {
+				if (!simulation || !ctx || !lastOrientation) return;
+				
+				const screenWidth = window.innerWidth;
+				const screenHeight = window.innerHeight;
+				const currentOrientation = screenWidth >= screenHeight ? 'landscape' : 'portrait';
+				
+				// Only transpose if orientation actually changed
+				if (currentOrientation !== lastOrientation) {
+					transposeGrid();
+					lastOrientation = currentOrientation;
+				}
+			}, 150);
 		}
 		
 		window.addEventListener('orientationchange', handleOrientationChange);
-		// Also listen to resize event as a fallback
-		window.addEventListener('resize', handleOrientationChange);
 
 		// Add touch event listeners with { passive: false } to allow preventDefault
 		canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
@@ -96,7 +99,6 @@
 		return () => {
 			resizeObserver.disconnect();
 			window.removeEventListener('orientationchange', handleOrientationChange);
-			window.removeEventListener('resize', handleOrientationChange);
 			if (animationId !== null) {
 				cancelAnimationFrame(animationId);
 			}
@@ -123,8 +125,8 @@
 		const screenWidth = window.innerWidth;
 		const screenHeight = window.innerHeight;
 		
-		// Remember initial orientation
-		initialOrientation = screenWidth >= screenHeight ? 'landscape' : 'portrait';
+		// Remember current orientation
+		lastOrientation = screenWidth >= screenHeight ? 'landscape' : 'portrait';
 		
 		const { width, height } = calculateGridDimensions(simState.gridScale, screenWidth, screenHeight);
 		simState.gridWidth = width;
@@ -198,10 +200,8 @@
 			wrapBoundary: simState.wrapBoundary
 		});
 
-		// Always render - swap dimensions if canvas is rotated
-		const renderWidth = isRotated ? canvasHeight : canvasWidth;
-		const renderHeight = isRotated ? canvasWidth : canvasHeight;
-		simulation.render(renderWidth, renderHeight);
+		// Always render
+		simulation.render(canvasWidth, canvasHeight);
 
 		// Update alive cells count (sync version for display)
 		simState.aliveCells = simulation.countAliveCells();
@@ -598,10 +598,63 @@
 	}
 
 	export function resetView() {
-		// Swap dimensions if canvas is rotated
-		const viewWidth = isRotated ? canvasHeight : canvasWidth;
-		const viewHeight = isRotated ? canvasWidth : canvasHeight;
-		simulation?.resetView(viewWidth, viewHeight);
+		simulation?.resetView(canvasWidth, canvasHeight);
+	}
+
+	/**
+	 * Transpose the grid (swap width and height, rotate cell positions)
+	 * Used when device orientation changes
+	 */
+	async function transposeGrid() {
+		if (!simulation || !ctx) return;
+		
+		const { width: oldWidth, height: oldHeight } = simulation.getDimensions();
+		
+		// Get current cell data
+		const oldData = await simulation.getCellDataAsync();
+		
+		// Create transposed data (swap x and y)
+		const newWidth = oldHeight;
+		const newHeight = oldWidth;
+		const newData = new Uint32Array(newWidth * newHeight);
+		
+		for (let y = 0; y < oldHeight; y++) {
+			for (let x = 0; x < oldWidth; x++) {
+				const oldIndex = x + y * oldWidth;
+				// Transpose: new position is (y, x) instead of (x, y)
+				const newIndex = y + x * newWidth;
+				newData[newIndex] = oldData[oldIndex];
+			}
+		}
+		
+		// Update store dimensions
+		simState.gridWidth = newWidth;
+		simState.gridHeight = newHeight;
+		
+		// Recreate simulation with new dimensions
+		const currentRule = simulation.getRule();
+		const currentView = simulation.getView();
+		simulation.destroy();
+		
+		simulation = new Simulation(ctx, {
+			width: newWidth,
+			height: newHeight,
+			rule: currentRule
+		});
+		
+		// Load the transposed data
+		simulation.setCellData(newData);
+		
+		// Restore view settings (swap offsets too)
+		simulation.setView({
+			showGrid: currentView.showGrid,
+			isLightTheme: currentView.isLightTheme,
+			aliveColor: currentView.aliveColor,
+			wrapBoundary: currentView.wrapBoundary
+		});
+		
+		// Reset view to fit new dimensions
+		simulation.resetView(canvasWidth, canvasHeight);
 	}
 
 	export function updateRule() {
@@ -703,7 +756,6 @@
 		class:hidden={!!error}
 		class:panning={isPanning}
 		class:pan-ready={isShiftHeld && !isPanning}
-		class:rotated={isRotated}
 	></canvas>
 </div>
 
@@ -724,18 +776,6 @@
 		-webkit-touch-callout: none;
 		-webkit-user-select: none;
 		user-select: none;
-	}
-
-	/* Rotate canvas 90 degrees when device orientation changes from initial */
-	canvas.rotated {
-		position: fixed !important;
-		top: 0 !important;
-		left: 0 !important;
-		right: 0 !important;
-		bottom: 0 !important;
-		width: 100dvh !important;
-		height: 100dvw !important;
-		transform: translate(calc(50dvw - 50dvh), calc(50dvh - 50dvw)) rotate(90deg);
 	}
 
 	canvas.pan-ready {

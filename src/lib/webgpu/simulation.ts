@@ -484,6 +484,47 @@ export class Simulation {
 	}
 
 	/**
+	 * Get grid dimensions
+	 */
+	getDimensions(): { width: number; height: number } {
+		return { width: this.width, height: this.height };
+	}
+
+	/**
+	 * Read back all cell data from GPU (async)
+	 */
+	async getCellDataAsync(): Promise<Uint32Array> {
+		const currentBuffer = this.cellBuffers[this.stepCount % 2];
+		const bufferSize = this.width * this.height * 4;
+
+		const commandEncoder = this.device.createCommandEncoder();
+		commandEncoder.copyBufferToBuffer(currentBuffer, 0, this.readbackBuffer, 0, bufferSize);
+		this.device.queue.submit([commandEncoder.finish()]);
+
+		await this.readbackBuffer.mapAsync(GPUMapMode.READ);
+		const data = new Uint32Array(this.readbackBuffer.getMappedRange().slice(0));
+		this.readbackBuffer.unmap();
+		
+		return data;
+	}
+
+	/**
+	 * Write cell data to GPU
+	 */
+	setCellData(data: Uint32Array): void {
+		const currentBuffer = this.cellBuffers[this.stepCount % 2];
+		this.device.queue.writeBuffer(currentBuffer, 0, data);
+		this.pendingPaints.clear();
+		
+		// Update alive count
+		let count = 0;
+		for (let i = 0; i < data.length; i++) {
+			if (data[i] === 1) count++;
+		}
+		this._aliveCells = count;
+	}
+
+	/**
 	 * Update view state
 	 */
 	setView(view: Partial<ViewState>): void {
