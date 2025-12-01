@@ -214,10 +214,10 @@ export class Simulation {
 			usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
 		});
 
-		// Render params buffer (16 f32 values = 64 bytes)
+		// Render params buffer (18 f32 values = 72 bytes, aligned to 80)
 		this.renderParamsBuffer = this.device.createBuffer({
 			label: 'Render Params Buffer',
-			size: 64,
+			size: 80,
 			usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
 		});
 
@@ -273,6 +273,7 @@ export class Simulation {
 		switch (nh) {
 			case 'vonNeumann': return 1;
 			case 'extendedMoore': return 2;
+			case 'hexagonal': return 3;
 			default: return 0; // moore
 		}
 	}
@@ -308,7 +309,9 @@ export class Simulation {
 			this.view.aliveColor[2],
 			this.view.brushX,
 			this.view.brushY,
-			this.view.brushRadius
+			this.view.brushRadius,
+			this.getNeighborhoodIndex(), // neighborhood type for rendering
+			0.0 // padding
 		]);
 		this.device.queue.writeBuffer(this.renderParamsBuffer, 0, params);
 	}
@@ -389,13 +392,58 @@ export class Simulation {
 
 	/**
 	 * Paint cells in a brush area
+	 * For hexagonal grids, uses visual distance to create a circular brush
 	 */
 	paintBrush(centerX: number, centerY: number, radius: number, state: number): void {
-		const r = Math.floor(radius);
-		for (let dy = -r; dy <= r; dy++) {
-			for (let dx = -r; dx <= r; dx++) {
-				if (dx * dx + dy * dy <= radius * radius) {
-					this.setCell(Math.floor(centerX) + dx, Math.floor(centerY) + dy, state);
+		const HEX_HEIGHT_RATIO = 0.866025404; // sqrt(3)/2
+		const isHex = this.rule.neighborhood === 'hexagonal';
+		
+		if (isHex) {
+			// For hexagonal grids, we need to check visual distance
+			// using hex center positions
+			const brushCenterX = Math.floor(centerX);
+			const brushCenterY = Math.floor(centerY);
+			
+			// Get visual center of brush cell
+			const isOddBrush = (brushCenterY & 1) === 1;
+			const brushVisualX = brushCenterX + 0.5 + (isOddBrush ? 0.5 : 0);
+			const brushVisualY = (brushCenterY + 0.5) * HEX_HEIGHT_RATIO;
+			
+			// Visual radius (half because hex centers are spaced by 1 in X)
+			const visualRadius = radius * 0.5;
+			const visualRadiusSq = visualRadius * visualRadius;
+			
+			// Search a larger area to account for hex layout
+			const searchRadius = Math.ceil(radius / HEX_HEIGHT_RATIO) + 1;
+			
+			for (let dy = -searchRadius; dy <= searchRadius; dy++) {
+				for (let dx = -searchRadius; dx <= searchRadius; dx++) {
+					const cellX = brushCenterX + dx;
+					const cellY = brushCenterY + dy;
+					
+					// Get visual center of this cell
+					const isOdd = (cellY & 1) === 1;
+					const cellVisualX = cellX + 0.5 + (isOdd ? 0.5 : 0);
+					const cellVisualY = (cellY + 0.5) * HEX_HEIGHT_RATIO;
+					
+					// Calculate visual distance
+					const vdx = cellVisualX - brushVisualX;
+					const vdy = cellVisualY - brushVisualY;
+					const distSq = vdx * vdx + vdy * vdy;
+					
+					if (distSq <= visualRadiusSq) {
+						this.setCell(cellX, cellY, state);
+					}
+				}
+			}
+		} else {
+			// Square grids: simple Euclidean distance in cell coordinates
+			const r = Math.floor(radius);
+			for (let dy = -r; dy <= r; dy++) {
+				for (let dx = -r; dx <= r; dx++) {
+					if (dx * dx + dy * dy <= radius * radius) {
+						this.setCell(Math.floor(centerX) + dx, Math.floor(centerY) + dy, state);
+					}
 				}
 			}
 		}
@@ -586,9 +634,10 @@ export class Simulation {
 	}
 
 	/**
-	 * Convert screen coordinates to grid coordinates
+	 * Convert screen coordinates to continuous grid coordinates
+	 * Used for zoom/pan operations
 	 */
-	screenToGrid(
+	screenToGridContinuous(
 		screenX: number,
 		screenY: number,
 		canvasWidth: number,
@@ -605,6 +654,81 @@ export class Simulation {
 	}
 
 	/**
+	 * Convert screen coordinates to cell coordinates
+	 * For hexagonal grids, returns the hex cell coordinates
+	 * For square grids, returns floored grid coordinates
+	 */
+	screenToGrid(
+		screenX: number,
+		screenY: number,
+		canvasWidth: number,
+		canvasHeight: number
+	): { x: number; y: number } {
+		const { x: gridX, y: gridY } = this.screenToGridContinuous(screenX, screenY, canvasWidth, canvasHeight);
+
+		// For hexagonal grids, convert to hex cell coordinates
+		if (this.rule.neighborhood === 'hexagonal') {
+			return this.screenToHexCell(gridX, gridY);
+		}
+
+		return { x: gridX, y: gridY };
+	}
+
+	/**
+	 * Convert continuous grid coordinates to hexagonal cell coordinates
+	 * Uses "odd-r" offset coordinates where odd rows are shifted right
+	 */
+	private screenToHexCell(gridX: number, gridY: number): { x: number; y: number } {
+		const HEX_HEIGHT_RATIO = 0.866025404; // sqrt(3)/2
+
+		// Scale y to account for compressed row height
+		const scaledY = gridY / HEX_HEIGHT_RATIO;
+		const row = Math.floor(scaledY);
+		const rowFrac = scaledY - row;
+
+		// Determine if this is an odd row (shifted right by 0.5)
+		const isOdd = (row & 1) === 1;
+
+		// Adjust x for row offset
+		let adjustedX = gridX;
+		if (isOdd) {
+			adjustedX = gridX - 0.5;
+		}
+
+		const col = Math.floor(adjustedX);
+		const colFrac = adjustedX - col;
+
+		// Check if we're in the "corner" regions where the pixel might belong to an adjacent hex
+		if (rowFrac < 0.333) {
+			// Left corner check
+			if (colFrac < 0.5) {
+				const boundaryY = 0.333 - colFrac * 0.666;
+				if (rowFrac < boundaryY) {
+					// We're in the hex above-left
+					if (isOdd) {
+						return { x: col, y: row - 1 };
+					} else {
+						return { x: col - 1, y: row - 1 };
+					}
+				}
+			} else {
+				// Right corner check
+				const boundaryY = (colFrac - 0.5) * 0.666;
+				if (rowFrac < boundaryY) {
+					// We're in the hex above-right
+					if (isOdd) {
+						return { x: col + 1, y: row - 1 };
+					} else {
+						return { x: col, y: row - 1 };
+					}
+				}
+			}
+		}
+
+		return { x: col, y: row };
+	}
+
+	/**
 	 * Zoom at a specific point
 	 */
 	zoomAt(
@@ -614,8 +738,8 @@ export class Simulation {
 		canvasHeight: number,
 		factor: number
 	): void {
-		// Get grid position before zoom
-		const gridPos = this.screenToGrid(screenX, screenY, canvasWidth, canvasHeight);
+		// Get continuous grid position before zoom (not cell coordinates)
+		const gridPos = this.screenToGridContinuous(screenX, screenY, canvasWidth, canvasHeight);
 
 		// Apply zoom - allow zooming out to 2x the grid size for padding
 		const maxZoom = Math.max(this.width, this.height) * 2;
@@ -660,17 +784,28 @@ export class Simulation {
 		let offsetX = 0;
 		let offsetY = 0;
 		
+		// For hexagonal grids, the visual coordinate system is different:
+		// - X: columns with odd rows offset by 0.5
+		// - Y: rows * sqrt(3)/2 (rows are closer together)
+		// Reference: https://www.redblobgames.com/grids/hexagons/
+		const HEX_HEIGHT_RATIO = 0.866025404; // sqrt(3)/2
+		const isHex = this.rule.neighborhood === 'hexagonal';
+		
+		// Calculate effective grid dimensions in visual coordinates
+		// For hex grids: the visual height is compressed because hex rows overlap
+		const effectiveGridWidth = isHex ? this.width + 0.5 : this.width;
+		const effectiveGridHeight = isHex ? (this.height + 0.5) * HEX_HEIGHT_RATIO : this.height;
+		
 		if (canvasWidth && canvasHeight) {
 			const canvasAspect = canvasWidth / canvasHeight;
-			const gridAspect = this.width / this.height;
+			const gridAspect = effectiveGridWidth / effectiveGridHeight;
 			
 			if (gridAspect >= canvasAspect) {
 				// Grid is wider than canvas (relative to aspect) - fit to width
-				zoom = this.width;
+				zoom = effectiveGridWidth;
 			} else {
 				// Grid is taller than canvas (relative to aspect) - fit to height
-				// zoom / canvasAspect = this.height => zoom = this.height * canvasAspect
-				zoom = this.height * canvasAspect;
+				zoom = effectiveGridHeight * canvasAspect;
 			}
 			
 			// Calculate cells visible in each dimension
@@ -678,11 +813,11 @@ export class Simulation {
 			const cellsVisibleY = zoom / canvasAspect;
 			
 			// Center the grid: offset so grid is in the middle of visible area
-			offsetX = (this.width - cellsVisibleX) / 2;
-			offsetY = (this.height - cellsVisibleY) / 2;
+			offsetX = (effectiveGridWidth - cellsVisibleX) / 2;
+			offsetY = (effectiveGridHeight - cellsVisibleY) / 2;
 		} else {
 			// Fallback: assume grid matches canvas aspect, so zoom = width
-			zoom = this.width;
+			zoom = effectiveGridWidth;
 		}
 		
 		this.view = {

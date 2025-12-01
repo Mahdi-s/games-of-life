@@ -26,7 +26,16 @@
 
 	const simState = getSimulationState();
 
-	const PREVIEW_SIZE = 20;
+	const PREVIEW_SIZE_X = 20;
+	// For hexagonal grids, rows are visually compressed by sqrt(3)/2
+	// So we need more rows to fill the same visual space
+	const HEX_HEIGHT_RATIO = 0.866025404; // sqrt(3)/2
+	const PREVIEW_SIZE_Y_SQUARE = 20;
+	const PREVIEW_SIZE_Y_HEX = Math.round(20 / HEX_HEIGHT_RATIO); // ~23 rows for hex
+	
+	// Derived preview height based on neighborhood
+	let previewSizeY = $derived(neighborhood === 'hexagonal' ? PREVIEW_SIZE_Y_HEX : PREVIEW_SIZE_Y_SQUARE);
+	
 	let previewCanvas: HTMLCanvasElement;
 	let previewCtx: CanvasRenderingContext2D | null = null;
 	let previewGrid: number[] = [];
@@ -172,6 +181,7 @@
 		'nh:moore': getFilterCount('nh:moore'),
 		'nh:vonNeumann': getFilterCount('nh:vonNeumann'),
 		'nh:extendedMoore': getFilterCount('nh:extendedMoore'),
+		'nh:hexagonal': getFilterCount('nh:hexagonal'),
 		// States
 		'states:2': getFilterCount('states:2'),
 		'states:3-4': getFilterCount('states:3-4'),
@@ -209,44 +219,73 @@
 		}
 	});
 
+	// Reinitialize preview grid when neighborhood changes (grid size changes for hex)
+	let lastNeighborhood: NeighborhoodType | null = null;
+	$effect(() => {
+		// Track neighborhood changes
+		const currentNeighborhood = neighborhood;
+		if (lastNeighborhood !== null && lastNeighborhood !== currentNeighborhood) {
+			// Neighborhood changed, reinitialize preview grid
+			randomizePreview();
+		}
+		lastNeighborhood = currentNeighborhood;
+	});
+
 	function randomizePreview() {
-		previewGrid = Array.from({ length: PREVIEW_SIZE * PREVIEW_SIZE }, () =>
+		const gridSize = PREVIEW_SIZE_X * previewSizeY;
+		previewGrid = Array.from({ length: gridSize }, () =>
 			Math.random() < 0.3 ? 1 : 0
 		);
-		previewNextGrid = new Array(PREVIEW_SIZE * PREVIEW_SIZE).fill(0);
+		previewNextGrid = new Array(gridSize).fill(0);
 		renderPreview();
 	}
 
 	// Count neighbors based on neighborhood type
 	function countNeighbors(x: number, y: number): number {
 		let count = 0;
+		const sizeX = PREVIEW_SIZE_X;
+		const sizeY = previewSizeY;
 		
 		if (neighborhood === 'vonNeumann') {
 			// 4 orthogonal neighbors
 			const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
 			for (const [dx, dy] of dirs) {
-				const nx = (x + dx + PREVIEW_SIZE) % PREVIEW_SIZE;
-				const ny = (y + dy + PREVIEW_SIZE) % PREVIEW_SIZE;
-				if (previewGrid[ny * PREVIEW_SIZE + nx] === 1) count++;
+				const nx = (x + dx + sizeX) % sizeX;
+				const ny = (y + dy + sizeY) % sizeY;
+				if (previewGrid[ny * sizeX + nx] === 1) count++;
 			}
 		} else if (neighborhood === 'extendedMoore') {
 			// 24 neighbors (5x5 minus center)
 			for (let dy = -2; dy <= 2; dy++) {
 				for (let dx = -2; dx <= 2; dx++) {
 					if (dx === 0 && dy === 0) continue;
-					const nx = (x + dx + PREVIEW_SIZE) % PREVIEW_SIZE;
-					const ny = (y + dy + PREVIEW_SIZE) % PREVIEW_SIZE;
-					if (previewGrid[ny * PREVIEW_SIZE + nx] === 1) count++;
+					const nx = (x + dx + sizeX) % sizeX;
+					const ny = (y + dy + sizeY) % sizeY;
+					if (previewGrid[ny * sizeX + nx] === 1) count++;
 				}
+			}
+		} else if (neighborhood === 'hexagonal') {
+			// 6 neighbors in hexagonal grid (odd-r offset coordinates)
+			const isOddRow = (y & 1) === 1;
+			
+			// Different offsets for odd vs even rows
+			const neighbors = isOddRow
+				? [[0, -1], [1, -1], [-1, 0], [1, 0], [0, 1], [1, 1]]  // odd row
+				: [[-1, -1], [0, -1], [-1, 0], [1, 0], [-1, 1], [0, 1]]; // even row
+			
+			for (const [dx, dy] of neighbors) {
+				const nx = (x + dx + sizeX) % sizeX;
+				const ny = (y + dy + sizeY) % sizeY;
+				if (previewGrid[ny * sizeX + nx] === 1) count++;
 			}
 		} else {
 			// Moore: 8 neighbors
 			for (let dy = -1; dy <= 1; dy++) {
 				for (let dx = -1; dx <= 1; dx++) {
 					if (dx === 0 && dy === 0) continue;
-					const nx = (x + dx + PREVIEW_SIZE) % PREVIEW_SIZE;
-					const ny = (y + dy + PREVIEW_SIZE) % PREVIEW_SIZE;
-					if (previewGrid[ny * PREVIEW_SIZE + nx] === 1) count++;
+					const nx = (x + dx + sizeX) % sizeX;
+					const ny = (y + dy + sizeY) % sizeY;
+					if (previewGrid[ny * sizeX + nx] === 1) count++;
 				}
 			}
 		}
@@ -257,10 +296,12 @@
 	function stepPreview() {
 		const birthMask = getBirthMask();
 		const surviveMask = getSurviveMask();
+		const sizeX = PREVIEW_SIZE_X;
+		const sizeY = previewSizeY;
 
-		for (let y = 0; y < PREVIEW_SIZE; y++) {
-			for (let x = 0; x < PREVIEW_SIZE; x++) {
-				const idx = y * PREVIEW_SIZE + x;
+		for (let y = 0; y < sizeY; y++) {
+			for (let x = 0; x < sizeX; x++) {
+				const idx = y * sizeX + x;
 				const state = previewGrid[idx];
 				const neighbors = countNeighbors(x, y);
 
@@ -284,19 +325,81 @@
 
 	function renderPreview() {
 		if (!previewCtx) return;
-		const cellSize = previewCanvas.width / PREVIEW_SIZE;
+		
+		// Clear canvas
 		previewCtx.fillStyle = simState.isLightTheme ? '#f0f0f3' : '#0a0a0f';
 		previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
 
-		for (let y = 0; y < PREVIEW_SIZE; y++) {
-			for (let x = 0; x < PREVIEW_SIZE; x++) {
-				const state = previewGrid[y * PREVIEW_SIZE + x];
+		if (neighborhood === 'hexagonal') {
+			renderHexPreview();
+		} else {
+			renderSquarePreview();
+		}
+	}
+
+	function renderSquarePreview() {
+		if (!previewCtx) return;
+		const sizeX = PREVIEW_SIZE_X;
+		const sizeY = previewSizeY;
+		const cellSizeX = previewCanvas.width / sizeX;
+		const cellSizeY = previewCanvas.height / sizeY;
+
+		for (let y = 0; y < sizeY; y++) {
+			for (let x = 0; x < sizeX; x++) {
+				const state = previewGrid[y * sizeX + x];
 				if (state > 0) {
 					previewCtx.fillStyle = getStateColor(state);
-					previewCtx.fillRect(x * cellSize, y * cellSize, cellSize - 0.5, cellSize - 0.5);
+					previewCtx.fillRect(x * cellSizeX, y * cellSizeY, cellSizeX - 0.5, cellSizeY - 0.5);
 				}
 			}
 		}
+	}
+
+	function renderHexPreview() {
+		if (!previewCtx) return;
+		
+		const sizeX = PREVIEW_SIZE_X;
+		const sizeY = previewSizeY;
+		
+		// Calculate hex size to fit in canvas
+		// For hexagonal grids, we have more rows (previewSizeY) to fill the visual space
+		// The hex width determines the horizontal spacing
+		// The hex height (width * sqrt(3)/2) determines vertical spacing
+		const hexWidth = previewCanvas.width / (sizeX + 0.5);
+		const hexHeight = hexWidth * HEX_HEIGHT_RATIO;
+		const hexRadius = hexWidth / 2;
+
+		for (let y = 0; y < sizeY; y++) {
+			for (let x = 0; x < sizeX; x++) {
+				const state = previewGrid[y * sizeX + x];
+				
+				// Calculate hex center position
+				const isOddRow = (y & 1) === 1;
+				const centerX = (x + 0.5) * hexWidth + (isOddRow ? hexWidth / 2 : 0);
+				const centerY = (y + 0.5) * hexHeight;
+				
+				// Draw hex
+				previewCtx.fillStyle = state > 0 ? getStateColor(state) : (simState.isLightTheme ? '#f0f0f3' : '#0a0a0f');
+				drawHexagon(previewCtx, centerX, centerY, hexRadius * 0.95);
+			}
+		}
+	}
+
+	function drawHexagon(ctx: CanvasRenderingContext2D, cx: number, cy: number, radius: number) {
+		ctx.beginPath();
+		for (let i = 0; i < 6; i++) {
+			// Pointy-top hexagon (rotate by 30 degrees)
+			const angle = (Math.PI / 3) * i - Math.PI / 6;
+			const px = cx + radius * Math.cos(angle);
+			const py = cy + radius * Math.sin(angle);
+			if (i === 0) {
+				ctx.moveTo(px, py);
+			} else {
+				ctx.lineTo(px, py);
+			}
+		}
+		ctx.closePath();
+		ctx.fill();
 	}
 
 	// RGB to HSL conversion (matches shader)
@@ -534,6 +637,7 @@
 			case 'moore': return 'Moore';
 			case 'vonNeumann': return 'VN';
 			case 'extendedMoore': return 'Ext';
+			case 'hexagonal': return 'Hex';
 			default: return 'Moore';
 		}
 	});
@@ -608,6 +712,10 @@
 						<button class="dropdown-item" class:selected={selectedFilter === 'nh:extendedMoore'} onclick={() => selectFilter('nh:extendedMoore')}>
 							<span class="item-name">Extended (24) <span class="filter-count">[{filterCounts['nh:extendedMoore']}]</span></span>
 							<span class="item-desc">Large radius 24-neighbor rules</span>
+						</button>
+						<button class="dropdown-item" class:selected={selectedFilter === 'nh:hexagonal'} onclick={() => selectFilter('nh:hexagonal')}>
+							<span class="item-name">Hexagonal (6) <span class="filter-count">[{filterCounts['nh:hexagonal']}]</span></span>
+							<span class="item-desc">Honeycomb grid 6-neighbor rules</span>
 						</button>
 						
 						<div class="dropdown-divider"></div>
@@ -1236,6 +1344,59 @@
 	.grid.grid-extendedMoore {
 		grid-template-columns: repeat(5, 1fr);
 		grid-template-rows: repeat(5, 1fr);
+	}
+
+	/* Hexagonal: 7 cells in honeycomb pattern (0-6)
+	   Visual layout:
+	        1   2
+	      3   0   4
+	        5   6
+	*/
+	.grid.grid-hexagonal {
+		display: grid;
+		grid-template-columns: repeat(6, 1fr);
+		grid-template-rows: repeat(3, 1fr);
+		gap: 2px;
+		width: 108px;
+		height: 90px;
+	}
+
+	/* Position cells in honeycomb pattern - 0 is center, 1-6 around it */
+	.grid.grid-hexagonal .cell:nth-child(1) { /* 0 - center */
+		grid-column: 3 / 5;
+		grid-row: 2;
+	}
+	.grid.grid-hexagonal .cell:nth-child(2) { /* 1 - top left */
+		grid-column: 2 / 4;
+		grid-row: 1;
+	}
+	.grid.grid-hexagonal .cell:nth-child(3) { /* 2 - top right */
+		grid-column: 4 / 6;
+		grid-row: 1;
+	}
+	.grid.grid-hexagonal .cell:nth-child(4) { /* 3 - left */
+		grid-column: 1 / 3;
+		grid-row: 2;
+	}
+	.grid.grid-hexagonal .cell:nth-child(5) { /* 4 - right */
+		grid-column: 5 / 7;
+		grid-row: 2;
+	}
+	.grid.grid-hexagonal .cell:nth-child(6) { /* 5 - bottom left */
+		grid-column: 2 / 4;
+		grid-row: 3;
+	}
+	.grid.grid-hexagonal .cell:nth-child(7) { /* 6 - bottom right */
+		grid-column: 4 / 6;
+		grid-row: 3;
+	}
+
+	/* Hexagonal cells are rounded to look more hex-like */
+	.grid.grid-hexagonal .cell {
+		border-radius: 50%;
+		aspect-ratio: 1;
+		min-width: 24px;
+		min-height: 24px;
 	}
 
 	.cell {

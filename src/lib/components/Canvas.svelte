@@ -70,22 +70,29 @@
 	/**
 	 * Calculate grid dimensions from scale and screen aspect ratio
 	 * The baseCells value represents the shorter dimension
+	 * For hexagonal grids, rows are increased to compensate for the compressed visual height
 	 */
-	function calculateGridDimensions(scale: GridScale, screenWidth: number, screenHeight: number): { width: number; height: number } {
+	function calculateGridDimensions(scale: GridScale, screenWidth: number, screenHeight: number, isHexagonal: boolean = false): { width: number; height: number } {
 		const scaleConfig = GRID_SCALES.find(s => s.name === scale) ?? GRID_SCALES[2]; // Default to medium
 		const baseCells = scaleConfig.baseCells;
 		
 		const aspect = screenWidth / screenHeight;
 		
+		// For hexagonal grids, rows are visually compressed by sqrt(3)/2 ≈ 0.866
+		// So we need ~15.5% more rows to fill the same visual height
+		// Reference: https://www.redblobgames.com/grids/hexagons/
+		const HEX_HEIGHT_RATIO = 0.866025404; // sqrt(3)/2
+		const hexHeightMultiplier = isHexagonal ? (1 / HEX_HEIGHT_RATIO) : 1;
+		
 		if (aspect >= 1) {
 			// Landscape or square: height is the shorter dimension
-			const height = baseCells;
+			const height = Math.round(baseCells * hexHeightMultiplier);
 			const width = Math.round(baseCells * aspect);
 			return { width, height };
 		} else {
 			// Portrait: width is the shorter dimension
 			const width = baseCells;
-			const height = Math.round(baseCells / aspect);
+			const height = Math.round((baseCells / aspect) * hexHeightMultiplier);
 			return { width, height };
 		}
 	}
@@ -156,7 +163,8 @@
 		// Remember current orientation
 		lastOrientation = viewport.width >= viewport.height ? 'landscape' : 'portrait';
 		
-		const { width, height } = calculateGridDimensions(simState.gridScale, viewport.width, viewport.height);
+		const isHex = simState.currentRule.neighborhood === 'hexagonal';
+		const { width, height } = calculateGridDimensions(simState.gridScale, viewport.width, viewport.height, isHex);
 		simState.gridWidth = width;
 		simState.gridHeight = height;
 		
@@ -727,7 +735,42 @@
 	}
 
 	export function updateRule() {
-		simulation?.setRule(simState.currentRule);
+		if (!simulation || !ctx) return;
+		
+		const currentNeighborhood = simulation.getRule().neighborhood;
+		const newNeighborhood = simState.currentRule.neighborhood;
+		const isHexChanged = (currentNeighborhood === 'hexagonal') !== (newNeighborhood === 'hexagonal');
+		
+		if (isHexChanged) {
+			// Neighborhood type changed between hex and non-hex, need to recreate grid
+			// because hex grids need more rows to fill the same visual space
+			const viewport = getVisibleViewportSize();
+			const isHex = newNeighborhood === 'hexagonal';
+			const { width, height } = calculateGridDimensions(simState.gridScale, viewport.width, viewport.height, isHex);
+			
+			simState.gridWidth = width;
+			simState.gridHeight = height;
+			
+			simulation.destroy();
+			simulation = new Simulation(ctx, {
+				width,
+				height,
+				rule: simState.currentRule
+			});
+			simulation.randomize(0.15);
+			simState.resetGeneration();
+			
+			// Reset view to fit the new grid
+			simulation.resetView(canvasWidth, canvasHeight);
+			
+			// Update alive cells count
+			simulation.countAliveCellsAsync().then(count => {
+				simState.aliveCells = count;
+			});
+		} else {
+			// Same neighborhood type, just update the rule
+			simulation.setRule(simState.currentRule);
+		}
 	}
 
 	export function getSimulation(): Simulation | null {
@@ -772,7 +815,8 @@
 		
 		// Calculate new dimensions based on visible viewport
 		const viewport = getVisibleViewportSize();
-		const { width, height } = calculateGridDimensions(scale, viewport.width, viewport.height);
+		const isHex = simState.currentRule.neighborhood === 'hexagonal';
+		const { width, height } = calculateGridDimensions(scale, viewport.width, viewport.height, isHex);
 		
 		// Update store
 		simState.gridScale = scale;

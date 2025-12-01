@@ -11,7 +11,20 @@
 
 	const simState = getSimulationState();
 
-	const PREVIEW_SIZE = 40;
+	const PREVIEW_SIZE_X = 40;
+	// For hexagonal grids, rows are visually compressed by sqrt(3)/2
+	// So we need more rows to fill the same visual space
+	const HEX_HEIGHT_RATIO = 0.866025404; // sqrt(3)/2
+	const PREVIEW_SIZE_Y_SQUARE = 40;
+	const PREVIEW_SIZE_Y_HEX = Math.round(40 / HEX_HEIGHT_RATIO); // ~46 rows for hex
+	
+	// Derived preview height based on current rule's neighborhood
+	const previewSizeY = $derived(
+		(simState.currentRule.neighborhood ?? 'moore') === 'hexagonal' 
+			? PREVIEW_SIZE_Y_HEX 
+			: PREVIEW_SIZE_Y_SQUARE
+	);
+	
 	let previewCanvas: HTMLCanvasElement;
 	let previewCtx: CanvasRenderingContext2D | null = null;
 	let previewGrid: number[] = [];
@@ -135,7 +148,7 @@
 	let customDensity = $state(30);
 
 	// Scale factor for preview (main grid vs preview grid)
-	const previewScale = $derived(PREVIEW_SIZE / simState.gridWidth);
+	const previewScale = $derived(PREVIEW_SIZE_X / simState.gridWidth);
 
 	// Calculate pattern bounding box size
 	function getPatternSize(patternId: string): { width: number; height: number } {
@@ -205,7 +218,9 @@
 	});
 
 	function initPreviewGrid() {
-		previewGrid = new Array(PREVIEW_SIZE * PREVIEW_SIZE).fill(0);
+		const sizeX = PREVIEW_SIZE_X;
+		const sizeY = previewSizeY;
+		previewGrid = new Array(sizeX * sizeY).fill(0);
 		
 		if (selectedPattern.startsWith('random')) {
 			let density: number;
@@ -230,25 +245,25 @@
 			const cells = PATTERN_CELLS[selectedPattern];
 			if (!cells) return;
 
-			const cx = Math.floor(PREVIEW_SIZE / 2);
-			const cy = Math.floor(PREVIEW_SIZE / 2);
+			const cx = Math.floor(sizeX / 2);
+			const cy = Math.floor(sizeY / 2);
 
 			if (canTile && tilingEnabled) {
-				// Show tiling at 1:1 scale - the preview shows a PREVIEW_SIZE x PREVIEW_SIZE
+				// Show tiling at 1:1 scale - the preview shows a sizeX x sizeY
 				// section of the grid with the actual spacing
 				// This gives an accurate representation of how the tiles will look
 				const spacing = tilingSpacing;
 				const startOffset = Math.floor(spacing / 2) % spacing;
 				
 				// Place tiles at the actual spacing intervals
-				for (let ty = startOffset; ty < PREVIEW_SIZE; ty += spacing) {
-					for (let tx = startOffset; tx < PREVIEW_SIZE; tx += spacing) {
+				for (let ty = startOffset; ty < sizeY; ty += spacing) {
+					for (let tx = startOffset; tx < sizeX; tx += spacing) {
 						// Draw the actual pattern at this tile position
 						for (const [dx, dy] of cells) {
 							const x = tx + dx;
 							const y = ty + dy;
-							if (x >= 0 && x < PREVIEW_SIZE && y >= 0 && y < PREVIEW_SIZE) {
-								previewGrid[y * PREVIEW_SIZE + x] = 1;
+							if (x >= 0 && x < sizeX && y >= 0 && y < sizeY) {
+								previewGrid[y * sizeX + x] = 1;
 							}
 						}
 					}
@@ -258,8 +273,8 @@
 				for (const [dx, dy] of cells) {
 					const x = cx + dx;
 					const y = cy + dy;
-					if (x >= 0 && x < PREVIEW_SIZE && y >= 0 && y < PREVIEW_SIZE) {
-						previewGrid[y * PREVIEW_SIZE + x] = 1;
+					if (x >= 0 && x < sizeX && y >= 0 && y < sizeY) {
+						previewGrid[y * sizeX + x] = 1;
 					}
 				}
 			}
@@ -358,42 +373,138 @@
 	function renderPreview() {
 		if (!previewCtx) return;
 		
-		const cellSize = previewCanvas.width / PREVIEW_SIZE;
-		
 		previewCtx.fillStyle = simState.isLightTheme ? '#f0f0f3' : '#0a0a0f';
 		previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
 
-		for (let y = 0; y < PREVIEW_SIZE; y++) {
-			for (let x = 0; x < PREVIEW_SIZE; x++) {
-				const state = previewGrid[y * PREVIEW_SIZE + x];
+		const neighborhood = simState.currentRule.neighborhood ?? 'moore';
+		
+		if (neighborhood === 'hexagonal') {
+			renderHexPreview();
+		} else {
+			renderSquarePreview();
+		}
+	}
+
+	function renderSquarePreview() {
+		if (!previewCtx) return;
+		const sizeX = PREVIEW_SIZE_X;
+		const sizeY = previewSizeY;
+		const cellSizeX = previewCanvas.width / sizeX;
+		const cellSizeY = previewCanvas.height / sizeY;
+
+		for (let y = 0; y < sizeY; y++) {
+			for (let x = 0; x < sizeX; x++) {
+				const state = previewGrid[y * sizeX + x];
 				if (state > 0) {
 					previewCtx.fillStyle = getStateColor(state);
-					previewCtx.fillRect(x * cellSize, y * cellSize, cellSize - 0.5, cellSize - 0.5);
+					previewCtx.fillRect(x * cellSizeX, y * cellSizeY, cellSizeX - 0.5, cellSizeY - 0.5);
 				}
 			}
 		}
+	}
+
+	function renderHexPreview() {
+		if (!previewCtx) return;
+		
+		const sizeX = PREVIEW_SIZE_X;
+		const sizeY = previewSizeY;
+		
+		// Calculate hex size to fit in canvas
+		const hexWidth = previewCanvas.width / (sizeX + 0.5);
+		const hexHeight = hexWidth * HEX_HEIGHT_RATIO;
+		const hexRadius = hexWidth / 2;
+
+		for (let y = 0; y < sizeY; y++) {
+			for (let x = 0; x < sizeX; x++) {
+				const state = previewGrid[y * sizeX + x];
+				
+				const isOddRow = (y & 1) === 1;
+				const centerX = (x + 0.5) * hexWidth + (isOddRow ? hexWidth / 2 : 0);
+				const centerY = (y + 0.5) * hexHeight;
+				
+				previewCtx.fillStyle = state > 0 ? getStateColor(state) : (simState.isLightTheme ? '#f0f0f3' : '#0a0a0f');
+				drawHexagon(previewCtx, centerX, centerY, hexRadius * 0.95);
+			}
+		}
+	}
+
+	function drawHexagon(ctx: CanvasRenderingContext2D, cx: number, cy: number, radius: number) {
+		ctx.beginPath();
+		for (let i = 0; i < 6; i++) {
+			const angle = (Math.PI / 3) * i - Math.PI / 6;
+			const px = cx + radius * Math.cos(angle);
+			const py = cy + radius * Math.sin(angle);
+			if (i === 0) {
+				ctx.moveTo(px, py);
+			} else {
+				ctx.lineTo(px, py);
+			}
+		}
+		ctx.closePath();
+		ctx.fill();
+	}
+
+	function countNeighborsAt(x: number, y: number): number {
+		const neighborhood = simState.currentRule.neighborhood ?? 'moore';
+		const sizeX = PREVIEW_SIZE_X;
+		const sizeY = previewSizeY;
+		let count = 0;
+		
+		if (neighborhood === 'vonNeumann') {
+			const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+			for (const [dx, dy] of dirs) {
+				const nx = (x + dx + sizeX) % sizeX;
+				const ny = (y + dy + sizeY) % sizeY;
+				if (previewGrid[ny * sizeX + nx] === 1) count++;
+			}
+		} else if (neighborhood === 'extendedMoore') {
+			for (let dy = -2; dy <= 2; dy++) {
+				for (let dx = -2; dx <= 2; dx++) {
+					if (dx === 0 && dy === 0) continue;
+					const nx = (x + dx + sizeX) % sizeX;
+					const ny = (y + dy + sizeY) % sizeY;
+					if (previewGrid[ny * sizeX + nx] === 1) count++;
+				}
+			}
+		} else if (neighborhood === 'hexagonal') {
+			const isOddRow = (y & 1) === 1;
+			const neighbors = isOddRow
+				? [[0, -1], [1, -1], [-1, 0], [1, 0], [0, 1], [1, 1]]
+				: [[-1, -1], [0, -1], [-1, 0], [1, 0], [-1, 1], [0, 1]];
+			
+			for (const [dx, dy] of neighbors) {
+				const nx = (x + dx + sizeX) % sizeX;
+				const ny = (y + dy + sizeY) % sizeY;
+				if (previewGrid[ny * sizeX + nx] === 1) count++;
+			}
+		} else {
+			// Moore
+			for (let dy = -1; dy <= 1; dy++) {
+				for (let dx = -1; dx <= 1; dx++) {
+					if (dx === 0 && dy === 0) continue;
+					const nx = (x + dx + sizeX) % sizeX;
+					const ny = (y + dy + sizeY) % sizeY;
+					if (previewGrid[ny * sizeX + nx] === 1) count++;
+				}
+			}
+		}
+		
+		return count;
 	}
 
 	function stepPreview() {
 		const birthMask = simState.currentRule.birthMask;
 		const surviveMask = simState.currentRule.surviveMask;
 		const numStates = simState.currentRule.numStates;
-		const nextGrid = new Array(PREVIEW_SIZE * PREVIEW_SIZE).fill(0);
+		const sizeX = PREVIEW_SIZE_X;
+		const sizeY = previewSizeY;
+		const nextGrid = new Array(sizeX * sizeY).fill(0);
 
-		for (let y = 0; y < PREVIEW_SIZE; y++) {
-			for (let x = 0; x < PREVIEW_SIZE; x++) {
-				const idx = y * PREVIEW_SIZE + x;
+		for (let y = 0; y < sizeY; y++) {
+			for (let x = 0; x < sizeX; x++) {
+				const idx = y * sizeX + x;
 				const state = previewGrid[idx];
-				let neighbors = 0;
-				
-				for (let dy = -1; dy <= 1; dy++) {
-					for (let dx = -1; dx <= 1; dx++) {
-						if (dx === 0 && dy === 0) continue;
-						const nx = (x + dx + PREVIEW_SIZE) % PREVIEW_SIZE;
-						const ny = (y + dy + PREVIEW_SIZE) % PREVIEW_SIZE;
-						if (previewGrid[ny * PREVIEW_SIZE + nx] === 1) neighbors++;
-					}
-				}
+				const neighbors = countNeighborsAt(x, y);
 
 				if (state === 0) {
 					nextGrid[idx] = (birthMask & (1 << neighbors)) !== 0 ? 1 : 0;

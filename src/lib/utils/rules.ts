@@ -4,7 +4,7 @@
  */
 
 // Neighborhood types
-export type NeighborhoodType = 'moore' | 'vonNeumann' | 'extendedMoore';
+export type NeighborhoodType = 'moore' | 'vonNeumann' | 'extendedMoore' | 'hexagonal';
 
 export interface NeighborhoodInfo {
 	type: NeighborhoodType;
@@ -31,6 +31,12 @@ export const NEIGHBORHOODS: Record<NeighborhoodType, NeighborhoodInfo> = {
 		name: 'Extended Moore',
 		maxNeighbors: 24,
 		description: 'All cells within 2-cell radius (5x5 minus center)'
+	},
+	hexagonal: {
+		type: 'hexagonal',
+		name: 'Hexagonal',
+		maxNeighbors: 6,
+		description: 'Hexagonal grid with 6 neighbors'
 	}
 };
 
@@ -714,6 +720,86 @@ export const RULE_PRESETS: CARule[] = [
 		neighborhood: 'extendedMoore',
 		category: 'expanding',
 		description: 'Creates forest-like growth patterns'
+	},
+
+	// === HEXAGONAL ===
+	// Classic hexagonal rules - 6 neighbors create beautiful symmetric patterns
+	{
+		name: 'Hex Life',
+		birthMask: 0b0000100, // 2
+		surviveMask: 0b0111000, // 3, 4, 5
+		numStates: 2,
+		ruleString: 'B2/S345',
+		neighborhood: 'hexagonal',
+		category: 'classic',
+		description: 'Classic hexagonal Game of Life - stable and oscillating patterns',
+		density: 0.2
+	},
+	{
+		name: 'Hex Seeds',
+		birthMask: 0b0000100, // 2
+		surviveMask: 0b0000000, // none
+		numStates: 2,
+		ruleString: 'B2/S',
+		neighborhood: 'hexagonal',
+		category: 'chaotic',
+		description: 'Explosive hexagonal growth from any seed',
+		density: 0.05
+	},
+	{
+		name: 'Hex Trails',
+		birthMask: 0b0000100, // 2
+		surviveMask: 0b0001000, // 3
+		numStates: 4,
+		ruleString: 'B2/S3/C4',
+		neighborhood: 'hexagonal',
+		category: 'generations',
+		description: 'Hexagonal patterns with colorful decay trails',
+		density: 0.15
+	},
+	{
+		name: 'Hex Snowflake',
+		birthMask: 0b0000010, // 1
+		surviveMask: 0b0111110, // 1, 2, 3, 4, 5
+		numStates: 2,
+		ruleString: 'B1/S12345',
+		neighborhood: 'hexagonal',
+		category: 'expanding',
+		description: 'Creates beautiful 6-fold symmetric snowflake patterns',
+		density: 0.01
+	},
+	{
+		name: 'Hex Coral',
+		birthMask: 0b0111000, // 3, 4, 5
+		surviveMask: 0b0111000, // 3, 4, 5
+		numStates: 2,
+		ruleString: 'B345/S345',
+		neighborhood: 'hexagonal',
+		category: 'artistic',
+		description: 'Creates coral-like branching hexagonal structures',
+		density: 0.25
+	},
+	{
+		name: 'Hex Waves',
+		birthMask: 0b0111100, // 2, 3, 4, 5
+		surviveMask: 0b0000110, // 1, 2
+		numStates: 6,
+		ruleString: 'B2345/S12/C6',
+		neighborhood: 'hexagonal',
+		category: 'generations',
+		description: 'Creates flowing wave patterns on hexagonal grid',
+		density: 0.3
+	},
+	{
+		name: 'Hex Neo',
+		birthMask: 0b0001100, // 2, 3
+		surviveMask: 0b0101100, // 2, 3, 5
+		numStates: 22,
+		ruleString: 'B23/S235/C22',
+		neighborhood: 'hexagonal',
+		category: 'artistic',
+		description: 'Beautiful long-trail patterns with mesmerizing flow',
+		density: 0.25
 	}
 ];
 
@@ -725,10 +811,10 @@ export function getRuleByName(name: string): CARule | undefined {
 }
 
 /**
- * Get the default rule (Star Wars)
+ * Get the default rule (Hex Neo)
  */
 export function getDefaultRule(): CARule {
-	return getRuleByName('Star Wars') || RULE_PRESETS[0];
+	return getRuleByName('Hex Neo') || RULE_PRESETS[0];
 }
 
 /**

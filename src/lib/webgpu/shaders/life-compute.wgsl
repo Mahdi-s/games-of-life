@@ -9,7 +9,7 @@ struct Params {
     survive_mask: u32,    // Bit i = 1 means survive with i neighbors
     num_states: u32,      // 2 for Life-like, 3+ for Generations
     wrap_boundary: u32,   // 1 = toroidal wrap, 0 = fixed edges (cells outside are dead)
-    neighborhood: u32,    // 0 = Moore (8), 1 = Von Neumann (4), 2 = Extended Moore (24)
+    neighborhood: u32,    // 0 = Moore (8), 1 = Von Neumann (4), 2 = Extended Moore (24), 3 = Hexagonal (6)
     _padding: u32,        // Padding for 16-byte alignment
 }
 
@@ -89,11 +89,50 @@ fn count_neighbors_extended(x: i32, y: i32) -> u32 {
     return count;
 }
 
+// Count living neighbors - Hexagonal neighborhood (6 cells)
+// Uses "offset coordinates" (odd-r) where odd rows are shifted right
+// Each cell has 6 neighbors arranged in a honeycomb pattern
+fn count_neighbors_hexagonal(x: i32, y: i32) -> u32 {
+    var count: u32 = 0u;
+    
+    // Determine if this row is odd or even
+    let is_odd_row = (y & 1) == 1;
+    
+    // Top-left and top-right neighbors
+    if (is_odd_row) {
+        // Odd row: top neighbors at (x, y-1) and (x+1, y-1)
+        if (is_alive(get_cell(x, y - 1))) { count++; }
+        if (is_alive(get_cell(x + 1, y - 1))) { count++; }
+    } else {
+        // Even row: top neighbors at (x-1, y-1) and (x, y-1)
+        if (is_alive(get_cell(x - 1, y - 1))) { count++; }
+        if (is_alive(get_cell(x, y - 1))) { count++; }
+    }
+    
+    // Left and right neighbors (same for both odd and even rows)
+    if (is_alive(get_cell(x - 1, y))) { count++; }
+    if (is_alive(get_cell(x + 1, y))) { count++; }
+    
+    // Bottom-left and bottom-right neighbors
+    if (is_odd_row) {
+        // Odd row: bottom neighbors at (x, y+1) and (x+1, y+1)
+        if (is_alive(get_cell(x, y + 1))) { count++; }
+        if (is_alive(get_cell(x + 1, y + 1))) { count++; }
+    } else {
+        // Even row: bottom neighbors at (x-1, y+1) and (x, y+1)
+        if (is_alive(get_cell(x - 1, y + 1))) { count++; }
+        if (is_alive(get_cell(x, y + 1))) { count++; }
+    }
+    
+    return count;
+}
+
 // Count neighbors based on neighborhood type
 fn count_neighbors(x: i32, y: i32) -> u32 {
     switch (params.neighborhood) {
         case 1u: { return count_neighbors_von_neumann(x, y); }
         case 2u: { return count_neighbors_extended(x, y); }
+        case 3u: { return count_neighbors_hexagonal(x, y); }
         default: { return count_neighbors_moore(x, y); }
     }
 }

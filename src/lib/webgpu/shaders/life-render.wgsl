@@ -23,6 +23,8 @@ struct RenderParams {
     brush_x: f32,        // Brush center in grid coordinates
     brush_y: f32,
     brush_radius: f32,   // Brush radius in cells
+    neighborhood: f32,   // 0 = square, 3 = hexagonal
+    _padding: f32,       // Padding for alignment
 }
 
 @group(0) @binding(0) var<uniform> params: RenderParams;
@@ -185,40 +187,154 @@ fn state_to_color(state: u32, num_states: u32) -> vec3<f32> {
     return mix(dying_rgb, bg, bg_blend * 0.6);
 }
 
-// Check if a cell is within the brush radius (matches paintBrush logic exactly)
+// Constants for hexagonal grid layout
+const HEX_HEIGHT_RATIO: f32 = 0.866025404; // sqrt(3)/2 - vertical spacing between hex rows
+
+// Get the visual center of a hexagonal cell (in grid coordinates)
+fn get_hex_center(cell_x: i32, cell_y: i32) -> vec2<f32> {
+    let is_odd = (cell_y & 1) == 1;
+    var center_x = f32(cell_x) + 0.5;
+    if (is_odd) {
+        center_x += 0.5;
+    }
+    let center_y = (f32(cell_y) + 0.5) * HEX_HEIGHT_RATIO;
+    return vec2<f32>(center_x, center_y);
+}
+
+// Check if a cell is within the brush radius
+// For hexagonal grids, we need to account for the visual compression
 fn is_in_brush(cell_x: i32, cell_y: i32) -> bool {
     if (params.brush_radius < 0.0) {
         return false; // Brush preview disabled
     }
     
-    // Match the exact logic from paintBrush:
-    // const r = Math.floor(radius);
-    // for (let dy = -r; dy <= r; dy++) {
-    //   for (let dx = -r; dx <= r; dx++) {
-    //     if (dx * dx + dy * dy <= radius * radius) {
-    //       this.setCell(Math.floor(centerX) + dx, Math.floor(centerY) + dy, state);
-    
     let brush_center_x = floor(params.brush_x);
     let brush_center_y = floor(params.brush_y);
-    
-    let dx = f32(cell_x) - brush_center_x;
-    let dy = f32(cell_y) - brush_center_y;
-    
     let r = floor(params.brush_radius);
     
-    // Check if within the iteration range AND within the circular brush
-    if (abs(dx) > r || abs(dy) > r) {
-        return false;
+    // For hexagonal grids, use visual distance (accounting for hex aspect ratio)
+    if (params.neighborhood > 2.5) {
+        // Hexagonal: calculate visual distance using hex centers
+        let cell_center = get_hex_center(cell_x, cell_y);
+        let brush_cell_center = get_hex_center(i32(brush_center_x), i32(brush_center_y));
+        
+        // Visual distance in grid units
+        let dx = cell_center.x - brush_cell_center.x;
+        let dy = cell_center.y - brush_cell_center.y;
+        
+        // For hex, we want a circular brush in visual space
+        // The visual radius in Y is compressed by HEX_HEIGHT_RATIO
+        let visual_radius = params.brush_radius * 0.5; // Half because hex centers are 0.5 apart
+        let dist_sq = dx * dx + dy * dy;
+        let radius_sq = visual_radius * visual_radius;
+        
+        return dist_sq <= radius_sq;
+    } else {
+        // Square grids: simple Euclidean distance in cell coordinates
+        let dx = f32(cell_x) - brush_center_x;
+        let dy = f32(cell_y) - brush_center_y;
+        
+        // Check if within the iteration range AND within the circular brush
+        if (abs(dx) > r || abs(dy) > r) {
+            return false;
+        }
+        
+        let dist_sq = dx * dx + dy * dy;
+        let radius_sq = params.brush_radius * params.brush_radius;
+        
+        return dist_sq <= radius_sq;
     }
-    
-    let dist_sq = dx * dx + dy * dy;
-    let radius_sq = params.brush_radius * params.brush_radius;
-    
-    return dist_sq <= radius_sq;
 }
 
-@fragment
-fn fragment_main(input: VertexOutput) -> @location(0) vec4<f32> {
+// Find the nearest hex cell to a point using axial coordinates
+// Returns the cell coordinates
+fn nearest_hex_cell(grid_x: f32, grid_y: f32) -> vec2<i32> {
+    // Convert to "axial" coordinates for easier hex math
+    // In axial coords: q = x, r relates to y
+    // For odd-r offset: q = x - (y - (y&1)) / 2
+    
+    // First, find approximate row
+    let row_f = grid_y / HEX_HEIGHT_RATIO;
+    let row = i32(floor(row_f + 0.5)); // Round to nearest row
+    
+    // Adjust x based on whether we're in an odd or even row
+    let is_odd = (row & 1) == 1;
+    var adjusted_x = grid_x;
+    if (is_odd) {
+        adjusted_x -= 0.5;
+    }
+    let col = i32(floor(adjusted_x + 0.5)); // Round to nearest column
+    
+    // Now we have a candidate cell, but we need to check neighbors
+    // to find the true nearest (handles edge cases at hex boundaries)
+    let center = get_hex_center(col, row);
+    var best_col = col;
+    var best_row = row;
+    var best_dist = distance(vec2<f32>(grid_x, grid_y), center);
+    
+    // Check the 6 neighbors
+    let neighbors = array<vec2<i32>, 6>(
+        vec2<i32>(col - 1, row),
+        vec2<i32>(col + 1, row),
+        vec2<i32>(col - select(1, 0, is_odd), row - 1),
+        vec2<i32>(col + select(0, 1, is_odd), row - 1),
+        vec2<i32>(col - select(1, 0, is_odd), row + 1),
+        vec2<i32>(col + select(0, 1, is_odd), row + 1)
+    );
+    
+    for (var i = 0; i < 6; i++) {
+        let nc = get_hex_center(neighbors[i].x, neighbors[i].y);
+        let nd = distance(vec2<f32>(grid_x, grid_y), nc);
+        if (nd < best_dist) {
+            best_dist = nd;
+            best_col = neighbors[i].x;
+            best_row = neighbors[i].y;
+        }
+    }
+    
+    return vec2<i32>(best_col, best_row);
+}
+
+// Convert screen position to hexagonal grid coordinates (offset "odd-r" layout)
+fn screen_to_hex_cell(grid_x: f32, grid_y: f32) -> vec2<i32> {
+    return nearest_hex_cell(grid_x, grid_y);
+}
+
+// Calculate the distance to the nearest hex cell boundary
+// This is used for drawing grid lines - we draw where a pixel is
+// equidistant from two hex centers (Voronoi boundary)
+fn hex_boundary_distance(grid_x: f32, grid_y: f32, cell_x: i32, cell_y: i32) -> f32 {
+    let center = get_hex_center(cell_x, cell_y);
+    let dist_to_center = distance(vec2<f32>(grid_x, grid_y), center);
+    
+    // Check distance to all 6 neighbors' centers
+    let is_odd = (cell_y & 1) == 1;
+    let neighbors = array<vec2<i32>, 6>(
+        vec2<i32>(cell_x - 1, cell_y),
+        vec2<i32>(cell_x + 1, cell_y),
+        vec2<i32>(cell_x - select(1, 0, is_odd), cell_y - 1),
+        vec2<i32>(cell_x + select(0, 1, is_odd), cell_y - 1),
+        vec2<i32>(cell_x - select(1, 0, is_odd), cell_y + 1),
+        vec2<i32>(cell_x + select(0, 1, is_odd), cell_y + 1)
+    );
+    
+    // Find the closest neighbor center
+    var min_neighbor_dist = 1000.0;
+    for (var i = 0; i < 6; i++) {
+        let nc = get_hex_center(neighbors[i].x, neighbors[i].y);
+        let nd = distance(vec2<f32>(grid_x, grid_y), nc);
+        min_neighbor_dist = min(min_neighbor_dist, nd);
+    }
+    
+    // The boundary is where dist_to_center == min_neighbor_dist
+    // Return how close we are to that boundary
+    // Positive means we're clearly inside our cell
+    // Near zero means we're at the boundary
+    return (min_neighbor_dist - dist_to_center) * 0.5;
+}
+
+// Render square grid cells (default)
+fn render_square(input: VertexOutput) -> vec4<f32> {
     // Calculate aspect ratio correction
     let aspect = params.canvas_width / params.canvas_height;
     
@@ -275,4 +391,71 @@ fn fragment_main(input: VertexOutput) -> @location(0) vec4<f32> {
     }
     
     return vec4<f32>(color, 1.0);
+}
+
+// Render hexagonal grid cells
+fn render_hexagonal(input: VertexOutput) -> vec4<f32> {
+    // Calculate aspect ratio correction
+    let aspect = params.canvas_width / params.canvas_height;
+    
+    // For hexagonal grids, the coordinate system is:
+    // - X: cell columns (with odd rows offset by 0.5)
+    // - Y: cell rows * HEX_HEIGHT_RATIO (rows are closer together)
+    // The zoom represents visual units (same as X), so Y needs to be scaled
+    let cells_visible_x = params.zoom;
+    let cells_visible_y = params.zoom / aspect;
+    
+    // Convert UV to visual coordinates
+    let grid_x = input.uv.x * cells_visible_x + params.offset_x;
+    let grid_y = input.uv.y * cells_visible_y + params.offset_y;
+    
+    // Convert screen position to hex cell coordinates
+    let cell = screen_to_hex_cell(grid_x, grid_y);
+    let cell_x = cell.x;
+    let cell_y = cell.y;
+    
+    // Get cell state
+    let state = get_cell_state(cell_x, cell_y);
+    
+    // Base color from state
+    var color = state_to_color(state, u32(params.num_states));
+    
+    // Brush preview highlight
+    if (is_in_brush(cell_x, cell_y)) {
+        if (params.is_light_theme > 0.5) {
+            color = mix(color, vec3<f32>(0.0, 0.0, 0.0), 0.2);
+        } else {
+            color = mix(color, vec3<f32>(1.0, 1.0, 1.0), 0.2);
+        }
+    }
+    
+    // Add hexagonal grid lines when enabled and zoomed in enough
+    if (params.show_grid > 0.5) {
+        let pixels_per_cell = params.canvas_width / params.zoom;
+        if (pixels_per_cell > 4.0) {
+            // Calculate distance to hex cell boundary (Voronoi edge)
+            let boundary_dist = hex_boundary_distance(grid_x, grid_y, cell_x, cell_y);
+            
+            // Grid line thickness scales with zoom
+            let base_thickness = 0.04;
+            let line_thickness = clamp(base_thickness * (100.0 / params.zoom), 0.008, 0.08);
+            
+            // Draw grid line when close to boundary
+            if (boundary_dist < line_thickness) {
+                let blend = smoothstep(0.0, line_thickness, boundary_dist);
+                color = mix(get_grid_color(), color, blend);
+            }
+        }
+    }
+    
+    return vec4<f32>(color, 1.0);
+}
+
+@fragment
+fn fragment_main(input: VertexOutput) -> @location(0) vec4<f32> {
+    // Check if we're using hexagonal neighborhood (neighborhood == 3)
+    if (params.neighborhood > 2.5) {
+        return render_hexagonal(input);
+    }
+    return render_square(input);
 }
