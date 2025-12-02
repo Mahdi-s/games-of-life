@@ -15,7 +15,8 @@
 	let seedPatternDropdownOpen = $state(false);
 	
 	// Select appropriate seed patterns based on grid type
-	const isHexGrid = $derived((simState.currentRule.neighborhood ?? 'moore') === 'hexagonal');
+	const neighborhood = $derived(simState.currentRule.neighborhood ?? 'moore');
+	const isHexGrid = $derived(neighborhood === 'hexagonal' || neighborhood === 'extendedHexagonal');
 	const currentSeedPatterns = $derived(isHexGrid ? SEED_PATTERNS_HEX : SEED_PATTERNS);
 
 	const PREVIEW_SIZE_X = 40;
@@ -27,7 +28,7 @@
 	
 	// Derived preview height based on current rule's neighborhood
 	const previewSizeY = $derived(
-		(simState.currentRule.neighborhood ?? 'moore') === 'hexagonal' 
+		isHexGrid 
 			? PREVIEW_SIZE_Y_HEX 
 			: PREVIEW_SIZE_Y_SQUARE
 	);
@@ -411,9 +412,7 @@
 		previewCtx.fillStyle = simState.isLightTheme ? '#f0f0f3' : '#0a0a0f';
 		previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
 
-		const neighborhood = simState.currentRule.neighborhood ?? 'moore';
-		
-		if (neighborhood === 'hexagonal') {
+		if (isHexGrid) {
 			renderHexPreview();
 		} else {
 			renderSquarePreview();
@@ -501,16 +500,30 @@
 					if (previewGrid[ny * sizeX + nx] === 1) count++;
 				}
 			}
-		} else if (neighborhood === 'hexagonal') {
+		} else if (neighborhood === 'hexagonal' || neighborhood === 'extendedHexagonal') {
 			const isOddRow = (y & 1) === 1;
-			const neighbors = isOddRow
+			// Inner ring (6 neighbors)
+			const innerNeighbors = isOddRow
 				? [[0, -1], [1, -1], [-1, 0], [1, 0], [0, 1], [1, 1]]
 				: [[-1, -1], [0, -1], [-1, 0], [1, 0], [-1, 1], [0, 1]];
 			
-			for (const [dx, dy] of neighbors) {
+			for (const [dx, dy] of innerNeighbors) {
 				const nx = (x + dx + sizeX) % sizeX;
 				const ny = (y + dy + sizeY) % sizeY;
 				if (previewGrid[ny * sizeX + nx] === 1) count++;
+			}
+			
+			// Outer ring (12 more neighbors) for extended hexagonal
+			if (neighborhood === 'extendedHexagonal') {
+				const outerNeighbors = isOddRow
+					? [[-1, -2], [0, -2], [1, -2], [-2, -1], [2, 0], [-2, 1], [-1, 2], [0, 2], [1, 2], [2, -1], [2, 1], [-1, -1]]
+					: [[-1, -2], [0, -2], [1, -2], [-2, -1], [-2, 0], [-2, 1], [-1, 2], [0, 2], [1, 2], [2, -1], [2, 1], [1, -1]];
+				
+				for (const [dx, dy] of outerNeighbors) {
+					const nx = (x + dx + sizeX) % sizeX;
+					const ny = (y + dy + sizeY) % sizeY;
+					if (previewGrid[ny * sizeX + nx] === 1) count++;
+				}
 			}
 		} else {
 			// Moore

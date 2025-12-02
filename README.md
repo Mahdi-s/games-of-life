@@ -8,6 +8,18 @@ A WebGPU-powered cellular automaton simulator. Runs entirely on the GPU for smoo
 ![WebGPU](https://img.shields.io/badge/WebGPU-Compute-blue?style=flat)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat)
 
+## Features
+
+- **Multiple Grid Types** — Square and hexagonal grids with different neighborhood sizes
+- **5 Neighborhood Types** — Moore (8), Von Neumann (4), Extended Moore (24), Hexagonal (6), Extended Hexagonal (18)
+- **9 Boundary Conditions** — Plane, Cylinder, Torus, Möbius Strip, Klein Bottle, Projective Plane
+- **Multi-State Rules** — Up to 64 states with colorful decay trails
+- **6 Color Spectrum Modes** — Hue Shift, Rainbow, Warm, Cool, Monochrome, Fire
+- **50+ Rule Presets** — From classic Conway's Life to artistic hexagonal patterns
+- **Live Rule Editor** — Real-time preview as you tweak birth/survive conditions
+- **Continuous Seeding** — Auto-spawn patterns to keep simulations alive
+- **Touch Support** — Pinch to zoom, two-finger pan on mobile devices
+
 ## How It Works
 
 The simulation runs as a compute shader on the GPU. Each frame, the shader reads the current grid state, applies the cellular automaton rules in parallel across all cells, and writes to a second buffer. The buffers swap each frame (double buffering).
@@ -43,16 +55,6 @@ B3/S23 (Conway's Life)
 
 The compute shader checks neighbors and uses bitwise AND to determine the next state—no branching required.
 
-### Multi-State Support
-
-Beyond binary Life-like rules, the simulator supports Generations rules (e.g., Brian's Brain). Cells transition through N states before dying, creating trail effects:
-
-```
-State 0 (dead) ← State N-1 ← ... ← State 2 ← State 1 (alive)
-                    ↑__________________________|
-                         (only if birth condition met)
-```
-
 ## Tech Stack
 
 - **WebGPU** — Compute shaders for simulation, render shaders for visualization
@@ -61,25 +63,6 @@ State 0 (dead) ← State N-1 ← ... ← State 2 ← State 1 (alive)
 - **TypeScript** — Type-safe GPU buffer management
 - **WGSL** — WebGPU Shading Language for both compute and fragment shaders
 
-## Project Structure
-
-```
-src/lib/
-├── webgpu/
-│   ├── context.ts        # Device initialization, capability detection
-│   ├── simulation.ts     # Compute pipeline, double buffering, painting
-│   └── shaders/
-│       ├── life-compute.wgsl   # CA rules, neighbor counting
-│       └── life-render.wgsl    # Zoom/pan, grid lines, coloring
-├── components/
-│   ├── Canvas.svelte     # WebGPU canvas, mouse/keyboard handling
-│   ├── Controls.svelte   # Toolbar with play/pause, speed, brush
-│   ├── RuleEditor.svelte # Birth/survive checkboxes, presets
-│   └── ...
-└── stores/
-    └── simulation.svelte.ts  # Reactive state management
-```
-
 ## Running Locally
 
 ```bash
@@ -87,13 +70,14 @@ npm install
 npm run dev
 ```
 
-Requires a browser with WebGPU support (Chrome 113+, Edge 113+, or Firefox Nightly with flags).
+Requires a browser with WebGPU support (Chrome 113+, Edge 113+, Safari 18+, or Firefox Nightly with flags).
 
 ## Controls
 
 | Key | Action |
 |-----|--------|
 | `Space` | Play/Pause |
+| `S` | Step forward |
 | `Click` / `Right-click` | Draw / Erase |
 | `Scroll` | Zoom |
 | `Shift+Drag` | Pan |
@@ -101,7 +85,11 @@ Requires a browser with WebGPU support (Chrome 113+, Edge 113+, or Firefox Night
 | `I` | Initialize grid |
 | `R` | Reinitialize |
 | `[ ]` | Brush size |
-| `, .` | Speed |
+| `, .` | Speed up/down |
+| `F` | Fit to screen |
+| `T` | Toggle theme |
+| `C` | Cycle colors |
+| `?` | Help |
 
 ## License
 
