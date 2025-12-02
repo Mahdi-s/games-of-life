@@ -277,6 +277,7 @@ export class Simulation {
 			case 'vonNeumann': return 1;
 			case 'extendedMoore': return 2;
 			case 'hexagonal': return 3;
+			case 'extendedHexagonal': return 4;
 			default: return 0; // moore
 		}
 	}
@@ -399,7 +400,7 @@ export class Simulation {
 	 */
 	paintBrush(centerX: number, centerY: number, radius: number, state: number): void {
 		const HEX_HEIGHT_RATIO = 0.866025404; // sqrt(3)/2
-		const isHex = this.rule.neighborhood === 'hexagonal';
+		const isHex = this.rule.neighborhood === 'hexagonal' || this.rule.neighborhood === 'extendedHexagonal';
 		
 		if (isHex) {
 			// For hexagonal grids, we need to check visual distance
@@ -718,7 +719,7 @@ export class Simulation {
 		const { x: gridX, y: gridY } = this.screenToGridContinuous(screenX, screenY, canvasWidth, canvasHeight);
 
 		// For hexagonal grids, convert to hex cell coordinates
-		if (this.rule.neighborhood === 'hexagonal') {
+		if (this.rule.neighborhood === 'hexagonal' || this.rule.neighborhood === 'extendedHexagonal') {
 			return this.screenToHexCell(gridX, gridY);
 		}
 
@@ -840,7 +841,7 @@ export class Simulation {
 		// - Y: rows * sqrt(3)/2 (rows are closer together)
 		// Reference: https://www.redblobgames.com/grids/hexagons/
 		const HEX_HEIGHT_RATIO = 0.866025404; // sqrt(3)/2
-		const isHex = this.rule.neighborhood === 'hexagonal';
+		const isHex = this.rule.neighborhood === 'hexagonal' || this.rule.neighborhood === 'extendedHexagonal';
 		
 		// Calculate effective grid dimensions in visual coordinates
 		// For hex grids: the visual height is compressed because hex rows overlap

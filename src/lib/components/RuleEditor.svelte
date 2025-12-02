@@ -38,7 +38,8 @@
 	const PREVIEW_SIZE_Y_HEX = Math.round(20 / HEX_HEIGHT_RATIO); // ~23 rows for hex
 	
 	// Derived preview height based on neighborhood
-	let previewSizeY = $derived(neighborhood === 'hexagonal' ? PREVIEW_SIZE_Y_HEX : PREVIEW_SIZE_Y_SQUARE);
+	const isHexNeighborhood = $derived(neighborhood === 'hexagonal' || neighborhood === 'extendedHexagonal');
+	let previewSizeY = $derived(isHexNeighborhood ? PREVIEW_SIZE_Y_HEX : PREVIEW_SIZE_Y_SQUARE);
 	
 	let previewCanvas: HTMLCanvasElement;
 	let previewCtx: CanvasRenderingContext2D | null = null;
@@ -54,6 +55,7 @@
 	let ruleSearchQuery = $state('');
 	let ruleSearchMode = $state(false);
 	let ruleSearchInput = $state<HTMLInputElement | null>(null);
+	let presetListRef = $state<HTMLDivElement | null>(null);
 	const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 	let ruleString = $state(simState.currentRule.ruleString);
 	let numStates = $state(simState.currentRule.numStates);
@@ -85,7 +87,11 @@
 			if (selectedFilter.startsWith('nh:')) {
 				const nhType = selectedFilter.slice(3) as NeighborhoodType;
 				if (nhType === 'moore') {
+					// Moore includes rules with no neighborhood specified
 					presets = presets.filter(r => !r.neighborhood || r.neighborhood === 'moore');
+				} else if (nhType === 'hexagonal') {
+					// Hexagonal filter shows both hexagonal and extendedHexagonal
+					presets = presets.filter(r => r.neighborhood === 'hexagonal' || r.neighborhood === 'extendedHexagonal');
 				} else {
 					presets = presets.filter(r => r.neighborhood === nhType);
 				}
@@ -235,11 +241,59 @@
 		lastNeighborhood = currentNeighborhood;
 	});
 
+	// Scroll to selected preset when dropdown opens
+	$effect(() => {
+		if (dropdownOpen && presetListRef) {
+			// Use requestAnimationFrame to ensure DOM is updated
+			requestAnimationFrame(() => {
+				const selectedItem = presetListRef?.querySelector('.dropdown-item.selected') as HTMLElement;
+				if (selectedItem) {
+					selectedItem.scrollIntoView({ block: 'center', behavior: 'instant' });
+				}
+			});
+		}
+	});
+
+	// Re-randomize preview when numStates changes between 2-state and multi-state
+	// This ensures the preview shows the spectrum correctly
+	let lastNumStatesWasMulti: boolean | null = null;
+	$effect(() => {
+		const isMultiState = numStates > 2;
+		if (lastNumStatesWasMulti !== null && lastNumStatesWasMulti !== isMultiState) {
+			// Switched between 2-state and multi-state, re-randomize
+			randomizePreview();
+		}
+		lastNumStatesWasMulti = isMultiState;
+	});
+
 	function randomizePreview() {
 		const gridSize = PREVIEW_SIZE_X * previewSizeY;
-		previewGrid = Array.from({ length: gridSize }, () =>
-			Math.random() < 0.3 ? 1 : 0
-		);
+		const density = 0.3; // 30% density like the main simulation
+		
+		previewGrid = Array.from({ length: gridSize }, () => {
+			if (Math.random() < density) {
+				if (numStates > 2) {
+					// For multi-state rules, distribute across all states
+					// Same logic as the main simulation
+					const rand = Math.random();
+					if (rand < 0.5) {
+						// 50% chance of being fully alive
+						return 1;
+					} else {
+						// 50% chance of being in a dying state (2 to numStates-1)
+						// Weighted towards earlier dying states (more colorful)
+						const dyingStates = numStates - 2;
+						const weightedRand = Math.pow(Math.random(), 1.5);
+						const dyingState = 2 + Math.floor(weightedRand * dyingStates);
+						return Math.min(dyingState, numStates - 1);
+					}
+				} else {
+					// Simple alive for 2-state rules
+					return 1;
+				}
+			}
+			return 0;
+		});
 		previewNextGrid = new Array(gridSize).fill(0);
 		renderPreview();
 	}
@@ -268,19 +322,104 @@
 					if (previewGrid[ny * sizeX + nx] === 1) count++;
 				}
 			}
-		} else if (neighborhood === 'hexagonal') {
-			// 6 neighbors in hexagonal grid (odd-r offset coordinates)
+		} else if (neighborhood === 'hexagonal' || neighborhood === 'extendedHexagonal') {
+			// Hexagonal grid (odd-r offset coordinates)
 			const isOddRow = (y & 1) === 1;
 			
-			// Different offsets for odd vs even rows
-			const neighbors = isOddRow
+			// Ring 1: 6 immediate neighbors
+			const ring1 = isOddRow
 				? [[0, -1], [1, -1], [-1, 0], [1, 0], [0, 1], [1, 1]]  // odd row
 				: [[-1, -1], [0, -1], [-1, 0], [1, 0], [-1, 1], [0, 1]]; // even row
 			
-			for (const [dx, dy] of neighbors) {
+			for (const [dx, dy] of ring1) {
 				const nx = (x + dx + sizeX) % sizeX;
 				const ny = (y + dy + sizeY) % sizeY;
 				if (previewGrid[ny * sizeX + nx] === 1) count++;
+			}
+			
+			// Ring 2: 12 outer neighbors (only for extended hexagonal)
+			if (neighborhood === 'extendedHexagonal') {
+				// Row y-2 (2 cells)
+				const isOddRowM1 = ((y - 1) & 1) === 1;
+				if (isOddRowM1) {
+					// y-2 is even row
+					const offsets = [[0, -2], [1, -2]];
+					for (const [dx, dy] of offsets) {
+						const nx = (x + dx + sizeX) % sizeX;
+						const ny = (y + dy + sizeY) % sizeY;
+						if (previewGrid[ny * sizeX + nx] === 1) count++;
+					}
+				} else {
+					// y-2 is odd row
+					const offsets = [[-1, -2], [0, -2]];
+					for (const [dx, dy] of offsets) {
+						const nx = (x + dx + sizeX) % sizeX;
+						const ny = (y + dy + sizeY) % sizeY;
+						if (previewGrid[ny * sizeX + nx] === 1) count++;
+					}
+				}
+				
+				// Row y-1 outer cells (2 cells)
+				if (isOddRow) {
+					const offsets = [[-1, -1], [2, -1]];
+					for (const [dx, dy] of offsets) {
+						const nx = (x + dx + sizeX) % sizeX;
+						const ny = (y + dy + sizeY) % sizeY;
+						if (previewGrid[ny * sizeX + nx] === 1) count++;
+					}
+				} else {
+					const offsets = [[-2, -1], [1, -1]];
+					for (const [dx, dy] of offsets) {
+						const nx = (x + dx + sizeX) % sizeX;
+						const ny = (y + dy + sizeY) % sizeY;
+						if (previewGrid[ny * sizeX + nx] === 1) count++;
+					}
+				}
+				
+				// Row y far left/right (2 cells)
+				const rowYOffsets = [[-2, 0], [2, 0]];
+				for (const [dx, dy] of rowYOffsets) {
+					const nx = (x + dx + sizeX) % sizeX;
+					const ny = (y + dy + sizeY) % sizeY;
+					if (previewGrid[ny * sizeX + nx] === 1) count++;
+				}
+				
+				// Row y+1 outer cells (2 cells)
+				if (isOddRow) {
+					const offsets = [[-1, 1], [2, 1]];
+					for (const [dx, dy] of offsets) {
+						const nx = (x + dx + sizeX) % sizeX;
+						const ny = (y + dy + sizeY) % sizeY;
+						if (previewGrid[ny * sizeX + nx] === 1) count++;
+					}
+				} else {
+					const offsets = [[-2, 1], [1, 1]];
+					for (const [dx, dy] of offsets) {
+						const nx = (x + dx + sizeX) % sizeX;
+						const ny = (y + dy + sizeY) % sizeY;
+						if (previewGrid[ny * sizeX + nx] === 1) count++;
+					}
+				}
+				
+				// Row y+2 (2 cells)
+				const isOddRowP1 = ((y + 1) & 1) === 1;
+				if (isOddRowP1) {
+					// y+2 is even row
+					const offsets = [[0, 2], [1, 2]];
+					for (const [dx, dy] of offsets) {
+						const nx = (x + dx + sizeX) % sizeX;
+						const ny = (y + dy + sizeY) % sizeY;
+						if (previewGrid[ny * sizeX + nx] === 1) count++;
+					}
+				} else {
+					// y+2 is odd row
+					const offsets = [[-1, 2], [0, 2]];
+					for (const [dx, dy] of offsets) {
+						const nx = (x + dx + sizeX) % sizeX;
+						const ny = (y + dy + sizeY) % sizeY;
+						if (previewGrid[ny * sizeX + nx] === 1) count++;
+					}
+				}
 			}
 		} else {
 			// Moore: 8 neighbors
@@ -334,7 +473,7 @@
 		previewCtx.fillStyle = simState.isLightTheme ? '#f0f0f3' : '#0a0a0f';
 		previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
 
-		if (neighborhood === 'hexagonal') {
+		if (isHexNeighborhood) {
 			renderHexPreview();
 		} else {
 			renderSquarePreview();
@@ -556,6 +695,10 @@
 			if (nhType === 'moore') {
 				return RULE_PRESETS.filter(r => !r.neighborhood || r.neighborhood === 'moore');
 			}
+			if (nhType === 'hexagonal') {
+				// Hexagonal filter shows both hexagonal and extendedHexagonal
+				return RULE_PRESETS.filter(r => r.neighborhood === 'hexagonal' || r.neighborhood === 'extendedHexagonal');
+			}
 			return RULE_PRESETS.filter(r => r.neighborhood === nhType);
 		}
 		if (filter.startsWith('states:')) {
@@ -673,6 +816,7 @@
 			case 'vonNeumann': return 'VN';
 			case 'extendedMoore': return 'Ext';
 			case 'hexagonal': return 'Hex';
+			case 'extendedHexagonal': return 'Hex2';
 			default: return 'Moore';
 		}
 	});
@@ -760,8 +904,8 @@
 							<span class="item-desc">Large radius 24-neighbor rules</span>
 						</button>
 						<button class="dropdown-item" class:selected={selectedFilter === 'nh:hexagonal'} onclick={() => selectFilter('nh:hexagonal')}>
-							<span class="item-name">Hexagonal (6) <span class="filter-count">[{filterCounts['nh:hexagonal']}]</span></span>
-							<span class="item-desc">Honeycomb grid 6-neighbor rules</span>
+							<span class="item-name">Hexagonal <span class="filter-count">[{filterCounts['nh:hexagonal']}]</span></span>
+							<span class="item-desc">All honeycomb grid rules (6 & 18 neighbors)</span>
 						</button>
 						
 						<div class="dropdown-divider"></div>
@@ -838,7 +982,7 @@
 							{/if}
 						</div>
 						
-						<div class="preset-list">
+						<div class="preset-list" bind:this={presetListRef}>
 							{#each filteredPresets as preset}
 								{@const presetIndex = RULE_PRESETS.indexOf(preset)}
 								<button class="dropdown-item" class:selected={selectedPreset === presetIndex} onclick={() => selectPreset(presetIndex)}>
@@ -942,7 +1086,7 @@
 		<div class="footer">
 			<div class="states">
 				<span class="foot-label">States</span>
-				<input type="range" min="2" max="32" bind:value={numStates} oninput={updateRuleString} />
+				<input type="range" min="2" max="64" bind:value={numStates} oninput={updateRuleString} />
 				<span class="states-val">{numStates}</span>
 			</div>
 			<div class="rule-input">
@@ -1425,8 +1569,8 @@
 	   - Staggered rows are offset by hex_width / 2
 	*/
 	.grid.grid-hexagonal {
-		/* Hex dimensions: width is the flat-to-flat distance for pointy-top */
-		--hex-w: 28px;
+		/* Size hexagons to match preview canvas height (108px) */
+		--hex-w: 35px;
 		/* Gap between hexagons (edge to edge) */
 		--hex-gap: 4px;
 		/* Center-to-center horizontal distance */
@@ -1512,6 +1656,144 @@
 	/* 6 (top-left) - 6 neighbors (all) */
 	.grid.grid-hexagonal .cell:nth-child(7) {
 		left: calc(var(--hex-dx) * 0.5);
+		top: calc(var(--hex-dy) * 0);
+	}
+
+	/* Extended Hexagonal: 19 cells in 2-ring honeycomb pattern (0-18)
+	   Visual layout (neighbor counts, clockwise from top-right):
+	   
+	         16  17  18        (row -2: 3 cells)
+	       15   6   1   7      (row -1: 4 cells)
+	     14   5   0   2   8    (row  0: 5 cells, center)
+	       13   4   3   9      (row +1: 4 cells)
+	         12  11  10        (row +2: 3 cells)
+	   
+	   Ring 0: 0 (center)
+	   Ring 1: 1-6 (clockwise from top-right)
+	   Ring 2: 7-18 (clockwise from top-right)
+	*/
+	.grid.grid-extendedHexagonal {
+		/* Size hexagons to match preview canvas height (108px) */
+		--hex-w: 22px;
+		--hex-gap: 2px;
+		--hex-dx: calc(var(--hex-w) + var(--hex-gap));
+		--hex-dy: calc(var(--hex-dx) * 0.866);
+		--hex-h: calc(var(--hex-w) * 1.1547);
+		
+		display: block;
+		position: relative;
+		/* Container: 5 columns wide, 5 rows tall */
+		width: calc(var(--hex-dx) * 4 + var(--hex-w));
+		height: calc(var(--hex-dy) * 4 + var(--hex-h));
+	}
+
+	.grid.grid-extendedHexagonal .cell {
+		position: absolute;
+		width: var(--hex-w);
+		height: var(--hex-h);
+		clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+		border-radius: 0;
+		border: none;
+		font-size: 0.5rem;
+	}
+
+	/* Center (0) - row 0, col 2 */
+	.grid.grid-extendedHexagonal .cell:nth-child(1) {
+		left: calc(var(--hex-dx) * 2);
+		top: calc(var(--hex-dy) * 2);
+	}
+	
+	/* Ring 1: 1-6 clockwise from top-right */
+	/* 1 (top-right of center) - row -1, col 2.5 */
+	.grid.grid-extendedHexagonal .cell:nth-child(2) {
+		left: calc(var(--hex-dx) * 2.5);
+		top: calc(var(--hex-dy) * 1);
+	}
+	/* 2 (right of center) - row 0, col 3 */
+	.grid.grid-extendedHexagonal .cell:nth-child(3) {
+		left: calc(var(--hex-dx) * 3);
+		top: calc(var(--hex-dy) * 2);
+	}
+	/* 3 (bottom-right of center) - row +1, col 2.5 */
+	.grid.grid-extendedHexagonal .cell:nth-child(4) {
+		left: calc(var(--hex-dx) * 2.5);
+		top: calc(var(--hex-dy) * 3);
+	}
+	/* 4 (bottom-left of center) - row +1, col 1.5 */
+	.grid.grid-extendedHexagonal .cell:nth-child(5) {
+		left: calc(var(--hex-dx) * 1.5);
+		top: calc(var(--hex-dy) * 3);
+	}
+	/* 5 (left of center) - row 0, col 1 */
+	.grid.grid-extendedHexagonal .cell:nth-child(6) {
+		left: calc(var(--hex-dx) * 1);
+		top: calc(var(--hex-dy) * 2);
+	}
+	/* 6 (top-left of center) - row -1, col 1.5 */
+	.grid.grid-extendedHexagonal .cell:nth-child(7) {
+		left: calc(var(--hex-dx) * 1.5);
+		top: calc(var(--hex-dy) * 1);
+	}
+	
+	/* Ring 2: 7-18 clockwise from top-right */
+	/* 7 (far top-right) - row -1, col 3.5 */
+	.grid.grid-extendedHexagonal .cell:nth-child(8) {
+		left: calc(var(--hex-dx) * 3.5);
+		top: calc(var(--hex-dy) * 1);
+	}
+	/* 8 (far right) - row 0, col 4 */
+	.grid.grid-extendedHexagonal .cell:nth-child(9) {
+		left: calc(var(--hex-dx) * 4);
+		top: calc(var(--hex-dy) * 2);
+	}
+	/* 9 (right-bottom) - row +1, col 3.5 */
+	.grid.grid-extendedHexagonal .cell:nth-child(10) {
+		left: calc(var(--hex-dx) * 3.5);
+		top: calc(var(--hex-dy) * 3);
+	}
+	/* 10 (far bottom-right) - row +2, col 3 */
+	.grid.grid-extendedHexagonal .cell:nth-child(11) {
+		left: calc(var(--hex-dx) * 3);
+		top: calc(var(--hex-dy) * 4);
+	}
+	/* 11 (bottom) - row +2, col 2 */
+	.grid.grid-extendedHexagonal .cell:nth-child(12) {
+		left: calc(var(--hex-dx) * 2);
+		top: calc(var(--hex-dy) * 4);
+	}
+	/* 12 (far bottom-left) - row +2, col 1 */
+	.grid.grid-extendedHexagonal .cell:nth-child(13) {
+		left: calc(var(--hex-dx) * 1);
+		top: calc(var(--hex-dy) * 4);
+	}
+	/* 13 (left-bottom) - row +1, col 0.5 */
+	.grid.grid-extendedHexagonal .cell:nth-child(14) {
+		left: calc(var(--hex-dx) * 0.5);
+		top: calc(var(--hex-dy) * 3);
+	}
+	/* 14 (far left) - row 0, col 0 */
+	.grid.grid-extendedHexagonal .cell:nth-child(15) {
+		left: calc(var(--hex-dx) * 0);
+		top: calc(var(--hex-dy) * 2);
+	}
+	/* 15 (left-top) - row -1, col 0.5 */
+	.grid.grid-extendedHexagonal .cell:nth-child(16) {
+		left: calc(var(--hex-dx) * 0.5);
+		top: calc(var(--hex-dy) * 1);
+	}
+	/* 16 (far top-left) - row -2, col 1 */
+	.grid.grid-extendedHexagonal .cell:nth-child(17) {
+		left: calc(var(--hex-dx) * 1);
+		top: calc(var(--hex-dy) * 0);
+	}
+	/* 17 (top) - row -2, col 2 */
+	.grid.grid-extendedHexagonal .cell:nth-child(18) {
+		left: calc(var(--hex-dx) * 2);
+		top: calc(var(--hex-dy) * 0);
+	}
+	/* 18 (far top-right) - row -2, col 3 */
+	.grid.grid-extendedHexagonal .cell:nth-child(19) {
+		left: calc(var(--hex-dx) * 3);
 		top: calc(var(--hex-dy) * 0);
 	}
 
@@ -1771,10 +2053,16 @@
 			gap: 1px;
 		}
 
-		/* Mobile hex grid - just override the CSS variables */
+		/* Mobile hex grid - scale to match 80px canvas */
 		.grid.grid-hexagonal {
-			--hex-w: 21px;
+			--hex-w: 26px;
 			--hex-gap: 3px;
+		}
+
+		/* Mobile extended hex grid - scale to match 80px canvas */
+		.grid.grid-extendedHexagonal {
+			--hex-w: 16px;
+			--hex-gap: 1.5px;
 		}
 
 		.canvas {

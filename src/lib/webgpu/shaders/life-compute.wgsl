@@ -9,7 +9,7 @@ struct Params {
     survive_mask: u32,    // Bit i = 1 means survive with i neighbors
     num_states: u32,      // 2 for Life-like, 3+ for Generations
     boundary_mode: u32,   // 0=plane, 1=cylinderX, 2=cylinderY, 3=torus, 4=mobiusX, 5=mobiusY, 6=kleinX, 7=kleinY, 8=projectivePlane
-    neighborhood: u32,    // 0 = Moore (8), 1 = Von Neumann (4), 2 = Extended Moore (24), 3 = Hexagonal (6)
+    neighborhood: u32,    // 0 = Moore (8), 1 = Von Neumann (4), 2 = Extended Moore (24), 3 = Hexagonal (6), 4 = Extended Hexagonal (18)
     _padding: u32,        // Padding for 16-byte alignment
 }
 
@@ -194,12 +194,102 @@ fn count_neighbors_hexagonal(x: i32, y: i32) -> u32 {
     return count;
 }
 
+// Count living neighbors - Extended Hexagonal neighborhood (18 cells)
+// Two rings of neighbors around the center cell in a hexagonal grid
+// Ring 1: 6 immediate neighbors (same as regular hexagonal)
+// Ring 2: 12 neighbors at distance 2
+fn count_neighbors_extended_hexagonal(x: i32, y: i32) -> u32 {
+    var count: u32 = 0u;
+    
+    // Determine if this row is odd or even
+    let is_odd_row = (y & 1) == 1;
+    
+    // === RING 1: 6 immediate neighbors (same as regular hexagonal) ===
+    
+    // Top neighbors (y-1)
+    if (is_odd_row) {
+        if (is_alive(get_cell(x, y - 1))) { count++; }
+        if (is_alive(get_cell(x + 1, y - 1))) { count++; }
+    } else {
+        if (is_alive(get_cell(x - 1, y - 1))) { count++; }
+        if (is_alive(get_cell(x, y - 1))) { count++; }
+    }
+    
+    // Left and right neighbors (y)
+    if (is_alive(get_cell(x - 1, y))) { count++; }
+    if (is_alive(get_cell(x + 1, y))) { count++; }
+    
+    // Bottom neighbors (y+1)
+    if (is_odd_row) {
+        if (is_alive(get_cell(x, y + 1))) { count++; }
+        if (is_alive(get_cell(x + 1, y + 1))) { count++; }
+    } else {
+        if (is_alive(get_cell(x - 1, y + 1))) { count++; }
+        if (is_alive(get_cell(x, y + 1))) { count++; }
+    }
+    
+    // === RING 2: 12 outer neighbors ===
+    
+    // Row y-2 (2 cells directly above)
+    let is_odd_row_m1 = ((y - 1) & 1) == 1;
+    if (is_odd_row_m1) {
+        // Row y-1 is odd, so y-2 is even
+        if (is_alive(get_cell(x, y - 2))) { count++; }      // directly above
+        if (is_alive(get_cell(x + 1, y - 2))) { count++; }  // above-right
+    } else {
+        // Row y-1 is even, so y-2 is odd
+        if (is_alive(get_cell(x - 1, y - 2))) { count++; }  // above-left
+        if (is_alive(get_cell(x, y - 2))) { count++; }      // directly above
+    }
+    
+    // Row y-1 outer cells (2 cells at far corners of top row)
+    if (is_odd_row) {
+        // Current row is odd
+        if (is_alive(get_cell(x - 1, y - 1))) { count++; }  // far top-left
+        if (is_alive(get_cell(x + 2, y - 1))) { count++; }  // far top-right
+    } else {
+        // Current row is even
+        if (is_alive(get_cell(x - 2, y - 1))) { count++; }  // far top-left
+        if (is_alive(get_cell(x + 1, y - 1))) { count++; }  // far top-right
+    }
+    
+    // Row y outer cells (2 cells at distance 2 horizontally)
+    if (is_alive(get_cell(x - 2, y))) { count++; }  // far left
+    if (is_alive(get_cell(x + 2, y))) { count++; }  // far right
+    
+    // Row y+1 outer cells (2 cells at far corners of bottom row)
+    if (is_odd_row) {
+        // Current row is odd
+        if (is_alive(get_cell(x - 1, y + 1))) { count++; }  // far bottom-left
+        if (is_alive(get_cell(x + 2, y + 1))) { count++; }  // far bottom-right
+    } else {
+        // Current row is even
+        if (is_alive(get_cell(x - 2, y + 1))) { count++; }  // far bottom-left
+        if (is_alive(get_cell(x + 1, y + 1))) { count++; }  // far bottom-right
+    }
+    
+    // Row y+2 (2 cells directly below)
+    let is_odd_row_p1 = ((y + 1) & 1) == 1;
+    if (is_odd_row_p1) {
+        // Row y+1 is odd, so y+2 is even
+        if (is_alive(get_cell(x, y + 2))) { count++; }      // directly below
+        if (is_alive(get_cell(x + 1, y + 2))) { count++; }  // below-right
+    } else {
+        // Row y+1 is even, so y+2 is odd
+        if (is_alive(get_cell(x - 1, y + 2))) { count++; }  // below-left
+        if (is_alive(get_cell(x, y + 2))) { count++; }      // directly below
+    }
+    
+    return count;
+}
+
 // Count neighbors based on neighborhood type
 fn count_neighbors(x: i32, y: i32) -> u32 {
     switch (params.neighborhood) {
         case 1u: { return count_neighbors_von_neumann(x, y); }
         case 2u: { return count_neighbors_extended(x, y); }
         case 3u: { return count_neighbors_hexagonal(x, y); }
+        case 4u: { return count_neighbors_extended_hexagonal(x, y); }
         default: { return count_neighbors_moore(x, y); }
     }
 }

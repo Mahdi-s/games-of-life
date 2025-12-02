@@ -169,7 +169,7 @@
 		// Remember current orientation
 		lastOrientation = viewport.width >= viewport.height ? 'landscape' : 'portrait';
 		
-		const isHex = simState.currentRule.neighborhood === 'hexagonal';
+		const isHex = simState.currentRule.neighborhood === 'hexagonal' || simState.currentRule.neighborhood === 'extendedHexagonal';
 		const { width, height } = calculateGridDimensions(simState.gridScale, viewport.width, viewport.height, isHex);
 		simState.gridWidth = width;
 		simState.gridHeight = height;
@@ -746,13 +746,14 @@
 		
 		const currentNeighborhood = simulation.getRule().neighborhood;
 		const newNeighborhood = simState.currentRule.neighborhood;
-		const isHexChanged = (currentNeighborhood === 'hexagonal') !== (newNeighborhood === 'hexagonal');
+		const wasHex = currentNeighborhood === 'hexagonal' || currentNeighborhood === 'extendedHexagonal';
+		const isHex = newNeighborhood === 'hexagonal' || newNeighborhood === 'extendedHexagonal';
+		const isHexChanged = wasHex !== isHex;
 		
 		if (isHexChanged) {
 			// Neighborhood type changed between hex and non-hex, need to recreate grid
 			// because hex grids need more rows to fill the same visual space
 			const viewport = getVisibleViewportSize();
-			const isHex = newNeighborhood === 'hexagonal';
 			const { width, height } = calculateGridDimensions(simState.gridScale, viewport.width, viewport.height, isHex);
 			
 			simState.gridWidth = width;
@@ -854,7 +855,7 @@
 		
 		// Calculate new dimensions based on visible viewport
 		const viewport = getVisibleViewportSize();
-		const isHex = simState.currentRule.neighborhood === 'hexagonal';
+		const isHex = simState.currentRule.neighborhood === 'hexagonal' || simState.currentRule.neighborhood === 'extendedHexagonal';
 		const { width, height } = calculateGridDimensions(scale, viewport.width, viewport.height, isHex);
 		
 		// Update store

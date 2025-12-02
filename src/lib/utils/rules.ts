@@ -4,7 +4,7 @@
  */
 
 // Neighborhood types
-export type NeighborhoodType = 'moore' | 'vonNeumann' | 'extendedMoore' | 'hexagonal';
+export type NeighborhoodType = 'moore' | 'vonNeumann' | 'extendedMoore' | 'hexagonal' | 'extendedHexagonal';
 
 export interface NeighborhoodInfo {
 	type: NeighborhoodType;
@@ -37,6 +37,12 @@ export const NEIGHBORHOODS: Record<NeighborhoodType, NeighborhoodInfo> = {
 		name: 'Hexagonal',
 		maxNeighbors: 6,
 		description: 'Hexagonal grid with 6 neighbors'
+	},
+	extendedHexagonal: {
+		type: 'extendedHexagonal',
+		name: 'Extended Hex',
+		maxNeighbors: 18,
+		description: 'Hexagonal grid with 2-ring radius (18 neighbors)'
 	}
 };
 
@@ -811,6 +817,84 @@ export const RULE_PRESETS: CARule[] = [
 		category: 'artistic',
 		description: 'Organic slime mold-like growth with long colorful trails',
 		density: 0.2
+	},
+	// Extended Hexagonal rules (18 neighbors)
+	{
+		name: 'Hex2 Life',
+		birthMask: 0b0000001100000, // 5, 6
+		surviveMask: 0b0000011110000, // 4, 5, 6, 7
+		numStates: 2,
+		ruleString: 'B56/S4567',
+		neighborhood: 'extendedHexagonal',
+		category: 'classic',
+		description: 'Life-like rule for extended hexagonal grid',
+		density: 0.25
+	},
+	{
+		name: 'Hex2 Coral',
+		birthMask: 0b0000011100000, // 5, 6, 7
+		surviveMask: 0b0001111100000, // 5, 6, 7, 8, 9
+		numStates: 2,
+		ruleString: 'B567/S56789',
+		neighborhood: 'extendedHexagonal',
+		category: 'expanding',
+		description: 'Coral-like growth patterns in extended hex grid',
+		density: 0.2
+	},
+	{
+		name: 'Hex2 Waves',
+		birthMask: 0b0000001000000, // 6
+		surviveMask: 0b0000111110000, // 4, 5, 6, 7, 8
+		numStates: 8,
+		ruleString: 'B6/S45678/C8',
+		neighborhood: 'extendedHexagonal',
+		category: 'artistic',
+		description: 'Wave-like patterns with colorful trails',
+		density: 0.3
+	},
+	{
+		name: 'Hex2 Aurora',
+		birthMask: 0b0000011000000, // 5, 6
+		surviveMask: 0b0000111100000, // 4, 5, 6, 7
+		numStates: 24,
+		ruleString: 'B56/S4567/C24',
+		neighborhood: 'extendedHexagonal',
+		category: 'artistic',
+		description: 'Aurora-like flowing patterns with long trails',
+		density: 0.25
+	},
+	{
+		name: 'Hex2 Crystals',
+		birthMask: 0b0000010000000, // 7
+		surviveMask: 0b0001110000000, // 7, 8, 9
+		numStates: 16,
+		ruleString: 'B7/S789/C16',
+		neighborhood: 'extendedHexagonal',
+		category: 'artistic',
+		description: 'Crystal-like formations with geometric patterns',
+		density: 0.35
+	},
+	{
+		name: 'Hex2 Nebula',
+		birthMask: 0b0000001100000, // 5, 6
+		surviveMask: 0b0000011110000, // 4, 5, 6, 7
+		numStates: 32,
+		ruleString: 'B56/S4567/C32',
+		neighborhood: 'extendedHexagonal',
+		category: 'artistic',
+		description: 'Nebula-like clouds with very long colorful trails',
+		density: 0.22
+	},
+	{
+		name: 'Hex2 Neo Slime Mold',
+		birthMask: 0b0000101000, // 3, 5
+		surviveMask: 0b0001110000, // 4, 5, 6
+		numStates: 32,
+		ruleString: 'B35/S456/C32',
+		neighborhood: 'extendedHexagonal',
+		category: 'artistic',
+		description: 'Organic slime mold growth in extended hexagonal grid',
+		density: 0.2
 	}
 ];
 
@@ -822,10 +906,10 @@ export function getRuleByName(name: string): CARule | undefined {
 }
 
 /**
- * Get the default rule (Hex Neo Slime Mold)
+ * Get the default rule (Hex2 Neo Slime Mold)
  */
 export function getDefaultRule(): CARule {
-	return getRuleByName('Hex Neo Slime Mold') || RULE_PRESETS[0];
+	return getRuleByName('Hex2 Neo Slime Mold') || RULE_PRESETS[0];
 }
 
 /**
