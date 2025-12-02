@@ -787,11 +787,43 @@
 	export function screenshot() {
 		if (!canvas) return;
 		
-		// Create a link and trigger download
+		const filename = `cellular-automaton-gen${simState.generation}.png`;
+		const dataUrl = canvas.toDataURL('image/png');
+		
+		// Try using the Web Share API for mobile (if available and supports files)
+		if (navigator.share && navigator.canShare) {
+			canvas.toBlob(async (blob) => {
+				if (!blob) return;
+				
+				const file = new File([blob], filename, { type: 'image/png' });
+				const shareData = { files: [file] };
+				
+				if (navigator.canShare(shareData)) {
+					try {
+						await navigator.share(shareData);
+						return;
+					} catch (err) {
+						// User cancelled or share failed, fall through to download
+						if ((err as Error).name === 'AbortError') return;
+					}
+				}
+				
+				// Fallback to download
+				triggerDownload(dataUrl, filename);
+			}, 'image/png');
+		} else {
+			// Desktop or no share API - direct download
+			triggerDownload(dataUrl, filename);
+		}
+	}
+	
+	function triggerDownload(dataUrl: string, filename: string) {
 		const link = document.createElement('a');
-		link.download = `cellular-automaton-gen${simState.generation}.png`;
-		link.href = canvas.toDataURL('image/png');
+		link.download = filename;
+		link.href = dataUrl;
+		document.body.appendChild(link);
 		link.click();
+		document.body.removeChild(link);
 	}
 
 	export function resize(width: number, height: number) {

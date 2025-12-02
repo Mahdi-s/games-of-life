@@ -531,7 +531,7 @@ export function createTour(options?: {
 		smoothScroll: true,
 		allowClose: true,
 		stagePadding: 0,
-		stageRadius: 8,
+		stageRadius: 9999,
 		popoverClass: `gol-tour-popover ${isLight ? 'light-theme' : 'dark-theme'}`,
 		overlayColor: isLight ? 'rgba(0, 0, 0, 0.5)' : 'rgba(0, 0, 0, 0.7)',
 		steps: getTourSteps(),
