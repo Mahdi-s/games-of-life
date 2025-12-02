@@ -63,6 +63,12 @@
 	}
 </script>
 
+<!-- Invisible backdrop to close popups when clicking outside -->
+<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+{#if showSpeedSlider || showBrushSlider}
+	<div class="popup-backdrop" onclick={closeAllPopups}></div>
+{/if}
+
 <div class="controls" class:collapsed>
 	<!-- GROUP 1: Playback Controls -->
 	<div class="button-group" id="tour-playback-group">
@@ -269,6 +275,15 @@
 
 
 <style>
+	/* Invisible backdrop to catch clicks outside popups */
+	.popup-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 99;
+		/* Transparent but catches clicks */
+		background: transparent;
+	}
+
 	.controls {
 		position: fixed;
 		top: 1rem;
