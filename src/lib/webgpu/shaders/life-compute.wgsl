@@ -8,7 +8,7 @@ struct Params {
     birth_mask: u32,      // Bit i = 1 means birth with i neighbors
     survive_mask: u32,    // Bit i = 1 means survive with i neighbors
     num_states: u32,      // 2 for Life-like, 3+ for Generations
-    wrap_boundary: u32,   // 1 = toroidal wrap, 0 = fixed edges (cells outside are dead)
+    boundary_mode: u32,   // 0=plane, 1=cylinderX, 2=cylinderY, 3=torus, 4=mobiusX, 5=mobiusY, 6=kleinX, 7=kleinY, 8=projectivePlane
     neighborhood: u32,    // 0 = Moore (8), 1 = Von Neumann (4), 2 = Extended Moore (24), 3 = Hexagonal (6)
     _padding: u32,        // Padding for 16-byte alignment
 }
@@ -17,22 +17,89 @@ struct Params {
 @group(0) @binding(1) var<storage, read> cell_state_in: array<u32>;
 @group(0) @binding(2) var<storage, read_write> cell_state_out: array<u32>;
 
-// Get cell state at position
+// Boundary modes:
+// 0 = plane (no wrap)
+// 1 = cylinderX (horizontal wrap only)
+// 2 = cylinderY (vertical wrap only)
+// 3 = torus (both wrap, same orientation)
+// 4 = mobiusX (horizontal wrap with vertical flip)
+// 5 = mobiusY (vertical wrap with horizontal flip)
+// 6 = kleinX (horizontal möbius + vertical cylinder)
+// 7 = kleinY (vertical möbius + horizontal cylinder)
+// 8 = projectivePlane (both edges flip)
+
+// Get cell state at position with boundary handling
 fn get_cell(x: i32, y: i32) -> u32 {
-    if (params.wrap_boundary == 1u) {
-        // Toroidal wrapping
-        let wrapped_x = ((x % i32(params.width)) + i32(params.width)) % i32(params.width);
-        let wrapped_y = ((y % i32(params.height)) + i32(params.height)) % i32(params.height);
-        let idx = u32(wrapped_x) + u32(wrapped_y) * params.width;
-        return cell_state_in[idx];
-    } else {
-        // Fixed edges - cells outside are dead
-        if (x < 0 || x >= i32(params.width) || y < 0 || y >= i32(params.height)) {
+    let w = i32(params.width);
+    let h = i32(params.height);
+    
+    var fx = x;
+    var fy = y;
+    
+    // Determine wrapping behavior based on boundary mode
+    let mode = params.boundary_mode;
+    
+    // Check if we're out of bounds
+    let out_left = x < 0;
+    let out_right = x >= w;
+    let out_top = y < 0;
+    let out_bottom = y >= h;
+    let out_x = out_left || out_right;
+    let out_y = out_top || out_bottom;
+    
+    // Handle horizontal boundary
+    if (out_x) {
+        // Modes that wrap horizontally: 1 (cylinderX), 3 (torus), 4 (mobiusX), 6 (kleinX), 7 (kleinY), 8 (projective)
+        let wraps_x = mode == 1u || mode == 3u || mode == 4u || mode == 6u || mode == 7u || mode == 8u;
+        
+        if (!wraps_x) {
+            // No horizontal wrap - cell is dead
             return 0u;
         }
-        let idx = u32(x) + u32(y) * params.width;
-        return cell_state_in[idx];
+        
+        // Wrap x coordinate
+        fx = ((x % w) + w) % w;
+        
+        // Check if this is a flipping wrap (möbius-like in X direction)
+        // Modes with X-flip: 4 (mobiusX), 6 (kleinX), 8 (projective)
+        let flips_x = mode == 4u || mode == 6u || mode == 8u;
+        
+        if (flips_x) {
+            // Flip y when wrapping across x boundary
+            fy = h - 1 - y;
+        }
     }
+    
+    // Handle vertical boundary
+    if (out_y) {
+        // Modes that wrap vertically: 2 (cylinderY), 3 (torus), 5 (mobiusY), 6 (kleinX), 7 (kleinY), 8 (projective)
+        let wraps_y = mode == 2u || mode == 3u || mode == 5u || mode == 6u || mode == 7u || mode == 8u;
+        
+        if (!wraps_y) {
+            // No vertical wrap - cell is dead
+            return 0u;
+        }
+        
+        // Wrap y coordinate
+        fy = ((fy % h) + h) % h;
+        
+        // Check if this is a flipping wrap (möbius-like in Y direction)
+        // Modes with Y-flip: 5 (mobiusY), 7 (kleinY), 8 (projective)
+        let flips_y = mode == 5u || mode == 7u || mode == 8u;
+        
+        if (flips_y) {
+            // Flip x when wrapping across y boundary
+            fx = w - 1 - fx;
+        }
+    }
+    
+    // Final bounds check after all transformations
+    if (fx < 0 || fx >= w || fy < 0 || fy >= h) {
+        return 0u;
+    }
+    
+    let idx = u32(fx) + u32(fy) * params.width;
+    return cell_state_in[idx];
 }
 
 // Check if a cell is "alive" (state == 1 for Generations rules)

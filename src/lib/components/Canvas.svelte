@@ -244,7 +244,7 @@
 			brushX: showBrush ? gridMouseX : -1000,
 			brushY: showBrush ? gridMouseY : -1000,
 			brushRadius: showBrush ? simState.brushSize : -1,
-			wrapBoundary: simState.wrapBoundary,
+			boundaryMode: simState.boundaryMode,
 			spectrumMode: getSpectrumModeIndex(simState.spectrumMode)
 		});
 
@@ -730,7 +730,7 @@
 			showGrid: currentView.showGrid,
 			isLightTheme: currentView.isLightTheme,
 			aliveColor: currentView.aliveColor,
-			wrapBoundary: currentView.wrapBoundary
+			boundaryMode: currentView.boundaryMode
 		});
 		
 		// Use current actual canvas dimensions for reset view

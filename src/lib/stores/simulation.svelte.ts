@@ -53,6 +53,40 @@ export const SPECTRUM_MODES: { id: SpectrumMode; name: string; description: stri
 	{ id: 'fire', name: 'Fire', description: 'Orange to red to black' }
 ];
 
+// Boundary modes - 9 topological possibilities based on edge identification
+// Each mode defines how edges wrap: none, same direction, or flipped
+export type BoundaryMode = 
+	| 'plane'           // No wrapping - edges are dead
+	| 'cylinderX'       // Horizontal wrap only (left-right connected)
+	| 'cylinderY'       // Vertical wrap only (top-bottom connected)
+	| 'torus'           // Both wrap (donut shape)
+	| 'mobiusX'         // Horizontal wrap with vertical flip
+	| 'mobiusY'         // Vertical wrap with horizontal flip
+	| 'kleinX'          // Horizontal Möbius + vertical cylinder (Klein bottle, X-oriented)
+	| 'kleinY'          // Vertical Möbius + horizontal cylinder (Klein bottle, Y-oriented)
+	| 'projectivePlane'; // Both edges flip (real projective plane)
+
+export const BOUNDARY_MODES: { id: BoundaryMode; name: string; description: string }[] = [
+	{ id: 'plane', name: 'Plane', description: 'No wrapping - edges are dead' },
+	{ id: 'cylinderX', name: 'X-Cylinder', description: 'Wraps horizontally' },
+	{ id: 'cylinderY', name: 'Y-Cylinder', description: 'Wraps vertically' },
+	{ id: 'torus', name: 'Torus', description: 'Wraps both ways' },
+	{ id: 'mobiusX', name: 'X-Möbius', description: 'Horizontal wrap with flip' },
+	{ id: 'mobiusY', name: 'Y-Möbius', description: 'Vertical wrap with flip' },
+	{ id: 'kleinX', name: 'X-Klein', description: 'Klein bottle (X-oriented)' },
+	{ id: 'kleinY', name: 'Y-Klein', description: 'Klein bottle (Y-oriented)' },
+	{ id: 'projectivePlane', name: 'Projective', description: 'Both edges flip' }
+];
+
+// Convert boundary mode to shader index
+export function boundaryModeToIndex(mode: BoundaryMode): number {
+	const modes: BoundaryMode[] = [
+		'plane', 'cylinderX', 'cylinderY', 'torus',
+		'mobiusX', 'mobiusY', 'kleinX', 'kleinY', 'projectivePlane'
+	];
+	return modes.indexOf(mode);
+}
+
 let spectrumMode = $state<SpectrumMode>('hueShift');
 
 // Color palettes for dark and light themes
@@ -60,18 +94,26 @@ export const DARK_THEME_COLORS: { name: string; color: [number, number, number];
 	{ name: 'White', color: [1.0, 1.0, 1.0], hex: '#ffffff' },
 	{ name: 'Cyan', color: [0.2, 0.9, 0.95], hex: '#33e6f2' },
 	{ name: 'Green', color: [0.3, 0.95, 0.5], hex: '#4df280' },
-	{ name: 'Purple', color: [0.7, 0.5, 1.0], hex: '#b380ff' },
+	{ name: 'Lime', color: [0.7, 1.0, 0.3], hex: '#b3ff4d' },
+	{ name: 'Yellow', color: [1.0, 0.95, 0.4], hex: '#fff266' },
 	{ name: 'Orange', color: [1.0, 0.65, 0.2], hex: '#ffa633' },
-	{ name: 'Pink', color: [1.0, 0.45, 0.65], hex: '#ff73a6' }
+	{ name: 'Red', color: [1.0, 0.35, 0.35], hex: '#ff5959' },
+	{ name: 'Pink', color: [1.0, 0.45, 0.65], hex: '#ff73a6' },
+	{ name: 'Purple', color: [0.7, 0.5, 1.0], hex: '#b380ff' },
+	{ name: 'Blue', color: [0.4, 0.6, 1.0], hex: '#6699ff' }
 ];
 
 export const LIGHT_THEME_COLORS: { name: string; color: [number, number, number]; hex: string }[] = [
 	{ name: 'Black', color: [0.1, 0.1, 0.12], hex: '#1a1a1f' },
 	{ name: 'Teal', color: [0.0, 0.5, 0.55], hex: '#00808c' },
 	{ name: 'Green', color: [0.1, 0.55, 0.25], hex: '#1a8c40' },
-	{ name: 'Purple', color: [0.45, 0.2, 0.7], hex: '#7333b3' },
+	{ name: 'Olive', color: [0.4, 0.5, 0.1], hex: '#66801a' },
+	{ name: 'Brown', color: [0.55, 0.35, 0.15], hex: '#8c5926' },
 	{ name: 'Orange', color: [0.85, 0.4, 0.1], hex: '#d9661a' },
-	{ name: 'Rose', color: [0.75, 0.2, 0.4], hex: '#bf3366' }
+	{ name: 'Red', color: [0.7, 0.15, 0.15], hex: '#b32626' },
+	{ name: 'Rose', color: [0.75, 0.2, 0.4], hex: '#bf3366' },
+	{ name: 'Purple', color: [0.45, 0.2, 0.7], hex: '#7333b3' },
+	{ name: 'Navy', color: [0.15, 0.25, 0.55], hex: '#26408c' }
 ];
 
 // Last initialization settings
@@ -364,8 +406,8 @@ let seedingRate = $state(0.1); // Seeds per 1000 cells per frame (0.01 - 1.0)
 let seedPattern = $state<SeedPatternId>('pixel'); // Current seed pattern
 let seedAlive = $state(true); // true = add alive cells, false = add dead cells (erase)
 
-// Boundary mode
-let wrapBoundary = $state(true); // true = toroidal wrap, false = fixed edges
+// Boundary mode - topological boundary condition
+let boundaryMode = $state<BoundaryMode>('torus'); // Default to torus (classic Game of Life behavior)
 
 // Stats
 let aliveCells = $state(0);
@@ -491,11 +533,16 @@ export function getSimulationState() {
 			lastInitSpacing = value;
 		},
 
-		get wrapBoundary() {
-			return wrapBoundary;
+		get boundaryMode() {
+			return boundaryMode;
 		},
-		set wrapBoundary(value: boolean) {
-			wrapBoundary = value;
+		set boundaryMode(value: BoundaryMode) {
+			boundaryMode = value;
+		},
+		
+		// Legacy getter for backwards compatibility
+		get wrapBoundary() {
+			return boundaryMode !== 'plane';
 		},
 
 		get seedingEnabled() {

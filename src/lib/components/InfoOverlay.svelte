@@ -3,7 +3,7 @@
 
 	const simState = getSimulationState();
 
-	let collapsed = $state(false); // Expanded by default
+	let collapsed = $state(true); // Collapsed by default
 	let fps = $state(0);
 	let lastFrameTime = 0;
 	let frameCount = 0;
@@ -41,6 +41,9 @@
 			? `~${simState.aliveCells.toLocaleString()}` 
 			: simState.aliveCells.toLocaleString()
 	);
+	
+	// Total cells
+	const totalCells = $derived(simState.gridWidth * simState.gridHeight);
 </script>
 
 {#if collapsed}
@@ -66,7 +69,7 @@
 		<div class="info-content">
 			<!-- Rule - bold italic f (matches toolbar) -->
 			<div class="info-row">
-				<div class="info-label">
+				<div class="info-label accent">
 					<svg viewBox="0 0 24 24" fill="currentColor">
 						<path d="M16.5 3C14 3 12.5 4.5 11.8 7L10.5 11H7.5C7 11 6.5 11.4 6.5 12s.5 1 1 1h2.3l-1.6 5.5C7.7 20 6.8 21 5.5 21c-.5 0-.9-.1-1.2-.3-.4-.2-.9-.1-1.1.3-.2.4-.1.9.3 1.1.6.3 1.3.5 2 .5 2.5 0 4-1.5 4.8-4.2L12 13h3.5c.5 0 1-.4 1-1s-.5-1-1-1h-2.8l1.1-3.5C14.3 5.8 15.2 5 16.5 5c.4 0 .8.1 1.1.2.4.2.9 0 1.1-.4.2-.4 0-.9-.4-1.1-.6-.4-1.4-.7-2.3-.7z" />
 					</svg>
@@ -80,7 +83,7 @@
 
 			<!-- Generation - counter/hash icon -->
 			<div class="info-row">
-				<div class="info-label">
+				<div class="info-label accent">
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 						<line x1="4" y1="9" x2="20" y2="9" />
 						<line x1="4" y1="15" x2="20" y2="15" />
@@ -93,7 +96,7 @@
 
 			<!-- Speed - clock icon (matches toolbar) -->
 			<div class="info-row">
-				<div class="info-label">
+				<div class="info-label accent">
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 						<circle cx="12" cy="12" r="9" />
 						<path d="M12 7v5l3 2" />
@@ -109,7 +112,7 @@
 
 			<!-- Alive cells - brush/cells icon -->
 			<div class="info-row">
-				<div class="info-label">
+				<div class="info-label accent">
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 						<circle cx="12" cy="12" r="3" fill="currentColor" />
 						<circle cx="12" cy="12" r="8" />
@@ -118,9 +121,22 @@
 				<span class="info-value mono alive">{aliveCellsDisplay}</span>
 			</div>
 
+			<!-- Total cells - grid icon -->
+			<div class="info-row">
+				<div class="info-label accent">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<rect x="3" y="3" width="7" height="7" />
+						<rect x="14" y="3" width="7" height="7" />
+						<rect x="3" y="14" width="7" height="7" />
+						<rect x="14" y="14" width="7" height="7" />
+					</svg>
+				</div>
+				<span class="info-value mono">{totalCells.toLocaleString()}</span>
+			</div>
+
 			<!-- Status - play/pause icon (matches toolbar) -->
 			<div class="info-row">
-				<div class="info-label">
+				<div class="info-label" class:accent={simState.isPlaying} class:dim={!simState.isPlaying}>
 					<svg viewBox="0 0 24 24" fill="currentColor">
 						{#if simState.isPlaying}
 							<path d="M8 5v14l11-7-11-7z" />
@@ -250,11 +266,6 @@
 		gap: 0.5rem;
 	}
 
-	.info-row.sub {
-		margin-top: -0.2rem;
-		padding-left: 1.4rem;
-	}
-
 	.info-label {
 		width: 14px;
 		height: 14px;
@@ -268,6 +279,14 @@
 	.info-label svg {
 		width: 12px;
 		height: 12px;
+	}
+
+	.info-label.accent {
+		color: var(--ui-accent, #2dd4bf);
+	}
+
+	.info-label.dim {
+		color: var(--ui-text, #666);
 	}
 
 	.info-value {

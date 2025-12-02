@@ -6,7 +6,7 @@
 import type { WebGPUContext } from './context.js';
 import type { CARule, NeighborhoodType } from '../utils/rules.js';
 import { getDefaultRule } from '../utils/rules.js';
-import { SEED_PATTERNS, SEED_PATTERNS_HEX, type SeedPatternId } from '../stores/simulation.svelte.js';
+import { SEED_PATTERNS, SEED_PATTERNS_HEX, type SeedPatternId, type BoundaryMode, boundaryModeToIndex } from '../stores/simulation.svelte.js';
 
 // Import shaders as raw text
 import computeShaderCode from './shaders/life-compute.wgsl?raw';
@@ -28,7 +28,7 @@ export interface ViewState {
 	brushX: number;      // Brush center in grid coordinates
 	brushY: number;
 	brushRadius: number; // Brush radius in cells (-1 to hide)
-	wrapBoundary: boolean; // true = toroidal, false = fixed edges
+	boundaryMode: BoundaryMode; // Topological boundary condition
 	spectrumMode: number; // 0=hueShift, 1=rainbow, 2=warm, 3=cool, 4=monochrome, 5=fire
 }
 
@@ -94,7 +94,7 @@ export class Simulation {
 			brushX: -1000,
 			brushY: -1000,
 			brushRadius: -1, // Hidden by default
-			wrapBoundary: true, // Default to toroidal wrapping
+			boundaryMode: 'torus', // Default to toroidal wrapping
 			spectrumMode: 0 // Default to hue shift
 		};
 
@@ -288,7 +288,7 @@ export class Simulation {
 			this.rule.birthMask,
 			this.rule.surviveMask,
 			this.rule.numStates,
-			this.view.wrapBoundary ? 1 : 0,
+			boundaryModeToIndex(this.view.boundaryMode),
 			this.getNeighborhoodIndex(),
 			0 // padding for 16-byte alignment
 		]);
@@ -668,7 +668,7 @@ export class Simulation {
 	 * Update view state
 	 */
 	setView(view: Partial<ViewState>): void {
-		const boundaryChanged = view.wrapBoundary !== undefined && view.wrapBoundary !== this.view.wrapBoundary;
+		const boundaryChanged = view.boundaryMode !== undefined && view.boundaryMode !== this.view.boundaryMode;
 		this.view = { ...this.view, ...view };
 		
 		// If boundary mode changed, update compute params
@@ -881,7 +881,7 @@ export class Simulation {
 			brushX: this.view.brushX,
 			brushY: this.view.brushY,
 			brushRadius: this.view.brushRadius,
-			wrapBoundary: this.view.wrapBoundary,
+			boundaryMode: this.view.boundaryMode,
 			spectrumMode: this.view.spectrumMode
 		};
 	}

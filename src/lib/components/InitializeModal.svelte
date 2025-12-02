@@ -720,7 +720,7 @@
 
 <svelte:window onkeydown={(e) => e.key === 'Escape' && onclose()} />
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
+<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
 <div class="modal-backdrop" onclick={(e) => e.target === e.currentTarget && onclose()} onwheel={(e) => {
 	// Only forward wheel events if scrolling on the backdrop itself (not inside modal content)
 	if (e.target !== e.currentTarget) return;
@@ -963,6 +963,7 @@
 							<button 
 								class="seed-pattern-btn" 
 								onclick={() => seedPatternDropdownOpen = !seedPatternDropdownOpen}
+								aria-label="Select seed pattern shape"
 							>
 							<canvas 
 								class="seed-pattern-preview"
@@ -1714,29 +1715,6 @@
 			padding: 0.8rem;
 		}
 
-		.main-content {
-			flex-direction: column;
-		}
-
-		.patterns-section {
-			min-width: unset;
-		}
-
-		.preview-section {
-			flex-direction: row;
-			align-items: center;
-			gap: 0.5rem;
-		}
-
-		.preview-canvas {
-			width: 80px;
-			height: 80px;
-		}
-
-		.preview-controls {
-			flex-direction: column;
-		}
-
 		.tabs {
 			flex-wrap: wrap;
 		}
@@ -1744,10 +1722,6 @@
 		.tab {
 			padding: 0.35rem 0.6rem;
 			font-size: 0.6rem;
-		}
-
-		.header h2 {
-			font-size: 0.9rem;
 		}
 	}
 

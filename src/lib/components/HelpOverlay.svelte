@@ -26,7 +26,7 @@
 <svelte:window onkeydown={(e) => e.key === 'Escape' && onclose()} />
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
-<div class="help-overlay" role="dialog" aria-modal="true" onclick={handleBackdropClick}>
+<div class="help-overlay" role="dialog" aria-modal="true" tabindex="-1" onclick={handleBackdropClick}>
 	<div class="help-panel">
 		<div class="help-header">
 			<h2>

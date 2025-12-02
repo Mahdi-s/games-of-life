@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { getSimulationState, GRID_SCALES, DARK_THEME_COLORS, LIGHT_THEME_COLORS, SPECTRUM_MODES, type GridScale, type SpectrumMode } from '../stores/simulation.svelte.js';
+	import { getSimulationState, GRID_SCALES, DARK_THEME_COLORS, LIGHT_THEME_COLORS, SPECTRUM_MODES, BOUNDARY_MODES, type GridScale, type SpectrumMode, type BoundaryMode } from '../stores/simulation.svelte.js';
+	import BoundaryIcon from './BoundaryIcon.svelte';
 
 	interface Props {
 		onclose: () => void;
@@ -47,13 +48,22 @@
 		onscalechange(scale);
 	}
 	
+	function selectBoundaryMode(mode: BoundaryMode) {
+		simState.boundaryMode = mode;
+	}
+	
 	// Get current dimensions for display
 	const currentDimensions = $derived(`${simState.gridWidth}×${simState.gridHeight}`);
+	
+	// Get current boundary mode name
+	const currentBoundaryName = $derived(
+		BOUNDARY_MODES.find(m => m.id === simState.boundaryMode)?.name ?? 'Torus'
+	);
 </script>
 
 <svelte:window onkeydown={(e) => e.key === 'Escape' && onclose()} />
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
+<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
 <div class="backdrop" onclick={(e) => e.target === e.currentTarget && onclose()} onwheel={(e) => {
 	// Only forward wheel events if scrolling on the backdrop itself (not inside modal content)
 	if (e.target !== e.currentTarget) return;
@@ -96,6 +106,7 @@
 						class="toggle"
 						class:on={simState.showGrid}
 						onclick={() => (simState.showGrid = !simState.showGrid)}
+						aria-label="Toggle grid lines"
 					>
 						<span class="track"><span class="thumb"></span></span>
 					</button>
@@ -163,31 +174,23 @@
 				</div>
 
 				<!-- Boundary Mode -->
-				<div class="row">
-					<span class="label">Boundary</span>
-					<div class="boundary-btns">
-						<button 
-							class="boundary-btn" 
-							class:active={simState.wrapBoundary} 
-							onclick={() => (simState.wrapBoundary = true)}
-							title="Wrap (Toroidal)"
-						>
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-								<circle cx="12" cy="12" r="9" />
-								<path d="M12 3c-2 3-2 9 0 18M12 3c2 3 2 9 0 18M3 12h18" />
-							</svg>
-						</button>
-						<button 
-							class="boundary-btn" 
-							class:active={!simState.wrapBoundary} 
-							onclick={() => (simState.wrapBoundary = false)}
-							title="Fixed Edges"
-						>
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-								<rect x="3" y="3" width="18" height="18" rx="2" />
-								<path d="M3 3l18 18M21 3l-18 18" />
-							</svg>
-						</button>
+				<div class="row col">
+					<div class="label-row">
+						<span class="label">Boundary</span>
+						<span class="dim-hint">{currentBoundaryName}</span>
+					</div>
+					<div class="boundary-grid">
+						{#each BOUNDARY_MODES as mode}
+							<button 
+								class="boundary-btn" 
+								class:active={simState.boundaryMode === mode.id}
+								onclick={() => selectBoundaryMode(mode.id)}
+								title={mode.description}
+								aria-label={mode.name}
+							>
+								<BoundaryIcon mode={mode.id} size={26} />
+							</button>
+						{/each}
 					</div>
 				</div>
 
@@ -417,29 +420,27 @@
 		color: var(--ui-accent, #2dd4bf);
 	}
 
-	/* Boundary buttons */
-	.boundary-btns {
+	/* Boundary grid - 9 topology icons */
+	.boundary-grid {
 		display: flex;
-		gap: 0.3rem;
+		justify-content: space-between;
+		width: 100%;
 	}
 
 	.boundary-btn {
 		width: 28px;
 		height: 28px;
+		flex-shrink: 0;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		background: var(--ui-border, rgba(255, 255, 255, 0.05));
 		border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.08));
-		border-radius: 5px;
+		border-radius: 4px;
 		color: var(--ui-text, #666);
 		cursor: pointer;
 		transition: all 0.1s;
-	}
-
-	.boundary-btn svg {
-		width: 14px;
-		height: 14px;
+		padding: 0;
 	}
 
 	.boundary-btn:hover {
@@ -448,33 +449,6 @@
 	}
 
 	.boundary-btn.active {
-		background: var(--ui-accent-bg, rgba(45, 212, 191, 0.15));
-		border-color: var(--ui-accent-border, rgba(45, 212, 191, 0.3));
-		color: var(--ui-accent, #2dd4bf);
-	}
-
-	/* Generic option buttons */
-	.btns {
-		display: flex;
-		gap: 0.25rem;
-	}
-
-	.opt {
-		padding: 0.25rem 0.5rem;
-		background: var(--ui-border, rgba(255, 255, 255, 0.05));
-		border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.08));
-		border-radius: 4px;
-		color: var(--ui-text, #666);
-		font-size: 0.65rem;
-		cursor: pointer;
-		transition: all 0.1s;
-	}
-
-	.opt:hover {
-		background: var(--ui-border-hover, rgba(255, 255, 255, 0.08));
-	}
-
-	.opt.active {
 		background: var(--ui-accent-bg, rgba(45, 212, 191, 0.15));
 		border-color: var(--ui-accent-border, rgba(45, 212, 191, 0.3));
 		color: var(--ui-accent, #2dd4bf);
@@ -534,62 +508,32 @@
 		color: var(--ui-accent, #2dd4bf);
 	}
 
-	.btn {
-		padding: 0.35rem 0.8rem;
-		border-radius: 5px;
-		font-size: 0.7rem;
-		font-weight: 500;
-		cursor: pointer;
-		transition: all 0.1s;
-	}
-
-	.btn.secondary {
-		background: transparent;
-		border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.1));
-		color: var(--ui-text, #888);
-	}
-
-	.btn.secondary:hover {
-		background: var(--ui-border, rgba(255, 255, 255, 0.05));
-		color: var(--ui-text-hover, #e0e0e0);
-	}
-
-	.btn.primary {
-		background: var(--ui-accent, #2dd4bf);
-		border: none;
-		color: #0a0a0f;
-	}
-
-	.btn.primary:hover {
-		filter: brightness(1.1);
-	}
-
 	/* Mobile adjustments */
 	@media (max-width: 768px) {
-		.modal {
+		.panel {
 			max-width: 95vw;
 			padding: 0.8rem;
 		}
 
-		.colors-grid {
+		.colors {
 			gap: 0.4rem;
 		}
 
-		.color-btn {
+		.swatch {
 			width: 28px;
 			height: 28px;
 		}
 
-		.scale-options {
+		.sizes {
 			flex-wrap: wrap;
 		}
 
-		.scale-btn {
+		.size {
 			padding: 0.4rem 0.6rem;
 			font-size: 0.65rem;
 		}
 
-		.header h2 {
+		.title {
 			font-size: 0.9rem;
 		}
 	}

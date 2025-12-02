@@ -53,7 +53,7 @@
 	let neighborhoodDropdownOpen = $state(false);
 	let ruleSearchQuery = $state('');
 	let ruleSearchMode = $state(false);
-	let ruleSearchInput: HTMLInputElement;
+	let ruleSearchInput = $state<HTMLInputElement | null>(null);
 	const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 	let ruleString = $state(simState.currentRule.ruleString);
 	let numStates = $state(simState.currentRule.numStates);
@@ -684,7 +684,7 @@
 
 <svelte:window onkeydown={(e) => e.key === 'Escape' && cancelAndClose()} />
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
+<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
 <div class="modal-backdrop" onclick={(e) => e.target === e.currentTarget && cancelAndClose()} onwheel={(e) => {
 	// Only forward wheel events if scrolling on the backdrop itself (not inside modal content)
 	if (e.target !== e.currentTarget) return;
@@ -830,7 +830,7 @@
 								onfocus={() => ruleSearchMode = true}
 							/>
 							{#if ruleSearchQuery}
-								<button class="search-clear" onclick={() => { ruleSearchQuery = ''; ruleSearchInput?.focus(); }}>
+								<button class="search-clear" onclick={() => { ruleSearchQuery = ''; ruleSearchInput?.focus(); }} aria-label="Clear search">
 									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 										<path d="M18 6L6 18M6 6l12 12" />
 									</svg>
