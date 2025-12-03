@@ -399,11 +399,12 @@ export class Simulation {
 
 	/**
 	 * Paint cells in a brush area
-	 * For hexagonal grids, uses visual distance to create a circular brush
+	 * brushType: 'solid' = all cells at given state, 'gradient' = random states
 	 */
-	paintBrush(centerX: number, centerY: number, radius: number, state: number): void {
+	paintBrush(centerX: number, centerY: number, radius: number, state: number, brushType: string = 'solid'): void {
 		const HEX_HEIGHT_RATIO = 0.866025404; // sqrt(3)/2
 		const isHex = this.rule.neighborhood === 'hexagonal' || this.rule.neighborhood === 'extendedHexagonal';
+		const numStates = this.rule.numStates;
 		
 		if (isHex) {
 			// For hexagonal grids, we need to check visual distance
@@ -439,17 +440,35 @@ export class Simulation {
 					const distSq = vdx * vdx + vdy * vdy;
 					
 					if (distSq <= visualRadiusSq) {
-						this.setCell(cellX, cellY, state);
+						if (brushType === 'gradient' && state > 0) {
+							// Random state from 1 to numStates (alive states only)
+							const randomState = Math.floor(Math.random() * numStates) + 1;
+							// Clamp to valid range (1 = alive, 2+ = dying states)
+							const cellState = Math.min(randomState, numStates);
+							this.setCell(cellX, cellY, cellState);
+						} else {
+							this.setCell(cellX, cellY, state);
+						}
 					}
 				}
 			}
 		} else {
 			// Square grids: simple Euclidean distance in cell coordinates
 			const r = Math.floor(radius);
+			const brushCenterX = Math.floor(centerX);
+			const brushCenterY = Math.floor(centerY);
+			
 			for (let dy = -r; dy <= r; dy++) {
 				for (let dx = -r; dx <= r; dx++) {
 					if (dx * dx + dy * dy <= radius * radius) {
-						this.setCell(Math.floor(centerX) + dx, Math.floor(centerY) + dy, state);
+						if (brushType === 'gradient' && state > 0) {
+							// Random state from 1 to numStates
+							const randomState = Math.floor(Math.random() * numStates) + 1;
+							const cellState = Math.min(randomState, numStates);
+							this.setCell(brushCenterX + dx, brushCenterY + dy, cellState);
+						} else {
+							this.setCell(brushCenterX + dx, brushCenterY + dy, state);
+						}
 					}
 				}
 			}

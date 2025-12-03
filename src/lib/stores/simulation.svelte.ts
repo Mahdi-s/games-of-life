@@ -11,7 +11,16 @@ let isPlaying = $state(true); // Start playing by default
 let speed = $state(60); // Steps per second (default 60 fps)
 let brushSize = $state(25);
 let brushState = $state(1); // 1 = draw alive, 0 = erase
+let brushType = $state<BrushType>('solid'); // Brush fill type
 let currentRule = $state<CARule>(getDefaultRule());
+
+// Brush types - how cells are filled
+export type BrushType = 'solid' | 'gradient';
+
+export const BRUSH_TYPES: { id: BrushType; name: string; description: string }[] = [
+	{ id: 'solid', name: 'Solid', description: 'All cells fully alive' },
+	{ id: 'gradient', name: 'Gradient', description: 'Random states based on rule' }
+];
 let generation = $state(0);
 let showGrid = $state(true);
 let hasInteracted = $state(false); // Track if user has clicked/touched the canvas
@@ -470,6 +479,13 @@ export function getSimulationState() {
 		},
 		set brushState(value: number) {
 			brushState = value;
+		},
+
+		get brushType() {
+			return brushType;
+		},
+		set brushType(value: BrushType) {
+			brushType = value;
 		},
 
 		get currentRule() {

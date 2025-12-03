@@ -299,7 +299,7 @@
 		
 		continuousDrawInterval = setInterval(() => {
 			if (!simulation || !isDrawing) return;
-			simulation.paintBrush(gridMouseX, gridMouseY, simState.brushSize, drawingState);
+			simulation.paintBrush(gridMouseX, gridMouseY, simState.brushSize, drawingState, simState.brushType);
 		}, 50); // Draw every 50ms (20 times per second)
 	}
 
@@ -342,7 +342,7 @@
 			const gridPos = simulation.screenToGrid(x, y, canvasWidth, canvasHeight);
 			gridMouseX = gridPos.x;
 			gridMouseY = gridPos.y;
-			simulation.paintBrush(gridPos.x, gridPos.y, simState.brushSize, drawingState);
+			simulation.paintBrush(gridPos.x, gridPos.y, simState.brushSize, drawingState, simState.brushType);
 			
 			// Start continuous drawing for hold-to-draw
 			startContinuousDrawing();
@@ -372,7 +372,7 @@
 
 		if (isDrawing) {
 			// Paint immediately on move (in addition to continuous interval)
-			simulation.paintBrush(gridPos.x, gridPos.y, simState.brushSize, drawingState);
+			simulation.paintBrush(gridPos.x, gridPos.y, simState.brushSize, drawingState, simState.brushType);
 		}
 	}
 
@@ -467,7 +467,7 @@
 			gridMouseX = gridPos.x;
 			gridMouseY = gridPos.y;
 			drawingState = simState.brushState; // Use current brush state for touch
-			simulation.paintBrush(gridPos.x, gridPos.y, simState.brushSize, drawingState);
+			simulation.paintBrush(gridPos.x, gridPos.y, simState.brushSize, drawingState, simState.brushType);
 			
 			// Start continuous drawing for hold-to-draw on touch
 			startContinuousDrawing();
@@ -498,7 +498,7 @@
 			const gridPos = simulation.screenToGrid(x, y, canvasWidth, canvasHeight);
 			gridMouseX = gridPos.x;
 			gridMouseY = gridPos.y;
-			simulation.paintBrush(gridPos.x, gridPos.y, simState.brushSize, simState.brushState);
+			simulation.paintBrush(gridPos.x, gridPos.y, simState.brushSize, simState.brushState, simState.brushType);
 			
 			lastTouchX = touch.clientX;
 			lastTouchY = touch.clientY;
@@ -582,6 +582,11 @@
 		simulation.countAliveCellsAsync().then(count => {
 			simState.aliveCells = count;
 		});
+	}
+
+	// Re-initialize the grid using the last selected initialization settings
+	export function reinitialize() {
+		applyLastInitialization();
 	}
 
 	// Apply the last selected initialization method

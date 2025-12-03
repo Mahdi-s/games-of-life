@@ -842,15 +842,15 @@ export const RULE_PRESETS: CARule[] = [
 		density: 0.2
 	},
 	{
-		name: 'Hex2 Waves',
-		birthMask: 0b0000001000000, // 6
-		surviveMask: 0b0000111110000, // 4, 5, 6, 7, 8
-		numStates: 8,
-		ruleString: 'B6/S45678/C8',
+		name: 'Hex2 Neo Brain 2',
+		birthMask: 0b0001101000, // 3, 5, 6
+		surviveMask: 0b0111100000, // 5, 6, 7, 8
+		numStates: 128,
+		ruleString: 'B356/S5678/C128',
 		neighborhood: 'extendedHexagonal',
 		category: 'artistic',
-		description: 'Wave-like patterns with colorful trails',
-		density: 0.3
+		description: 'Complex neural patterns with long trails',
+		density: 0.2
 	},
 	{
 		name: 'Hex2 Aurora',
@@ -906,10 +906,10 @@ export function getRuleByName(name: string): CARule | undefined {
 }
 
 /**
- * Get the default rule (Hex2 Neo Brain)
+ * Get the default rule (Hex2 Neo Brain 2)
  */
 export function getDefaultRule(): CARule {
-	return getRuleByName('Hex2 Neo Brain') || RULE_PRESETS[0];
+	return getRuleByName('Hex2 Neo Brain 2') || RULE_PRESETS[0];
 }
 
 /**

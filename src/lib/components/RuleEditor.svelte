@@ -21,9 +21,10 @@
 	interface Props {
 		onclose: () => void;
 		onrulechange: () => void;
+		onreinitialize: () => void;
 	}
 
-	let { onclose, onrulechange }: Props = $props();
+	let { onclose, onrulechange, onreinitialize }: Props = $props();
 
 	const simState = getSimulationState();
 	
@@ -839,10 +840,8 @@
 	const neighborNumbers = $derived(Array.from({ length: maxNeighbors + 1 }, (_, i) => i));
 </script>
 
-<svelte:window onkeydown={(e) => e.key === 'Escape' && cancelAndClose()} />
-
 <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
-<div class="modal-backdrop" onclick={(e) => e.target === e.currentTarget && cancelAndClose()} onwheel={(e) => {
+<div class="modal-backdrop" onwheel={(e) => {
 	// Only forward wheel events if scrolling on the backdrop itself (not inside modal content)
 	if (e.target !== e.currentTarget) return;
 	
@@ -1106,6 +1105,17 @@
 				<span class="foot-label">Rule</span>
 				<input type="text" value={ruleString} oninput={handleRuleStringChange} class:error={!!error} />
 			</div>
+			<button class="reinit-btn" onclick={onreinitialize} title="Re-initialize Grid (R)" aria-label="Re-initialize Grid">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+					<!-- Dice/random scatter icon - same as Initialize button -->
+					<rect x="4" y="4" width="16" height="16" rx="2" />
+					<circle cx="8" cy="8" r="1.5" fill="currentColor" stroke="none" />
+					<circle cx="16" cy="8" r="1.5" fill="currentColor" stroke="none" />
+					<circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+					<circle cx="8" cy="16" r="1.5" fill="currentColor" stroke="none" />
+					<circle cx="16" cy="16" r="1.5" fill="currentColor" stroke="none" />
+				</svg>
+			</button>
 		</div>
 		
 		<!-- Boundary Mode -->
@@ -1139,6 +1149,7 @@
 		align-items: center;
 		justify-content: center;
 		z-index: 1000;
+		pointer-events: none; /* Allow clicks to pass through to canvas */
 	}
 
 	.editor {
@@ -1148,6 +1159,7 @@
 		border-radius: 12px;
 		padding: 0.8rem;
 		display: flex;
+		pointer-events: auto; /* But capture clicks on the editor itself */
 		flex-direction: column;
 		gap: 0.6rem;
 		box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4);
@@ -2079,6 +2091,34 @@
 	}
 
 	.rule-input input.error { border-color: #ef4444; }
+
+	/* Re-initialize button */
+	.reinit-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		padding: 0;
+		background: var(--ui-input-bg, rgba(0, 0, 0, 0.3));
+		border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.1));
+		border-radius: 4px;
+		color: var(--ui-text, #666);
+		cursor: pointer;
+		transition: all 0.15s;
+		flex-shrink: 0;
+	}
+
+	.reinit-btn:hover {
+		background: var(--ui-border-hover, rgba(255, 255, 255, 0.08));
+		border-color: var(--ui-border-hover, rgba(255, 255, 255, 0.15));
+		color: var(--ui-text-hover, #fff);
+	}
+
+	.reinit-btn svg {
+		width: 14px;
+		height: 14px;
+	}
 
 	/* Mobile adjustments */
 	@media (max-width: 540px) {

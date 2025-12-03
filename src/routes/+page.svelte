@@ -365,6 +365,7 @@
 		<RuleEditor
 			onclose={() => (uiState.showRuleEditor = false)}
 			onrulechange={handleRuleChange}
+			onreinitialize={() => canvas?.reinitialize()}
 		/>
 	{/if}
 

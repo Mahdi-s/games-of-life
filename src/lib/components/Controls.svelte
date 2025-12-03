@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getSimulationState, getUIState } from '../stores/simulation.svelte.js';
+	import { getSimulationState, getUIState, BRUSH_TYPES } from '../stores/simulation.svelte.js';
 	import HeartIcon from './HeartIcon.svelte';
 
 	interface Props {
@@ -193,6 +193,34 @@
 								<path d="M6.5 13.5L13 7" />
 							</svg>
 							<span>Erase</span>
+						</button>
+					</div>
+					<div class="brush-type-toggle">
+						<button 
+							class="brush-type-btn" 
+							class:active={simState.brushType === 'solid'}
+							onclick={() => simState.brushType = 'solid'}
+							title="Solid - All cells fully alive"
+						>
+							<svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+								<circle cx="12" cy="12" r="8" />
+							</svg>
+							<span>Solid</span>
+						</button>
+						<button 
+							class="brush-type-btn" 
+							class:active={simState.brushType === 'gradient'}
+							onclick={() => simState.brushType = 'gradient'}
+							title="Gradient - Random states based on rule"
+						>
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								<circle cx="12" cy="12" r="8" />
+								<circle cx="9" cy="10" r="1.5" fill="currentColor" opacity="0.3" />
+								<circle cx="14" cy="9" r="1" fill="currentColor" opacity="0.6" />
+								<circle cx="11" cy="14" r="1.5" fill="currentColor" opacity="0.8" />
+								<circle cx="15" cy="13" r="1" fill="currentColor" opacity="0.4" />
+							</svg>
+							<span>Gradient</span>
 						</button>
 					</div>
 					<div class="size-control">
@@ -585,6 +613,45 @@
 	}
 
 	.mode-btn.active {
+		background: var(--ui-accent-bg, rgba(45, 212, 191, 0.2));
+		color: var(--ui-accent, #2dd4bf);
+	}
+
+	/* Brush type toggle - solid vs gradient */
+	.brush-type-toggle {
+		display: flex;
+		gap: 0.25rem;
+		background: var(--ui-input-bg, rgba(0, 0, 0, 0.3));
+		border-radius: 5px;
+		padding: 0.2rem;
+	}
+
+	.brush-type-btn {
+		flex: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.3rem;
+		padding: 0.35rem 0.5rem;
+		border: none;
+		background: transparent;
+		color: var(--ui-text, #888);
+		border-radius: 4px;
+		cursor: pointer;
+		font-size: 0.65rem;
+		transition: all 0.15s;
+	}
+
+	.brush-type-btn svg {
+		width: 12px;
+		height: 12px;
+	}
+
+	.brush-type-btn:hover {
+		color: var(--ui-text-hover, #fff);
+	}
+
+	.brush-type-btn.active {
 		background: var(--ui-accent-bg, rgba(45, 212, 191, 0.2));
 		color: var(--ui-accent, #2dd4bf);
 	}
