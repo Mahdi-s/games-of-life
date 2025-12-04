@@ -8,7 +8,7 @@ import { getDefaultRule } from '../utils/rules.js';
 
 // Simulation state
 let isPlaying = $state(true); // Start playing by default
-let speed = $state(60); // Steps per second (default 60 fps)
+let speed = $state(120); // Steps per second (default 120 fps)
 let brushSize = $state(25);
 let brushState = $state(1); // 1 = draw alive, 0 = erase
 let brushType = $state<BrushType>('solid'); // Brush fill type
