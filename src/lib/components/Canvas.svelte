@@ -267,6 +267,7 @@
 			brushRadius: showBrush ? simState.brushSize : -1,
 			boundaryMode: simState.boundaryMode,
 			spectrumMode: getSpectrumModeIndex(simState.spectrumMode),
+			spectrumFrequency: simState.spectrumFrequency,
 			neighborShading: getNeighborShadingIndex(simState.neighborShading)
 		});
 

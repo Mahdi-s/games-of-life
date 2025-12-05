@@ -944,8 +944,8 @@ export const RULE_PRESETS: CARule[] = [
 		name: 'Hex2 Neo Slime Mold',
 		birthMask: 0b1111111111111100000, // 5-18
 		surviveMask: 0b1111111100111100000, // 5-8, 11-18
-		numStates: 64,
-		ruleString: 'B5,6,7,8,9,10,11,12,13,14,15,16,17,18/S5,6,7,8,11,12,13,14,15,16,17,18/C64',
+		numStates: 128,
+		ruleString: 'B5,6,7,8,9,10,11,12,13,14,15,16,17,18/S5,6,7,8,11,12,13,14,15,16,17,18/C128',
 		neighborhood: 'extendedHexagonal',
 		category: 'artistic',
 		description: 'Organic slime mold-like spreading patterns',
@@ -961,10 +961,10 @@ export function getRuleByName(name: string): CARule | undefined {
 }
 
 /**
- * Get the default rule (Hex2 Neo Brain 2)
+ * Get the default rule (Hex2 Neo Slime Mold)
  */
 export function getDefaultRule(): CARule {
-	return getRuleByName('Hex2 Neo Brain 2') || RULE_PRESETS[0];
+	return getRuleByName('Hex2 Neo Slime Mold') || RULE_PRESETS[0];
 }
 
 /**

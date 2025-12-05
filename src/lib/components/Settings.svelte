@@ -222,7 +222,10 @@
 					const colorIdx = band % 3;
 					h = colorIdx === 0 ? aliveH : colorIdx === 1 ? (aliveH + 0.333) % 1 : (aliveH + 0.666) % 1;
 					s = 1;
-					l = isLight ? 0.48 + (0.88 - 0.48) * fade : 0.52 + (0.08 - 0.52) * fade;
+					// Match shader: lightness varies by band % 3, then fades
+					const bandLightVar = colorIdx; // 0, 1, or 2
+					const baseL = isLight ? 0.48 + bandLightVar * 0.04 : 0.52 + bandLightVar * 0.05;
+					l = baseL + (isLight ? 0.88 - baseL : 0.08 - baseL) * fade;
 					break;
 				}
 				case 'sunset': {
@@ -415,6 +418,22 @@
 								<span class="spectrum-label">{mode.name}</span>
 							</button>
 						{/each}
+					</div>
+				</div>
+
+				<!-- Spectrum Frequency -->
+				<div class="row">
+					<span class="label">Frequency</span>
+					<div class="slider-container">
+						<input 
+							type="range" 
+							min="0.1" 
+							max="5" 
+							step="0.05" 
+							bind:value={simState.spectrumFrequency}
+							class="slider frequency-slider"
+						/>
+						<span class="slider-value">{simState.spectrumFrequency.toFixed(2)}×</span>
 					</div>
 				</div>
 
@@ -748,6 +767,62 @@
 	.swatch.selected {
 		border-color: #fff;
 		box-shadow: 0 0 6px var(--c);
+	}
+
+	/* Slider styles */
+	.slider-container {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex: 1;
+	}
+
+	.slider {
+		flex: 1;
+		-webkit-appearance: none;
+		appearance: none;
+		height: 4px;
+		background: var(--ui-border, rgba(255, 255, 255, 0.1));
+		border-radius: 2px;
+		outline: none;
+		cursor: pointer;
+	}
+
+	.slider::-webkit-slider-thumb {
+		-webkit-appearance: none;
+		appearance: none;
+		width: 14px;
+		height: 14px;
+		background: var(--ui-accent, #2dd4bf);
+		border-radius: 50%;
+		cursor: pointer;
+		transition: transform 0.1s;
+	}
+
+	.slider::-webkit-slider-thumb:hover {
+		transform: scale(1.15);
+	}
+
+	.slider::-moz-range-thumb {
+		width: 14px;
+		height: 14px;
+		background: var(--ui-accent, #2dd4bf);
+		border-radius: 50%;
+		border: none;
+		cursor: pointer;
+		transition: transform 0.1s;
+	}
+
+	.slider::-moz-range-thumb:hover {
+		transform: scale(1.15);
+	}
+
+	.slider-value {
+		font-size: 0.7rem;
+		color: var(--ui-text, #888);
+		min-width: 2.5rem;
+		text-align: right;
+		font-variant-numeric: tabular-nums;
 	}
 
 	/* Mobile adjustments */

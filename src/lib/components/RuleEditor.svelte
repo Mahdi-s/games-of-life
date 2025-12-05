@@ -1528,6 +1528,7 @@
 
 	.preset-menu {
 		min-width: 280px;
+		max-width: 320px;
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
@@ -1665,6 +1666,7 @@
 		font-size: 0.7rem;
 		cursor: pointer;
 		text-align: left;
+		overflow: hidden;
 	}
 
 	.dropdown-item:hover { 
@@ -1686,6 +1688,11 @@
 		font-family: 'SF Mono', Monaco, monospace;
 		font-size: 0.6rem;
 		color: var(--ui-text, #888);
+		max-width: 120px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		flex-shrink: 1;
 	}
 
 	.dropdown-item.selected .item-code {

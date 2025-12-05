@@ -30,6 +30,7 @@ export interface ViewState {
 	brushRadius: number; // Brush radius in cells (-1 to hide)
 	boundaryMode: BoundaryMode; // Topological boundary condition
 	spectrumMode: number; // 0=hueShift, 1=rainbow, 2=warm, 3=cool, 4=monochrome, 5=fire
+	spectrumFrequency: number; // How many times to repeat spectrum (1.0 = normal)
 	neighborShading: number; // 0=off, 1=count alive, 2=sum vitality
 }
 
@@ -318,6 +319,7 @@ export class Simulation {
 			this.view.brushRadius,
 			this.getNeighborhoodIndex(), // neighborhood type for rendering
 			this.view.spectrumMode, // spectrum mode for color transitions
+			this.view.spectrumFrequency, // how many times to repeat the spectrum
 			this.view.neighborShading // neighbor shading mode: 0=off, 1=alive, 2=vitality
 		]);
 		this.device.queue.writeBuffer(this.renderParamsBuffer, 0, params);

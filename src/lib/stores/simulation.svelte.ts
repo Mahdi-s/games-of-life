@@ -115,7 +115,11 @@ export function boundaryModeToIndex(mode: BoundaryMode): number {
 	return modes.indexOf(mode);
 }
 
-let spectrumMode = $state<SpectrumMode>('thermal');
+let spectrumMode = $state<SpectrumMode>('fire');
+
+// Spectrum frequency - how many times to repeat the spectrum across dying states
+// 1.0 = normal (once), 2.0 = twice, 0.5 = stretched to half
+let spectrumFrequency = $state(2.3);
 
 // Neighbor shading mode - modulate color based on neighbors
 // 'off' = no shading, 'alive' = count alive neighbors, 'vitality' = sum neighbor states
@@ -574,6 +578,13 @@ export function getSimulationState() {
 		},
 		set spectrumMode(value: SpectrumMode) {
 			spectrumMode = value;
+		},
+
+		get spectrumFrequency() {
+			return spectrumFrequency;
+		},
+		set spectrumFrequency(value: number) {
+			spectrumFrequency = Math.max(0.1, Math.min(5.0, value));
 		},
 
 		get neighborShading() {

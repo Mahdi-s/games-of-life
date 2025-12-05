@@ -236,9 +236,11 @@
 		return Math.max(size.width, size.height) + 4;
 	});
 
-	// Check if current pattern supports tiling (not random, not glider-gun which is too big)
+	// Check if current pattern supports tiling (not random/blank, not glider-gun which is too big)
 	const canTile = $derived(
+		selectedCategory !== 'random' &&
 		!selectedPattern.startsWith('random') && 
+		selectedPattern !== 'blank' &&
 		selectedPattern !== 'glider-gun' &&
 		selectedPattern !== 'pulsar' &&
 		selectedPattern !== 'pentadecathlon'
