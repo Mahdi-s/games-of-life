@@ -9,7 +9,7 @@
 	import InfoOverlay from '$lib/components/InfoOverlay.svelte';
 	import ClickHint from '$lib/components/ClickHint.svelte';
 	import AboutModal from '$lib/components/AboutModal.svelte';
-	import { getSimulationState, getUIState, DARK_THEME_COLORS, LIGHT_THEME_COLORS, type GridScale } from '$lib/stores/simulation.svelte.js';
+	import { getSimulationState, getUIState, DARK_THEME_COLORS, LIGHT_THEME_COLORS, SPECTRUM_MODES, type GridScale } from '$lib/stores/simulation.svelte.js';
 	import { hasTourBeenCompleted, startTour, getTourStyles } from '$lib/utils/tour.js';
 	import 'driver.js/dist/driver.css';
 
@@ -223,6 +223,12 @@
 		simState.aliveColor = palette[nextIndex].color;
 	}
 
+	function cycleSpectrum() {
+		const currentIndex = SPECTRUM_MODES.findIndex(m => m.id === simState.spectrumMode);
+		const nextIndex = (currentIndex + 1) % SPECTRUM_MODES.length;
+		simState.spectrumMode = SPECTRUM_MODES[nextIndex].id;
+	}
+
 	function toggleTheme() {
 		// Get current color index before switching
 		const currentPalette = simState.isLightTheme ? LIGHT_THEME_COLORS : DARK_THEME_COLORS;
@@ -253,7 +259,11 @@
 				break;
 			case 'KeyC':
 				if (!e.ctrlKey && !e.metaKey) {
-					cycleColorScheme();
+					if (e.shiftKey) {
+						cycleSpectrum();
+					} else {
+						cycleColorScheme();
+					}
 				}
 				break;
 			case 'KeyD':

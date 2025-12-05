@@ -72,6 +72,34 @@
 	let ruleString = $state(simState.currentRule.ruleString);
 	let numStates = $state(simState.currentRule.numStates);
 	let neighborhood = $state<NeighborhoodType>(simState.currentRule.neighborhood ?? 'moore');
+	
+	// Grid type toggle - determines which neighborhoods/rules are shown
+	type GridType = 'square' | 'hexagonal';
+	const currentNeighborhood = simState.currentRule.neighborhood ?? 'moore';
+	const initialGridType: GridType = (currentNeighborhood === 'hexagonal' || currentNeighborhood === 'extendedHexagonal') ? 'hexagonal' : 'square';
+	let gridType = $state<GridType>(initialGridType);
+	
+	// Filter neighborhoods by grid type
+	const squareNeighborhoods: NeighborhoodType[] = ['moore', 'vonNeumann', 'extendedMoore'];
+	const hexNeighborhoods: NeighborhoodType[] = ['hexagonal', 'extendedHexagonal'];
+	
+	const filteredNeighborhoods = $derived(
+		gridType === 'hexagonal' 
+			? hexNeighborhoods.map(nh => NEIGHBORHOODS[nh])
+			: squareNeighborhoods.map(nh => NEIGHBORHOODS[nh])
+	);
+	
+	// Check if a rule matches current grid type
+	function ruleMatchesGridType(rule: CARule): boolean {
+		const nh = rule.neighborhood ?? 'moore';
+		if (gridType === 'hexagonal') {
+			return nh === 'hexagonal' || nh === 'extendedHexagonal';
+		}
+		return nh !== 'hexagonal' && nh !== 'extendedHexagonal';
+	}
+	
+	// Filter all rule presets by grid type
+	const gridFilteredPresets = $derived(RULE_PRESETS.filter(ruleMatchesGridType));
 	let selectedPreset = $state(
 		RULE_PRESETS.findIndex((r) => r.ruleString === simState.currentRule.ruleString)
 	);
@@ -92,7 +120,8 @@
 
 	// Filter presets by category, neighborhood, or state count
 	const filteredPresets = $derived.by(() => {
-		let presets = RULE_PRESETS;
+		// Start with grid-type filtered presets
+		let presets = gridFilteredPresets;
 		
 		// First apply category/neighborhood/state filter
 		if (selectedFilter !== 'all') {
@@ -189,27 +218,34 @@
 		return RULE_CATEGORIES.find(c => c.id === selectedFilter)?.name ?? 'All';
 	});
 
-	// Count rules for each filter (for display in dropdown)
+	// Count rules for each filter (for display in dropdown) - uses grid-filtered presets
 	function getFilterCount(filter: string): number {
-		return getFilteredRules(filter).length;
+		return getFilteredRulesForGridType(filter, gridFilteredPresets).length;
 	}
 
-	// Precompute counts for all filters
-	const filterCounts = $derived.by(() => ({
-		all: RULE_PRESETS.length,
-		// Categories
-		...Object.fromEntries(RULE_CATEGORIES.map(c => [c.id, getFilterCount(c.id)])),
-		// Neighborhoods
-		'nh:moore': getFilterCount('nh:moore'),
-		'nh:vonNeumann': getFilterCount('nh:vonNeumann'),
-		'nh:extendedMoore': getFilterCount('nh:extendedMoore'),
-		'nh:hexagonal': getFilterCount('nh:hexagonal'),
-		// States
-		'states:2': getFilterCount('states:2'),
-		'states:3-4': getFilterCount('states:3-4'),
-		'states:5-8': getFilterCount('states:5-8'),
-		'states:9+': getFilterCount('states:9+'),
-	}));
+	// Precompute counts for all filters - reactive to grid type
+	const filterCounts = $derived.by(() => {
+		const presets = gridFilteredPresets;
+		const getCount = (f: string) => getFilteredRulesForGridType(f, presets).length;
+		return {
+			all: presets.length,
+			// Categories
+			...Object.fromEntries(RULE_CATEGORIES.map(c => [c.id, getCount(c.id)])),
+			// Neighborhoods - only show counts for current grid type
+			...(gridType === 'square' ? {
+				'nh:moore': getCount('nh:moore'),
+				'nh:vonNeumann': getCount('nh:vonNeumann'),
+				'nh:extendedMoore': getCount('nh:extendedMoore'),
+			} : {
+				'nh:hexagonal': getCount('nh:hexagonal'),
+			}),
+			// States
+			'states:2': getCount('states:2'),
+			'states:3-4': getCount('states:3-4'),
+			'states:5-8': getCount('states:5-8'),
+			'states:9+': getCount('states:9+'),
+		};
+	});
 
 	function getBirthMask(): number {
 		return birthToggles.reduce((mask, on, i) => (on ? mask | (1 << i) : mask), 0);
@@ -700,30 +736,30 @@
 		applyToCanvas();
 	}
 
-	function getFilteredRules(filter: string) {
-		if (filter === 'all') return RULE_PRESETS;
+	function getFilteredRulesForGridType(filter: string, presets: CARule[]) {
+		if (filter === 'all') return presets;
 		if (filter.startsWith('nh:')) {
 			const nhType = filter.slice(3);
 			if (nhType === 'moore') {
-				return RULE_PRESETS.filter(r => !r.neighborhood || r.neighborhood === 'moore');
+				return presets.filter(r => !r.neighborhood || r.neighborhood === 'moore');
 			}
 			if (nhType === 'hexagonal') {
 				// Hexagonal filter shows both hexagonal and extendedHexagonal
-				return RULE_PRESETS.filter(r => r.neighborhood === 'hexagonal' || r.neighborhood === 'extendedHexagonal');
+				return presets.filter(r => r.neighborhood === 'hexagonal' || r.neighborhood === 'extendedHexagonal');
 			}
-			return RULE_PRESETS.filter(r => r.neighborhood === nhType);
+			return presets.filter(r => r.neighborhood === nhType);
 		}
 		if (filter.startsWith('states:')) {
 			const stateFilter = filter.slice(7);
 			switch (stateFilter) {
-				case '2': return RULE_PRESETS.filter(r => r.numStates === 2);
-				case '3-4': return RULE_PRESETS.filter(r => r.numStates >= 3 && r.numStates <= 4);
-				case '5-8': return RULE_PRESETS.filter(r => r.numStates >= 5 && r.numStates <= 8);
-				case '9+': return RULE_PRESETS.filter(r => r.numStates >= 9);
-				default: return RULE_PRESETS;
+				case '2': return presets.filter(r => r.numStates === 2);
+				case '3-4': return presets.filter(r => r.numStates >= 3 && r.numStates <= 4);
+				case '5-8': return presets.filter(r => r.numStates >= 5 && r.numStates <= 8);
+				case '9+': return presets.filter(r => r.numStates >= 9);
+				default: return presets;
 			}
 		}
-		return RULE_PRESETS.filter(r => r.category === filter);
+		return presets.filter(r => r.category === filter);
 	}
 
 	function selectFilter(filter: string) {
@@ -732,7 +768,7 @@
 		categoryDropdownOpen = false;
 		
 		// If current rule is not in filtered list, select the first filtered rule
-		const filtered = getFilteredRules(filter);
+		const filtered = getFilteredRulesForGridType(filter, gridFilteredPresets);
 		
 		const currentRuleInFiltered = filtered.some(r => 
 			RULE_PRESETS.indexOf(r) === selectedPreset
@@ -740,6 +776,32 @@
 		
 		if (!currentRuleInFiltered && filtered.length > 0) {
 			selectPreset(RULE_PRESETS.indexOf(filtered[0]));
+		}
+	}
+	
+	// Handle grid type change
+	function setGridType(type: GridType) {
+		if (gridType === type) return;
+		gridType = type;
+		
+		// Reset filter to 'all' when switching grid types
+		selectedFilter = 'all';
+		persistedFilter = 'all';
+		
+		// Update neighborhood to be compatible with new grid type
+		if (type === 'hexagonal') {
+			neighborhood = 'hexagonal';
+		} else {
+			neighborhood = 'moore';
+		}
+		
+		// Select first rule of new grid type
+		const newPresets = type === 'hexagonal' 
+			? RULE_PRESETS.filter(r => r.neighborhood === 'hexagonal' || r.neighborhood === 'extendedHexagonal')
+			: RULE_PRESETS.filter(r => r.neighborhood !== 'hexagonal' && r.neighborhood !== 'extendedHexagonal');
+		
+		if (newPresets.length > 0) {
+			selectPreset(RULE_PRESETS.indexOf(newPresets[0]));
 		}
 	}
 
@@ -875,6 +937,35 @@
 			<button class="close-btn" onclick={cancelAndClose} aria-label="Close">✕</button>
 		</div>
 
+		<!-- Grid type toggle -->
+		<div class="grid-type-toggle">
+			<button 
+				class="grid-type-btn" 
+				class:active={gridType === 'square'} 
+				onclick={() => setGridType('square')}
+				title="Square grid (Moore, Von Neumann, Extended)"
+			>
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+					<rect x="4" y="4" width="6" height="6" />
+					<rect x="14" y="4" width="6" height="6" />
+					<rect x="4" y="14" width="6" height="6" />
+					<rect x="14" y="14" width="6" height="6" />
+				</svg>
+				Square
+			</button>
+			<button 
+				class="grid-type-btn" 
+				class:active={gridType === 'hexagonal'} 
+				onclick={() => setGridType('hexagonal')}
+				title="Hexagonal grid (6 or 18 neighbors)"
+			>
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+					<path d="M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2z" />
+				</svg>
+				Hexagonal
+			</button>
+		</div>
+
 		<!-- Row 2: Category, Preset, Neighborhood dropdowns -->
 		<div class="selectors-row">
 			<!-- Category/Filter dropdown -->
@@ -903,22 +994,25 @@
 						
 						<div class="dropdown-divider"></div>
 						<div class="dropdown-section">By Neighborhood</div>
-						<button class="dropdown-item" class:selected={selectedFilter === 'nh:moore'} onclick={() => selectFilter('nh:moore')}>
-							<span class="item-name">Moore (8) <span class="filter-count">[{filterCounts['nh:moore']}]</span></span>
-							<span class="item-desc">Standard 8-neighbor rules</span>
-						</button>
-						<button class="dropdown-item" class:selected={selectedFilter === 'nh:vonNeumann'} onclick={() => selectFilter('nh:vonNeumann')}>
-							<span class="item-name">Von Neumann (4) <span class="filter-count">[{filterCounts['nh:vonNeumann']}]</span></span>
-							<span class="item-desc">Orthogonal 4-neighbor rules</span>
-						</button>
-						<button class="dropdown-item" class:selected={selectedFilter === 'nh:extendedMoore'} onclick={() => selectFilter('nh:extendedMoore')}>
-							<span class="item-name">Extended (24) <span class="filter-count">[{filterCounts['nh:extendedMoore']}]</span></span>
-							<span class="item-desc">Large radius 24-neighbor rules</span>
-						</button>
-						<button class="dropdown-item" class:selected={selectedFilter === 'nh:hexagonal'} onclick={() => selectFilter('nh:hexagonal')}>
-							<span class="item-name">Hexagonal <span class="filter-count">[{filterCounts['nh:hexagonal']}]</span></span>
-							<span class="item-desc">All honeycomb grid rules (6 & 18 neighbors)</span>
-						</button>
+						{#if gridType === 'square'}
+							<button class="dropdown-item" class:selected={selectedFilter === 'nh:moore'} onclick={() => selectFilter('nh:moore')}>
+								<span class="item-name">Moore (8) <span class="filter-count">[{filterCounts['nh:moore']}]</span></span>
+								<span class="item-desc">Standard 8-neighbor rules</span>
+							</button>
+							<button class="dropdown-item" class:selected={selectedFilter === 'nh:vonNeumann'} onclick={() => selectFilter('nh:vonNeumann')}>
+								<span class="item-name">Von Neumann (4) <span class="filter-count">[{filterCounts['nh:vonNeumann']}]</span></span>
+								<span class="item-desc">Orthogonal 4-neighbor rules</span>
+							</button>
+							<button class="dropdown-item" class:selected={selectedFilter === 'nh:extendedMoore'} onclick={() => selectFilter('nh:extendedMoore')}>
+								<span class="item-name">Extended (24) <span class="filter-count">[{filterCounts['nh:extendedMoore']}]</span></span>
+								<span class="item-desc">Large radius 24-neighbor rules</span>
+							</button>
+						{:else}
+							<button class="dropdown-item" class:selected={selectedFilter === 'nh:hexagonal'} onclick={() => selectFilter('nh:hexagonal')}>
+								<span class="item-name">Hexagonal <span class="filter-count">[{filterCounts['nh:hexagonal']}]</span></span>
+								<span class="item-desc">All honeycomb grid rules (6 & 18 neighbors)</span>
+							</button>
+						{/if}
 						
 						<div class="dropdown-divider"></div>
 						<div class="dropdown-section">By Trail Length</div>
@@ -1023,7 +1117,7 @@
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div class="dropdown-backdrop" onclick={() => (neighborhoodDropdownOpen = false)} onkeydown={() => {}}></div>
 					<div class="dropdown-menu neighborhood-menu">
-						{#each Object.values(NEIGHBORHOODS) as nh}
+						{#each filteredNeighborhoods as nh}
 							<button class="dropdown-item" class:selected={neighborhood === nh.type} onclick={() => selectNeighborhood(nh.type)}>
 								<span class="item-name">{nh.name} ({nh.maxNeighbors})</span>
 								<span class="item-desc">{nh.description}</span>
@@ -1233,6 +1327,46 @@
 	.close-btn:hover { 
 		background: var(--ui-border, rgba(255,255,255,0.1)); 
 		color: var(--ui-text-hover, #fff); 
+	}
+
+	/* Grid type toggle */
+	.grid-type-toggle {
+		display: flex;
+		gap: 0.4rem;
+	}
+
+	.grid-type-btn {
+		flex: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.4rem;
+		padding: 0.5rem 0.8rem;
+		background: var(--ui-input-bg, rgba(0, 0, 0, 0.3));
+		border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.1));
+		border-radius: 6px;
+		color: var(--ui-text, #888);
+		font-size: 0.7rem;
+		font-weight: 500;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.grid-type-btn:hover {
+		background: var(--ui-border-hover, rgba(255, 255, 255, 0.08));
+		border-color: var(--ui-border-hover, rgba(255, 255, 255, 0.2));
+		color: var(--ui-text-hover, #ccc);
+	}
+
+	.grid-type-btn.active {
+		background: var(--ui-accent-bg, rgba(45, 212, 191, 0.15));
+		border-color: var(--ui-accent-border, rgba(45, 212, 191, 0.4));
+		color: var(--ui-accent, #2dd4bf);
+	}
+
+	.grid-type-btn svg {
+		width: 16px;
+		height: 16px;
 	}
 
 	/* Selectors row */
@@ -2130,6 +2264,20 @@
 
 		.header {
 			margin-bottom: 0;
+		}
+
+		.grid-type-toggle {
+			gap: 0.3rem;
+		}
+
+		.grid-type-btn {
+			padding: 0.4rem 0.5rem;
+			font-size: 0.65rem;
+		}
+
+		.grid-type-btn svg {
+			width: 14px;
+			height: 14px;
 		}
 
 		/* Keep selectors on ONE row - make them compact */

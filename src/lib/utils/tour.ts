@@ -527,7 +527,12 @@ function getTourSteps(): DriveStep[] {
 				title: titleWithIcon(icons.check, 'Ready to Explore!'),
 				description: mobile
 					? 'You\'re all set! Draw on the canvas and try different rules for amazing patterns!'
-					: 'You\'re all set! Press C to cycle colors, T to toggle themes, and R to reinitialize!',
+					: `<div class="tour-shortcuts">
+						<div class="tour-shortcut-row"><kbd>Space</kbd> <span>Play/Pause</span></div>
+						<div class="tour-shortcut-row"><kbd>C</kbd> <span>Cycle colors</span> <kbd>Shift</kbd>+<kbd>C</kbd> <span>Cycle spectrum</span></div>
+						<div class="tour-shortcut-row"><kbd>T</kbd> <span>Toggle theme</span> <kbd>R</kbd> <span>Reinitialize</span></div>
+						<div class="tour-shortcut-row"><kbd>E</kbd> <span>Edit rules</span> <kbd>?</kbd> <span>All shortcuts</span></div>
+					</div>`,
 				side: 'over',
 				align: 'center'
 			}
@@ -782,6 +787,41 @@ export function getTourStyles(accentColor: string, isLightTheme: boolean): strin
 			box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
 			image-rendering: pixelated !important;
 			image-rendering: crisp-edges !important;
+		}
+		
+		/* Final tour shortcuts */
+		.tour-shortcuts {
+			display: flex !important;
+			flex-direction: column !important;
+			gap: 0.4rem !important;
+			margin-top: 0.3rem !important;
+		}
+		
+		.tour-shortcut-row {
+			display: flex !important;
+			align-items: center !important;
+			gap: 0.35rem !important;
+			flex-wrap: wrap !important;
+			font-size: 0.75rem !important;
+		}
+		
+		.tour-shortcuts kbd {
+			display: inline-block !important;
+			padding: 0.15rem 0.35rem !important;
+			background: ${isLightTheme ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.1)'} !important;
+			border: 1px solid ${borderColor} !important;
+			border-radius: 3px !important;
+			font-family: 'SF Mono', Monaco, Consolas, monospace !important;
+			font-size: 0.65rem !important;
+			color: ${textColor} !important;
+			min-width: 1.1rem !important;
+			text-align: center !important;
+		}
+		
+		.tour-shortcuts span {
+			color: ${mutedColor} !important;
+			font-size: 0.7rem !important;
+			margin-right: 0.5rem !important;
 		}
 		
 		/* Mobile adjustments */

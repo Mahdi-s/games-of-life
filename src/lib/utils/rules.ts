@@ -906,6 +906,17 @@ export const RULE_PRESETS: CARule[] = [
 		category: 'artistic',
 		description: 'Organic slime mold growth in extended hexagonal grid',
 		density: 0.2
+	},
+	{
+		name: 'Hex2 Neo Undead',
+		birthMask: 0b1111111111111101000, // 3, 5-18
+		surviveMask: 0b1111111110111100000, // 5-8, 10-18
+		numStates: 256,
+		ruleString: 'B3,5,6,7,8,9,10,11,12,13,14,15,16,17,18/S5,6,7,8,10,11,12,13,14,15,16,17,18/C256',
+		neighborhood: 'extendedHexagonal',
+		category: 'artistic',
+		description: 'Undying patterns with maximum state trails',
+		density: 0.2
 	}
 ];
 

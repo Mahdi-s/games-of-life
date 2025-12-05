@@ -10,7 +10,11 @@
 	
 	// Convert spectrum mode string to number for shader
 	function getSpectrumModeIndex(mode: SpectrumMode): number {
-		const modes: SpectrumMode[] = ['hueShift', 'rainbow', 'warm', 'cool', 'monochrome', 'fire', 'thermal', 'bands', 'neon', 'sunset', 'aurora'];
+		const modes: SpectrumMode[] = [
+			'hueShift', 'rainbow', 'warm', 'cool', 'monochrome', 'fire',
+			'complement', 'triadic', 'split', 'analogous', 'pastel', 'vivid',
+			'thermal', 'bands', 'neon', 'sunset', 'ocean', 'forest'
+		];
 		return modes.indexOf(mode);
 	}
 	

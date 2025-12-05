@@ -11,9 +11,10 @@
 
 	const colorPalettes = $derived(simState.isLightTheme ? LIGHT_THEME_COLORS : DARK_THEME_COLORS);
 
-	// Split spectrum modes into two rows
-	const smoothModes = SPECTRUM_MODES.slice(0, 6);
-	const sharpModes = SPECTRUM_MODES.slice(6);
+	// Split spectrum modes into three rows
+	const smoothModes = SPECTRUM_MODES.slice(0, 6);    // Row 1: Smooth gradients
+	const harmonyModes = SPECTRUM_MODES.slice(6, 12);  // Row 2: Color harmonies
+	const bandedModes = SPECTRUM_MODES.slice(12, 18);  // Row 3: Banded/themed
 
 	function getSelectedColorIndex(): number {
 		const [r, g, b] = simState.aliveColor;
@@ -80,7 +81,7 @@
 		return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 	}
 
-	// Generate gradient CSS for a spectrum mode
+	// Generate gradient CSS for a spectrum mode (simplified preview, matches shader logic)
 	function getSpectrumGradient(modeId: SpectrumMode): string {
 		const [r, g, b] = simState.aliveColor;
 		const [aliveH, aliveS, aliveL] = rgbToHsl(r, g, b);
@@ -94,6 +95,7 @@
 			const fade = progress * progress;
 
 			switch (modeId) {
+				// Row 1: Smooth gradients
 				case 'hueShift':
 					h = (aliveH + 0.25 * progress) % 1;
 					s = Math.max(aliveS, 0.5) * Math.max(1 - progress * 0.4, 0.5);
@@ -127,50 +129,118 @@
 					s = isLight ? Math.max(0.85 - fade * 0.25, 0.55) : Math.max(1 - fade * 0.2, 0.75);
 					l = isLight ? 0.55 + (0.9 - 0.55) * fade : 0.65 + (0.04 - 0.65) * fade;
 					break;
+				
+				// Row 2: Color harmonies
+				case 'complement': {
+					const complementH = (aliveH + 0.5) % 1;
+					h = aliveH + (complementH - aliveH) * progress;
+					if (h > 1) h -= 1;
+					const satCurve = 1 - Math.abs(progress - 0.5) * 1.5;
+					s = Math.max(aliveS, 0.6) * Math.max(satCurve, 0.5);
+					l = isLight ? aliveL + (0.9 - aliveL) * fade : aliveL + (0.12 - aliveL) * fade;
+					break;
+				}
+				case 'triadic': {
+					const triadic1 = (aliveH + 0.333) % 1;
+					const triadic2 = (aliveH + 0.666) % 1;
+					h = progress < 0.5 
+						? aliveH + (triadic1 - aliveH) * (progress * 2)
+						: triadic1 + (triadic2 - triadic1) * ((progress - 0.5) * 2);
+					if (h > 1) h -= 1;
+					s = Math.max(aliveS, 0.55) * Math.max(1 - progress * 0.25, 0.5);
+					l = isLight ? aliveL + (0.88 - aliveL) * fade : aliveL + (0.12 - aliveL) * fade;
+					break;
+				}
+				case 'split': {
+					const split1 = (aliveH + 0.417) % 1;
+					const split2 = (aliveH - 0.417 + 1) % 1;
+					const phase = Math.sin(progress * Math.PI * 2) * 0.5 + 0.5;
+					h = split1 + (split2 - split1) * phase;
+					if (h < 0) h += 1;
+					s = Math.max(aliveS, 0.5) * Math.max(1 - progress * 0.3, 0.45);
+					l = isLight ? aliveL + (0.88 - aliveL) * fade : aliveL + (0.12 - aliveL) * fade;
+					break;
+				}
+				case 'analogous': {
+					const wave = Math.sin(progress * Math.PI * 3);
+					h = aliveH + wave * 0.083;
+					if (h < 0) h += 1;
+					if (h > 1) h -= 1;
+					s = Math.max(aliveS, 0.45) * Math.max(1 - progress * 0.35, 0.4);
+					l = isLight ? aliveL + (0.9 - aliveL) * fade : aliveL + (0.12 - aliveL) * fade;
+					break;
+				}
+				case 'pastel':
+					h = (aliveH + progress * 0.15) % 1;
+					s = Math.max(aliveS * 0.5, 0.2) * (1 - progress * 0.5);
+					l = isLight ? Math.max(aliveL, 0.7) + (0.95 - Math.max(aliveL, 0.7)) * progress
+						: Math.max(aliveL, 0.5) + (0.2 - Math.max(aliveL, 0.5)) * progress;
+					break;
+				case 'vivid': {
+					const band = Math.floor(progress * 8);
+					h = (aliveH + (band / 8) * 0.4) % 1;
+					s = Math.min(1, Math.max(aliveS, 0.75) + 0.15);
+					l = isLight ? 0.5 + (0.85 - 0.5) * fade : 0.55 + (0.1 - 0.55) * fade;
+					break;
+				}
+				
+				// Row 3: Banded/themed
 				case 'thermal': {
-					const band = Math.floor(progress * 16);
-					const hues = [0.83, 0.75, 0.66, 0.5, 0.33, 0.16, 0.05, 0.0];
-					h = hues[Math.floor((band / 8 % 1) * 7)];
-					s = band % 2 === 0 ? 0.95 : 0.75;
-					l = isLight ? 0.5 + (0.88 - 0.5) * fade : 0.55 + (0.1 - 0.55) * fade;
+					const band = Math.floor(progress * 12);
+					const bandT = band / 11;
+					const isWarmStart = aliveH < 0.17 || aliveH > 0.83;
+					h = isWarmStart ? aliveH + (0.75 - aliveH) * bandT : aliveH + (0 - aliveH) * bandT;
+					if (h < 0) h += 1;
+					if (h > 1) h -= 1;
+					s = band % 2 === 0 ? 0.9 : 0.7;
+					l = isLight ? 0.5 + (0.88 - 0.5) * fade : 0.55 + (0.12 - 0.55) * fade;
 					break;
 				}
 				case 'bands': {
-					const band = Math.floor(progress * 16);
-					h = (aliveH + (band / 15) * 1.5) % 1;
-					s = isLight ? 0.8 : 0.85;
-					l = isLight ? (band % 2 === 0 ? 0.45 : 0.6) : (band % 2 === 0 ? 0.55 : 0.4);
-					const fadeCubic = progress * progress * progress;
-					l = l + (isLight ? 0.9 - l : 0.1 - l) * fadeCubic * 0.7;
+					const band = Math.floor(progress * 10);
+					h = (aliveH + (band / 10) * 0.6) % 1;
+					s = band % 2 === 0 ? Math.max(aliveS, 0.75) : Math.max(aliveS, 0.55);
+					l = isLight ? (band % 2 === 0 ? 0.5 : 0.62) : (band % 2 === 0 ? 0.52 : 0.4);
+					l = l + (isLight ? 0.9 - l : 0.1 - l) * fade;
 					break;
 				}
 				case 'neon': {
-					const band = Math.floor(progress * 12);
+					const band = Math.floor(progress * 9);
 					const colorIdx = band % 3;
-					h = colorIdx === 0 ? 0.5 : colorIdx === 1 ? 0.83 : 0.14;
-					s = Math.max(1 - fade * 0.5, 0.4);
-					l = isLight ? 0.45 + (0.9 - 0.45) * fade * 0.6 : 0.5 + (0.1 - 0.5) * fade * 0.6;
+					h = colorIdx === 0 ? aliveH : colorIdx === 1 ? (aliveH + 0.333) % 1 : (aliveH + 0.666) % 1;
+					s = 1;
+					l = isLight ? 0.48 + (0.88 - 0.48) * fade : 0.52 + (0.08 - 0.52) * fade;
 					break;
 				}
 				case 'sunset': {
-					const band = Math.floor(progress * 20);
-					const bandProgress = band / 19;
-					h = bandProgress < 0.3 ? 0.14 + (0 - 0.14) * (bandProgress / 0.3) : (bandProgress - 0.3) / 0.7 * 0.66;
+					const band = Math.floor(progress * 12);
+					const bandT = band / 11;
+					const warmH = aliveH + (0.08 - aliveH) * 0.5;
+					h = warmH + (0.6 - warmH) * bandT;
 					if (h < 0) h += 1;
-					s = band % 2 === 0 ? 0.9 : 0.7;
-					l = isLight ? 0.5 + (0.9 - 0.5) * fade : 0.55 + (0.1 - 0.55) * fade;
+					s = band % 2 === 0 ? 0.85 : 0.65;
+					l = isLight ? 0.55 + (0.88 - 0.55) * fade : 0.55 + (0.1 - 0.55) * fade;
 					break;
 				}
-				case 'aurora': {
-					const band = Math.floor(progress * 24);
-					const colorPhase = (band % 6) / 6;
-					if (colorPhase < 0.33) h = 0.33 + (0.5 - 0.33) * colorPhase * 3;
-					else if (colorPhase < 0.66) h = 0.5 + (0.85 - 0.5) * (colorPhase - 0.33) * 3;
-					else h = 0.85 + (0.33 - 0.85) * (colorPhase - 0.66) * 3;
-					if (h > 1) h -= 1;
-					const wave = Math.sin(band * 0.5) * 0.5 + 0.5;
-					s = 0.7 + wave * 0.25;
-					l = isLight ? 0.5 + wave * 0.15 + (0.88 - 0.5) * fade : 0.45 + wave * 0.2 + (0.1 - 0.45) * fade;
+				case 'ocean': {
+					const band = Math.floor(progress * 10);
+					const bandT = band / 9;
+					const baseOcean = 0.5 + (0.66 - 0.5) * bandT;
+					h = aliveH + (baseOcean - aliveH) * (0.3 + progress * 0.7);
+					const wave = Math.sin(bandT * Math.PI * 2) * 0.15;
+					s = isLight ? Math.max(0.5, aliveS * 0.8) + wave : Math.max(0.6, aliveS * 0.9) + wave;
+					l = isLight ? 0.55 + (0.88 - 0.55) * fade : 0.5 + (0.08 - 0.5) * fade;
+					break;
+				}
+				case 'forest': {
+					const band = Math.floor(progress * 10);
+					const bandT = band / 9;
+					const forestH = 0.33 + (0.08 - 0.33) * bandT;
+					h = aliveH + (forestH - aliveH) * (0.4 + progress * 0.6);
+					if (h < 0) h += 1;
+					s = isLight ? Math.max(aliveS, 0.5) + (0.35 - Math.max(aliveS, 0.5)) * bandT
+						: Math.max(aliveS, 0.6) + (0.4 - Math.max(aliveS, 0.6)) * bandT;
+					l = isLight ? 0.5 + (0.88 - 0.5) * fade : 0.45 + (0.1 - 0.45) * fade;
 					break;
 				}
 			}
@@ -273,9 +343,9 @@
 					</div>
 				</div>
 
-				<!-- Spectrum Mode - Smooth Gradients Row -->
+				<!-- Spectrum Mode - Row 1: Smooth Gradients -->
 				<div class="row col">
-					<span class="label">Spectrum <span class="label-hint">(Smooth)</span></span>
+					<span class="label">Spectrum</span>
 					<div class="spectrum-grid">
 						{#each smoothModes as mode}
 							<button 
@@ -291,11 +361,27 @@
 					</div>
 				</div>
 
-				<!-- Spectrum Mode - Sharp Transitions Row -->
-				<div class="row col">
-					<span class="label"><span class="label-hint">(Sharp)</span></span>
+				<!-- Spectrum Mode - Row 2: Color Harmonies -->
+				<div class="row col spectrum-row-extra">
 					<div class="spectrum-grid">
-						{#each sharpModes as mode}
+						{#each harmonyModes as mode}
+							<button 
+								class="spectrum-btn" 
+								class:active={simState.spectrumMode === mode.id}
+								onclick={() => simState.spectrumMode = mode.id}
+								title={mode.description}
+							>
+								<div class="spectrum-preview" style="background: {getSpectrumGradient(mode.id)}"></div>
+								<span class="spectrum-label">{mode.name}</span>
+							</button>
+						{/each}
+					</div>
+				</div>
+
+				<!-- Spectrum Mode - Row 3: Banded/Themed -->
+				<div class="row col spectrum-row-extra">
+					<div class="spectrum-grid">
+						{#each bandedModes as mode}
 							<button 
 								class="spectrum-btn" 
 								class:active={simState.spectrumMode === mode.id}
@@ -534,10 +620,14 @@
 	}
 
 	.spectrum-label {
-		font-size: 0.5rem;
+		font-size: 0.4rem;
 		color: var(--ui-text, #888);
 		text-transform: uppercase;
-		letter-spacing: 0.02em;
+		letter-spacing: 0.01em;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 100%;
 	}
 
 	.spectrum-btn.active .spectrum-label {
@@ -548,6 +638,10 @@
 		font-size: 0.55rem;
 		color: var(--ui-text-muted, #666);
 		font-weight: normal;
+	}
+
+	.spectrum-row-extra {
+		margin-top: -0.2rem;
 	}
 
 	.row.col {

@@ -49,25 +49,36 @@ let gridHeight = $state(256);
 
 // Visual settings
 let isLightTheme = $state(false);
-let aliveColor = $state<[number, number, number]>([0.95, 0.7, 0.75]); // Blush default
+let aliveColor = $state<[number, number, number]>([1.0, 1.0, 1.0]); // White (first dark theme color)
 
 // Spectrum modes for multi-state color transitions
-export type SpectrumMode = 'hueShift' | 'rainbow' | 'warm' | 'cool' | 'monochrome' | 'fire' | 'thermal' | 'bands' | 'neon' | 'sunset' | 'aurora';
+export type SpectrumMode = 
+	| 'hueShift' | 'rainbow' | 'warm' | 'cool' | 'monochrome' | 'fire'
+	| 'complement' | 'triadic' | 'split' | 'analogous' | 'pastel' | 'vivid'
+	| 'thermal' | 'bands' | 'neon' | 'sunset' | 'ocean' | 'forest';
 
 export const SPECTRUM_MODES: { id: SpectrumMode; name: string; description: string }[] = [
-	// Smooth gradients
-	{ id: 'hueShift', name: 'Shift', description: 'Subtle hue rotation' },
-	{ id: 'rainbow', name: 'Rainbow', description: 'Full spectrum rotation' },
-	{ id: 'warm', name: 'Warm', description: 'Toward red/orange' },
-	{ id: 'cool', name: 'Cool', description: 'Toward blue/purple' },
-	{ id: 'monochrome', name: 'Mono', description: 'Fade without hue change' },
-	{ id: 'fire', name: 'Fire', description: 'Orange to red to black' },
-	// Sharp transitions
-	{ id: 'thermal', name: 'Thermal', description: 'Heat map with sharp bands' },
+	// Row 1: Smooth gradients
+	{ id: 'hueShift', name: 'Shift', description: 'Subtle hue rotation from color' },
+	{ id: 'rainbow', name: 'Rainbow', description: 'Full spectrum from color' },
+	{ id: 'warm', name: 'Warm', description: 'Toward warm tones' },
+	{ id: 'cool', name: 'Cool', description: 'Toward cool tones' },
+	{ id: 'monochrome', name: 'Mono', description: 'Single hue fade' },
+	{ id: 'fire', name: 'Fire', description: 'Color → orange → red' },
+	// Row 2: Color-reactive harmonies
+	{ id: 'complement', name: 'Complement', description: 'To opposite color' },
+	{ id: 'triadic', name: 'Triadic', description: 'Three-way color harmony' },
+	{ id: 'split', name: 'Split', description: 'Split-complementary' },
+	{ id: 'analogous', name: 'Analogous', description: 'Neighboring hues' },
+	{ id: 'pastel', name: 'Pastel', description: 'Soft desaturated tones' },
+	{ id: 'vivid', name: 'Vivid', description: 'High saturation punch' },
+	// Row 3: Banded/themed
+	{ id: 'thermal', name: 'Thermal', description: 'Heat map from color' },
 	{ id: 'bands', name: 'Bands', description: 'Quantized color steps' },
-	{ id: 'neon', name: 'Neon', description: 'Cyan → magenta → yellow' },
-	{ id: 'sunset', name: 'Sunset', description: 'Yellow → red → purple → blue' },
-	{ id: 'aurora', name: 'Aurora', description: 'Green → cyan → magenta' }
+	{ id: 'neon', name: 'Neon', description: 'Electric color cycling' },
+	{ id: 'sunset', name: 'Sunset', description: 'Warm to cool gradient' },
+	{ id: 'ocean', name: 'Ocean', description: 'Deep blues and cyans' },
+	{ id: 'forest', name: 'Forest', description: 'Greens and earth tones' }
 ];
 
 // Boundary modes - 9 topological possibilities based on edge identification
@@ -104,7 +115,7 @@ export function boundaryModeToIndex(mode: BoundaryMode): number {
 	return modes.indexOf(mode);
 }
 
-let spectrumMode = $state<SpectrumMode>('sunset');
+let spectrumMode = $state<SpectrumMode>('thermal');
 
 // Neighbor shading mode - modulate color based on neighbors
 // 'off' = no shading, 'alive' = count alive neighbors, 'vitality' = sum neighbor states

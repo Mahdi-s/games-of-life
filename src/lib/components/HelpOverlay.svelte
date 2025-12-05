@@ -169,6 +169,7 @@
 							<h3>Visual</h3>
 							<div class="shortcut"><kbd>T</kbd><span>Toggle theme</span></div>
 							<div class="shortcut"><kbd>C</kbd><span>Cycle colors</span></div>
+							<div class="shortcut"><kbd>Shift</kbd>+<kbd>C</kbd><span>Cycle spectrum</span></div>
 						</section>
 
 						<section class="shortcut-group">
