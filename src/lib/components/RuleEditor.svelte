@@ -1353,7 +1353,7 @@
 						{:else if simState.vitalityMode === 'ghost'}
 							<div class="vitality-slider-item">
 								<span class="slider-label">Factor</span>
-								<input type="range" min="0" max="1" step="0.01" bind:value={simState.vitalityGhostFactor} />
+						<input type="range" min="-1" max="1" step="0.01" bind:value={simState.vitalityGhostFactor} />
 								<span class="slider-value">{simState.vitalityGhostFactor.toFixed(2)}</span>
 							</div>
 						{:else if simState.vitalityMode === 'sigmoid'}
@@ -1370,7 +1370,7 @@
 						{:else if simState.vitalityMode === 'decay'}
 							<div class="vitality-slider-item">
 								<span class="slider-label">Factor</span>
-								<input type="range" min="0" max="1" step="0.01" bind:value={simState.vitalityGhostFactor} />
+						<input type="range" min="-1" max="1" step="0.01" bind:value={simState.vitalityGhostFactor} />
 								<span class="slider-value">{simState.vitalityGhostFactor.toFixed(2)}</span>
 							</div>
 							<div class="vitality-slider-item">

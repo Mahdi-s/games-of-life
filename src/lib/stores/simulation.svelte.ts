@@ -623,7 +623,7 @@ export function getSimulationState() {
 			return vitalityGhostFactor;
 		},
 		set vitalityGhostFactor(value: number) {
-			vitalityGhostFactor = Math.max(0.0, Math.min(1.0, value));
+			vitalityGhostFactor = Math.max(-1.0, Math.min(1.0, value));
 		},
 
 		get vitalitySigmoidSharpness() {

@@ -167,6 +167,12 @@ fn get_neighbor_contribution(state: u32) -> f32 {
     return pow(vitality, params.vitality_decay) * params.vitality_ghost;
 }
 
+// Convert accumulated neighbor total to integer count with clamping to avoid underflow/overflow
+fn neighbor_total_to_count(total: f32, max_neighbors: f32) -> u32 {
+    let clamped = clamp(total, 0.0, max_neighbors);
+    return u32(clamped + 0.5);
+}
+
 // Count living neighbors - Moore neighborhood (8 cells)
 fn count_neighbors_moore(x: i32, y: i32) -> u32 {
     var total: f32 = 0.0;
@@ -180,8 +186,7 @@ fn count_neighbors_moore(x: i32, y: i32) -> u32 {
         }
     }
     
-    // Round to nearest integer for bitmask lookup
-    return u32(total + 0.5);
+    return neighbor_total_to_count(total, 8.0);
 }
 
 // Count living neighbors - Von Neumann neighborhood (4 cells)
@@ -194,7 +199,7 @@ fn count_neighbors_von_neumann(x: i32, y: i32) -> u32 {
     total += get_neighbor_contribution(get_cell(x - 1, y)); // West
     total += get_neighbor_contribution(get_cell(x + 1, y)); // East
     
-    return u32(total + 0.5);
+    return neighbor_total_to_count(total, 4.0);
 }
 
 // Count living neighbors - Extended Moore neighborhood (24 cells, radius 2)
@@ -210,7 +215,7 @@ fn count_neighbors_extended(x: i32, y: i32) -> u32 {
         }
     }
     
-    return u32(total + 0.5);
+    return neighbor_total_to_count(total, 24.0);
 }
 
 // Count living neighbors - Hexagonal neighborhood (6 cells)
@@ -248,7 +253,7 @@ fn count_neighbors_hexagonal(x: i32, y: i32) -> u32 {
         total += get_neighbor_contribution(get_cell(x, y + 1));
     }
     
-    return u32(total + 0.5);
+    return neighbor_total_to_count(total, 6.0);
 }
 
 // Count living neighbors - Extended Hexagonal neighborhood (18 cells)
@@ -337,7 +342,7 @@ fn count_neighbors_extended_hexagonal(x: i32, y: i32) -> u32 {
         total += get_neighbor_contribution(get_cell(x, y + 2));      // directly below
     }
     
-    return u32(total + 0.5);
+    return neighbor_total_to_count(total, 18.0);
 }
 
 // Count neighbors based on neighborhood type
