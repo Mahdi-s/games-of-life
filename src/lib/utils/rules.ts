@@ -944,6 +944,24 @@ export const RULE_PRESETS: CARule[] = [
 		description: 'Complex emergent patterns with sparse birth/survive conditions',
 		density: 0.2
 	},
+	{
+		name: 'Ext24 Neo Threshold',
+		birthMask: 0b1111111111111111111000000, // 6-24
+		surviveMask: 0b1111111111100000011111000000, // 6-10, 14-24 (gap at 11-13)
+		numStates: 512,
+		ruleString: 'B6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24/S6,7,8,9,10,14,15,16,17,18,19,20,21,22,23,24/C512',
+		neighborhood: 'extendedMoore',
+		category: 'artistic',
+		description: 'High-neighbor patterns with threshold vitality for sharp transitions',
+		density: 0.2,
+		vitality: {
+			mode: 'threshold',
+			threshold: 0.99,
+			ghostFactor: 0.0,
+			sigmoidSharpness: 10.0,
+			decayPower: 1.0
+		}
+	},
 	// Hex Neo Mandala series - artistic patterns with vitality influence
 	{
 		name: 'Hex Neo Mandala 1',
