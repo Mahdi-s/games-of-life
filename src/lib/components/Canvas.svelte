@@ -110,23 +110,9 @@
 		const resizeObserver = new ResizeObserver(handleResize);
 		resizeObserver.observe(container);
 
-		// Handle orientation change - just reset view to fit the square grid to new viewport
-		function handleOrientationChange() {
-			// Small delay to let browser update dimensions
-			setTimeout(() => {
-				if (!simulation) return;
-				
-				const viewport = getVisibleViewportSize();
-				const dpr = window.devicePixelRatio || 1;
-				const actualWidth = Math.floor(viewport.width * dpr);
-				const actualHeight = Math.floor(viewport.height * dpr);
-				
-				// Just reset the view - the square grid stays the same, only viewport changes
-				simulation.resetView(actualWidth, actualHeight);
-			}, 150);
-		}
-		
-		window.addEventListener('orientationchange', handleOrientationChange);
+		// Orientation change is handled automatically by the ResizeObserver
+		// which updates canvas dimensions. The seamless panning handles the rest -
+		// no need to reset view or modify the grid in any way.
 
 		// Add touch event listeners with { passive: false } to allow preventDefault
 		canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
@@ -136,7 +122,6 @@
 
 		return () => {
 			resizeObserver.disconnect();
-			window.removeEventListener('orientationchange', handleOrientationChange);
 			if (animationId !== null) {
 				cancelAnimationFrame(animationId);
 			}
