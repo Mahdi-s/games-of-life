@@ -949,8 +949,8 @@ export const RULE_PRESETS: CARule[] = [
 		name: 'Hex Neo Mandala 1',
 		birthMask: 0b100, // 2
 		surviveMask: 0b111000, // 3, 4, 5
-		numStates: 188,
-		ruleString: 'B2/S345/C188',
+		numStates: 512,
+		ruleString: 'B2/S345/C512',
 		neighborhood: 'hexagonal',
 		category: 'artistic',
 		description: 'Mandala-like symmetric patterns with ghost vitality',
