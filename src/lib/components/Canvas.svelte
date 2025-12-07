@@ -58,8 +58,6 @@
 	let animationId: number | null = null;
 	let lastStepTime = 0;
 
-	// Track orientation for transpose on change
-	let lastOrientation: 'portrait' | 'landscape' | null = null;
 
 
 	/**
@@ -88,33 +86,21 @@
 	}
 
 	/**
-	 * Calculate grid dimensions from scale and screen aspect ratio
-	 * The baseCells value represents the shorter dimension
-	 * For hexagonal grids, rows are increased to compensate for the compressed visual height
+	 * Calculate grid dimensions from scale.
+	 * Grids are now always square - seamless panning handles filling any screen aspect ratio.
+	 * For hexagonal grids, we add extra rows to compensate for visual compression.
 	 */
-	function calculateGridDimensions(scale: GridScale, screenWidth: number, screenHeight: number, isHexagonal: boolean = false): { width: number; height: number } {
+	function calculateGridDimensions(scale: GridScale, _screenWidth: number, _screenHeight: number, isHexagonal: boolean = false): { width: number; height: number } {
 		const scaleConfig = GRID_SCALES.find(s => s.name === scale) ?? GRID_SCALES[2]; // Default to medium
-		const baseCells = scaleConfig.baseCells;
-		
-		const aspect = screenWidth / screenHeight;
+		const size = scaleConfig.baseCells;
 		
 		// For hexagonal grids, rows are visually compressed by sqrt(3)/2 ≈ 0.866
-		// So we need ~15.5% more rows to fill the same visual height
-		// Reference: https://www.redblobgames.com/grids/hexagons/
+		// So we need ~15.5% more rows to fill the same visual height as width
+		// This keeps the VISUAL aspect ratio close to square
 		const HEX_HEIGHT_RATIO = 0.866025404; // sqrt(3)/2
-		const hexHeightMultiplier = isHexagonal ? (1 / HEX_HEIGHT_RATIO) : 1;
+		const height = isHexagonal ? Math.round(size / HEX_HEIGHT_RATIO) : size;
 		
-		if (aspect >= 1) {
-			// Landscape or square: height is the shorter dimension
-			const height = Math.round(baseCells * hexHeightMultiplier);
-			const width = Math.round(baseCells * aspect);
-			return { width, height };
-		} else {
-			// Portrait: width is the shorter dimension
-			const width = baseCells;
-			const height = Math.round((baseCells / aspect) * hexHeightMultiplier);
-			return { width, height };
-		}
+		return { width: size, height };
 	}
 
 	onMount(() => {
@@ -124,20 +110,19 @@
 		const resizeObserver = new ResizeObserver(handleResize);
 		resizeObserver.observe(container);
 
-		// Handle orientation change - transpose the grid
+		// Handle orientation change - just reset view to fit the square grid to new viewport
 		function handleOrientationChange() {
 			// Small delay to let browser update dimensions
 			setTimeout(() => {
-				if (!simulation || !ctx || !lastOrientation) return;
+				if (!simulation) return;
 				
 				const viewport = getVisibleViewportSize();
-				const currentOrientation = viewport.width >= viewport.height ? 'landscape' : 'portrait';
+				const dpr = window.devicePixelRatio || 1;
+				const actualWidth = Math.floor(viewport.width * dpr);
+				const actualHeight = Math.floor(viewport.height * dpr);
 				
-				// Only transpose if orientation actually changed
-				if (currentOrientation !== lastOrientation) {
-					transposeGrid();
-					lastOrientation = currentOrientation;
-				}
+				// Just reset the view - the square grid stays the same, only viewport changes
+				simulation.resetView(actualWidth, actualHeight);
 			}, 150);
 		}
 		
@@ -179,9 +164,6 @@
 		// Calculate initial grid size based on actual visible viewport
 		// Uses visualViewport API on mobile for accurate dimensions
 		const viewport = getVisibleViewportSize();
-		
-		// Remember current orientation
-		lastOrientation = viewport.width >= viewport.height ? 'landscape' : 'portrait';
 		
 		const isHex = simState.currentRule.neighborhood === 'hexagonal' || simState.currentRule.neighborhood === 'extendedHexagonal';
 		const { width, height } = calculateGridDimensions(simState.gridScale, viewport.width, viewport.height, isHex);
@@ -771,65 +753,6 @@
 		simulation?.resetView(canvasWidth, canvasHeight);
 	}
 
-	/**
-	 * Transpose the grid (swap width and height, rotate cell positions)
-	 * Used when device orientation changes
-	 */
-	async function transposeGrid() {
-		if (!simulation || !ctx) return;
-		
-		const { width: oldWidth, height: oldHeight } = simulation.getDimensions();
-		
-		// Get current cell data
-		const oldData = await simulation.getCellDataAsync();
-		
-		// Create transposed data (swap x and y)
-		const newWidth = oldHeight;
-		const newHeight = oldWidth;
-		const newData = new Uint32Array(newWidth * newHeight);
-		
-		for (let y = 0; y < oldHeight; y++) {
-			for (let x = 0; x < oldWidth; x++) {
-				const oldIndex = x + y * oldWidth;
-				// Transpose: new position is (y, x) instead of (x, y)
-				const newIndex = y + x * newWidth;
-				newData[newIndex] = oldData[oldIndex];
-			}
-		}
-		
-		// Update store dimensions
-		simState.gridWidth = newWidth;
-		simState.gridHeight = newHeight;
-		
-		// Recreate simulation with new dimensions
-		const currentRule = simulation.getRule();
-		const currentView = simulation.getView();
-		simulation.destroy();
-		
-		simulation = new Simulation(ctx, {
-			width: newWidth,
-			height: newHeight,
-			rule: currentRule
-		});
-		
-		// Load the transposed data
-		simulation.setCellData(newData);
-		
-		// Restore view settings
-		simulation.setView({
-			showGrid: currentView.showGrid,
-			isLightTheme: currentView.isLightTheme,
-			aliveColor: currentView.aliveColor,
-			boundaryMode: currentView.boundaryMode
-		});
-		
-		// Use current actual canvas dimensions for reset view
-		const viewport = getVisibleViewportSize();
-		const dpr = window.devicePixelRatio || 1;
-		const actualWidth = Math.floor(viewport.width * dpr);
-		const actualHeight = Math.floor(viewport.height * dpr);
-		simulation.resetView(actualWidth, actualHeight);
-	}
 
 	export function updateRule() {
 		if (!simulation || !ctx) return;

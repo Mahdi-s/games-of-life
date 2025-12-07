@@ -27,10 +27,11 @@ let hasInteracted = $state(false); // Track if user has clicked/touched the canv
 
 // Grid scale presets - base cell count for the shorter dimension
 export type GridScale = 'tiny' | 'small' | 'medium' | 'large' | 'huge';
+// Grid scales are now square grids - the seamless panning handles the rest
 export const GRID_SCALES: { name: GridScale; label: string; baseCells: number }[] = [
-	{ name: 'tiny', label: 'Tiny', baseCells: 128 },
-	{ name: 'small', label: 'Small', baseCells: 256 },
-	{ name: 'medium', label: 'Medium', baseCells: 512 },
+	{ name: 'tiny', label: 'Tiny', baseCells: 256 },
+	{ name: 'small', label: 'Small', baseCells: 512 },
+	{ name: 'medium', label: 'Medium', baseCells: 768 },
 	{ name: 'large', label: 'Large', baseCells: 1024 },
 	{ name: 'huge', label: 'Huge', baseCells: 2048 }
 ];
