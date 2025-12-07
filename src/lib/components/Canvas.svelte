@@ -450,7 +450,8 @@
 		touchStartTime = performance.now();
 
 		if (touches.length === 1) {
-			// Single touch - start drawing
+			// Single touch - prepare for drawing but DON'T paint yet
+			// Wait for touchmove to confirm it's a draw gesture, not the start of a pinch
 			touchMode = 'draw';
 			const touch = touches[0];
 			const rect = canvas.getBoundingClientRect();
@@ -464,13 +465,12 @@
 			gridMouseX = gridPos.x;
 			gridMouseY = gridPos.y;
 			drawingState = simState.brushState; // Use current brush state for touch
-			simulation.paintBrush(gridPos.x, gridPos.y, simState.brushSize, drawingState, simState.brushType);
-			
-			// Start continuous drawing for hold-to-draw on touch
-			startContinuousDrawing();
+			// NOTE: Don't paint here - paint on first touchmove to avoid accidental marks
+			// when starting a two-finger pinch/pan gesture
 		} else if (touches.length === 2) {
 			// Two fingers - start pinch/pan, stop drawing
 			stopContinuousDrawing();
+			touchDrawStarted = false; // Reset draw state
 			touchMode = 'pinch';
 			lastPinchDistance = getTouchDistance(touches);
 			const center = getTouchCenter(touches);
@@ -478,6 +478,9 @@
 			lastTouchY = center.y;
 		}
 	}
+
+	// Track if we've started drawing (to know when to start continuous draw)
+	let touchDrawStarted = false;
 
 	function handleTouchMove(e: TouchEvent) {
 		if (!simulation) return;
@@ -495,6 +498,13 @@
 			const gridPos = simulation.screenToGrid(x, y, canvasWidth, canvasHeight);
 			gridMouseX = gridPos.x;
 			gridMouseY = gridPos.y;
+			
+			// Start continuous drawing on first move (confirms it's a draw, not pinch)
+			if (!touchDrawStarted) {
+				touchDrawStarted = true;
+				startContinuousDrawing();
+			}
+			
 			simulation.paintBrush(gridPos.x, gridPos.y, simState.brushSize, simState.brushState, simState.brushType);
 			
 			lastTouchX = touch.clientX;
@@ -546,16 +556,17 @@
 		if (touches.length === 0) {
 			// All fingers lifted
 			stopContinuousDrawing();
-			if (touchMode === 'draw' && !simState.isPlaying) {
+			if (touchMode === 'draw' && touchDrawStarted && !simState.isPlaying) {
 				// After drawing while paused, update the count
 				simulation.countAliveCellsAsync().then(count => {
 					simState.aliveCells = count;
 				});
 			}
 			touchMode = 'none';
+			touchDrawStarted = false; // Reset draw state
 			lastPinchDistance = 0;
 		} else if (touches.length === 1 && touchMode === 'pinch') {
-			// Went from 2 to 1 finger - continue as pan
+			// Went from 2 to 1 finger - continue as pan (not draw!)
 			touchMode = 'pan';
 			const touch = touches[0];
 			lastTouchX = touch.clientX;
