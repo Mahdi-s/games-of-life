@@ -2,6 +2,10 @@
 
 A WebGPU-powered cellular automaton simulator. Runs entirely on the GPU for smooth performance even on large grids.
 
+<p align="center">
+  <img src="static/thumbnail.jpg" alt="Games of Life thumbnail" />
+</p>
+
 **[Live Demo →](https://neovand.github.io/games-of-life/)**
 
 ![Svelte](https://img.shields.io/badge/Svelte-5-ff3e00?style=flat&logo=svelte)

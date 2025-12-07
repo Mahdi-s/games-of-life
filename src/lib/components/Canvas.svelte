@@ -869,6 +869,16 @@
 		return simulation;
 	}
 
+	function isMobileShareEnvironment() {
+		if (typeof navigator === 'undefined') return false;
+		const ua = navigator.userAgent || '';
+		const isMobileUA = /Mobi|Android|iPhone|iPad|iPod/i.test(ua);
+		const hasTouch = (navigator as Navigator & { maxTouchPoints?: number }).maxTouchPoints
+			? (navigator as Navigator & { maxTouchPoints?: number }).maxTouchPoints > 1
+			: false;
+		return isMobileUA || hasTouch;
+	}
+
 	export function screenshot() {
 		if (!canvas) return;
 		
@@ -876,7 +886,7 @@
 		const dataUrl = canvas.toDataURL('image/png');
 		
 		// Try using the Web Share API for mobile (if available and supports files)
-		if (navigator.share && navigator.canShare) {
+		if (isMobileShareEnvironment() && navigator.share && navigator.canShare) {
 			canvas.toBlob(async (blob) => {
 				if (!blob) return;
 				
