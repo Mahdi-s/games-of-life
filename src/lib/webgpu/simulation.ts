@@ -970,6 +970,9 @@ export class Simulation {
 		this.view.zoom = newZoom;
 		this.view.offsetX = newOffsetX;
 		this.view.offsetY = newOffsetY;
+		
+		// Normalize offset for wrapping boundary modes
+		this.normalizeOffset();
 	}
 
 	/**
@@ -988,9 +991,9 @@ export class Simulation {
 	}
 
 	/**
-	 * Normalize view offset to stay within a reasonable range for wrapping boundary modes.
-	 * This prevents floating-point precision issues during very long pans.
-	 * Normalizes when offset exceeds 3x the grid size to keep values small.
+	 * Normalize view offset to prevent floating-point precision issues.
+	 * Only normalizes when offset gets very large (100x grid size) to avoid visible jumps.
+	 * The shader handles wrapping correctly for any offset value.
 	 */
 	private normalizeOffset(): void {
 		const mode = this.view.boundaryMode;
@@ -1004,16 +1007,15 @@ export class Simulation {
 		const wrapsY = mode === 'cylinderY' || mode === 'torus' || mode === 'mobiusY' || 
 		               mode === 'kleinX' || mode === 'kleinY' || mode === 'projectivePlane';
 		
-		// Normalize when offset exceeds 3x grid size to prevent precision issues
-		// while keeping the view stable
-		const threshold = 3;
+		// Only normalize when offset gets extremely large to prevent precision issues
+		// A threshold of 100x grid size allows smooth panning without visible jumps
+		// while still preventing floating-point precision degradation
+		const threshold = 100;
 		
-		// Normalize X offset when it exceeds threshold
 		if (wrapsX && Math.abs(this.view.offsetX) > this.width * threshold) {
 			this.view.offsetX = ((this.view.offsetX % this.width) + this.width) % this.width;
 		}
 		
-		// Normalize Y offset when it exceeds threshold
 		if (wrapsY && Math.abs(this.view.offsetY) > this.height * threshold) {
 			this.view.offsetY = ((this.view.offsetY % this.height) + this.height) % this.height;
 		}

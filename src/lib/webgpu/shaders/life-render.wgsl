@@ -313,6 +313,13 @@ fn apply_neighbor_shading(color: vec3<f32>, cell_x: i32, cell_y: i32) -> vec3<f3
         return color;
     }
     
+    // Skip expensive neighbor counting when zoomed out (cells too small to see shading)
+    // pixels_per_cell < 2 means cells are very small, shading effect not visible
+    let pixels_per_cell = params.canvas_width / params.zoom;
+    if (pixels_per_cell < 2.0) {
+        return color;
+    }
+    
     var neighbor_ratio: f32;
     if (mode == 1) {
         // Count active (non-dead) neighbors
