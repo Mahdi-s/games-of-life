@@ -2205,6 +2205,15 @@ import { addSnapshotWithBefore, getHeadId } from '../stores/history.js';
 		background: var(--ui-accent-bg, rgba(45, 212, 191, 0.2));
 		border-color: var(--ui-accent-border, rgba(45, 212, 191, 0.5));
 		color: var(--ui-accent, #2dd4bf);
+		font-weight: 600;
+	}
+
+	/* Light theme: add stronger contrast for active cells */
+	:global(.app.light-theme) .cell.on {
+		background: color-mix(in srgb, var(--ui-accent, #2dd4bf) 25%, rgba(0, 0, 0, 0.08));
+		border-color: color-mix(in srgb, var(--ui-accent, #2dd4bf) 60%, rgba(0, 0, 0, 0.3));
+		box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+		color: color-mix(in srgb, var(--ui-accent, #2dd4bf) 70%, black);
 	}
 
 	.cell input {

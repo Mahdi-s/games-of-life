@@ -507,8 +507,12 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 		const x = (e.clientX - rect.left) * (canvasWidth / rect.width);
 		const y = (e.clientY - rect.top) * (canvasHeight / rect.height);
 
-		// Zoom factor
-		const factor = e.deltaY > 0 ? 1.1 : 0.9;
+		// Smooth zoom factor - proportional to scroll amount but clamped
+		// Trackpads send many small deltas, mice send fewer larger ones
+		// Normalize to a comfortable range and use exponential for smooth feel
+		const normalizedDelta = Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY), 100);
+		const zoomSpeed = 0.002; // Lower = smoother/slower
+		const factor = Math.exp(normalizedDelta * zoomSpeed);
 		simulation.zoomAt(x, y, canvasWidth, canvasHeight, factor);
 	}
 

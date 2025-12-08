@@ -218,7 +218,7 @@
 		<div class="slider-section">
 			<div class="slider-row">
 				<span class="slider-label">Size</span>
-				<input type="range" min="1" max="150" bind:value={simState.brushSize} />
+				<input type="range" min="1" max="500" bind:value={simState.brushSize} />
 				<span class="slider-value">{simState.brushSize}</span>
 			</div>
 

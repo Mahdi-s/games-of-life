@@ -577,7 +577,7 @@ export function getSimulationState() {
 			return brushSize;
 		},
 		set brushSize(value: number) {
-			brushSize = Math.max(1, Math.min(200, value));
+			brushSize = Math.max(1, Math.min(500, value));
 		},
 
 		get brushState() {

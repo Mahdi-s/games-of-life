@@ -262,7 +262,7 @@
 					</div>
 					<div class="size-control">
 						<span>{simState.brushSize}px</span>
-						<input type="range" min="1" max="200" bind:value={simState.brushSize} />
+						<input type="range" min="1" max="500" bind:value={simState.brushSize} />
 					</div>
 				</div>
 			{/if}

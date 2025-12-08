@@ -361,7 +361,8 @@ fn apply_neighbor_shading(color: vec3<f32>, cell_x: i32, cell_y: i32) -> vec3<f3
 // Background color based on theme
 fn get_bg_color() -> vec3<f32> {
     if (params.is_light_theme > 0.5) {
-        return vec3<f32>(0.95, 0.95, 0.97);
+        // Slightly warmer, less stark white for better contrast
+        return vec3<f32>(0.94, 0.93, 0.91);
     }
     return vec3<f32>(0.05, 0.05, 0.08);
 }
@@ -462,7 +463,7 @@ fn state_to_color(state: u32, num_states: u32) -> vec3<f32> {
     var dying_sat: f32;
     var dying_light: f32;
     
-    // Light theme: colors should stay saturated and get LIGHTER (toward white bg ~0.95)
+    // Light theme: colors stay SATURATED and MEDIUM LIGHTNESS (not fading to white!)
     // Dark theme: colors can desaturate and get darker (toward dark bg ~0.05)
     let is_light = params.is_light_theme > 0.5;
     
@@ -471,10 +472,9 @@ fn state_to_color(state: u32, num_states: u32) -> vec3<f32> {
         dying_hue = alive_hsl.x + 0.25 * spectrum_progress;
         if (dying_hue > 1.0) { dying_hue -= 1.0; }
         if (is_light) {
-            // Light mode: boost saturation for low-sat colors, then fade
-            let boosted_sat = max(alive_hsl.y, 0.5); // Ensure minimum saturation
-            dying_sat = boosted_sat * max(1.0 - spectrum_progress * 0.4, 0.5);
-            dying_light = mix(alive_hsl.z, 0.92, dying_progress * dying_progress);
+            // Light mode: HIGH saturation, MEDIUM lightness (visible against white)
+            dying_sat = max(alive_hsl.y, 0.6) * max(1.0 - spectrum_progress * 0.25, 0.65);
+            dying_light = mix(min(alive_hsl.z, 0.55), 0.72, dying_progress * dying_progress);
         } else {
             // Dark mode: boost saturation for low-sat colors
             let boosted_sat = max(alive_hsl.y, 0.4);
@@ -488,8 +488,8 @@ fn state_to_color(state: u32, num_states: u32) -> vec3<f32> {
         dying_hue = alive_hsl.x + spectrum_progress; // Full rotation
         if (dying_hue > 1.0) { dying_hue -= 1.0; }
         if (is_light) {
-            dying_sat = max(0.7, alive_hsl.y); // Keep saturated for vivid rainbow
-            dying_light = mix(alive_hsl.z, 0.88, dying_progress * dying_progress);
+            dying_sat = max(0.75, alive_hsl.y); // Keep very saturated for vivid rainbow
+            dying_light = mix(min(alive_hsl.z, 0.5), 0.68, dying_progress * dying_progress);
         } else {
             let boosted_sat = max(alive_hsl.y, 0.5);
             dying_sat = boosted_sat * max(1.0 - spectrum_progress * 0.3, 0.45);
@@ -507,9 +507,8 @@ fn state_to_color(state: u32, num_states: u32) -> vec3<f32> {
         if (dying_hue < 0.0) { dying_hue += 1.0; }
         if (dying_hue > 1.0) { dying_hue -= 1.0; }
         if (is_light) {
-            let boosted_sat = max(alive_hsl.y, 0.5);
-            dying_sat = boosted_sat * max(1.0 - spectrum_progress * 0.3, 0.5);
-            dying_light = mix(alive_hsl.z, 0.9, dying_progress * dying_progress);
+            dying_sat = max(alive_hsl.y, 0.65) * max(1.0 - spectrum_progress * 0.2, 0.6);
+            dying_light = mix(min(alive_hsl.z, 0.55), 0.7, dying_progress * dying_progress);
         } else {
             let boosted_sat = max(alive_hsl.y, 0.45);
             dying_sat = boosted_sat * max(1.0 - spectrum_progress * 0.3, 0.4);
@@ -527,9 +526,8 @@ fn state_to_color(state: u32, num_states: u32) -> vec3<f32> {
         if (dying_hue < 0.0) { dying_hue += 1.0; }
         if (dying_hue > 1.0) { dying_hue -= 1.0; }
         if (is_light) {
-            let boosted_sat = max(alive_hsl.y, 0.5);
-            dying_sat = boosted_sat * max(1.0 - spectrum_progress * 0.3, 0.5);
-            dying_light = mix(alive_hsl.z, 0.9, dying_progress * dying_progress);
+            dying_sat = max(alive_hsl.y, 0.65) * max(1.0 - spectrum_progress * 0.2, 0.6);
+            dying_light = mix(min(alive_hsl.z, 0.55), 0.7, dying_progress * dying_progress);
         } else {
             let boosted_sat = max(alive_hsl.y, 0.45);
             dying_sat = boosted_sat * max(1.0 - spectrum_progress * 0.3, 0.4);
@@ -540,10 +538,9 @@ fn state_to_color(state: u32, num_states: u32) -> vec3<f32> {
     else if (mode == 4) {
         dying_hue = alive_hsl.x; // Keep same hue
         if (is_light) {
-            // Light mode: boost and maintain saturation longer, fade toward white
-            let boosted_sat = max(alive_hsl.y, 0.4);
-            dying_sat = boosted_sat * (1.0 - spectrum_progress * 0.6);
-            dying_light = mix(alive_hsl.z, 0.93, dying_progress);
+            // Light mode: maintain saturation, stay at medium lightness
+            dying_sat = max(alive_hsl.y, 0.5) * max(1.0 - spectrum_progress * 0.35, 0.55);
+            dying_light = mix(min(alive_hsl.z, 0.5), 0.75, dying_progress);
         } else {
             // Dark mode: boost saturation, then desaturate and darken
             let boosted_sat = max(alive_hsl.y, 0.35);
@@ -551,29 +548,26 @@ fn state_to_color(state: u32, num_states: u32) -> vec3<f32> {
             dying_light = mix(alive_hsl.z, 0.1, dying_progress);
         }
     }
-    // Spectrum mode 5: Fire (alive -> yellow -> orange -> red -> dark/light)
+    // Spectrum mode 5: Fire (alive -> yellow -> orange -> red)
     else if (mode == 5) {
         let fire_progress = spectrum_progress * spectrum_progress; // Accelerate toward end
         
         // More gradual hue journey: alive -> yellow (0.12) -> orange (0.06) -> red (0.0)
         if (spectrum_progress < 0.33) {
-            // First third: alive color toward yellow
             dying_hue = mix(alive_hsl.x, 0.12, spectrum_progress * 3.0);
         } else if (spectrum_progress < 0.66) {
-            // Second third: yellow toward orange
             dying_hue = mix(0.12, 0.06, (spectrum_progress - 0.33) * 3.0);
         } else {
-            // Final third: orange toward red
             dying_hue = mix(0.06, 0.0, (spectrum_progress - 0.66) * 3.0);
         }
         if (dying_hue < 0.0) { dying_hue += 1.0; }
         
         if (is_light) {
-            dying_sat = max(0.85 - fire_progress * 0.25, 0.55); // Stay more saturated
-            dying_light = mix(0.55, 0.9, dying_progress * dying_progress); // bright fire fading to white
+            dying_sat = max(0.9 - fire_progress * 0.15, 0.7); // Very saturated fire colors
+            dying_light = mix(0.5, 0.68, dying_progress * dying_progress); // Medium lightness
         } else {
-            dying_sat = max(1.0 - fire_progress * 0.2, 0.75); // Very saturated throughout
-            dying_light = mix(0.65, 0.04, dying_progress * dying_progress); // Brighter start, fade to embers
+            dying_sat = max(1.0 - fire_progress * 0.2, 0.75);
+            dying_light = mix(0.65, 0.04, dying_progress * dying_progress);
         }
     }
     // ========== ROW 2: Color-reactive harmonies (modes 6-11) ==========
@@ -587,8 +581,8 @@ fn state_to_color(state: u32, num_states: u32) -> vec3<f32> {
         // Saturation peaks in the middle for vivid transition
         let sat_curve = 1.0 - abs(spectrum_progress - 0.5) * 1.5;
         if (is_light) {
-            dying_sat = max(alive_hsl.y, 0.6) * max(sat_curve, 0.5);
-            dying_light = mix(alive_hsl.z, 0.9, dying_progress * dying_progress);
+            dying_sat = max(alive_hsl.y, 0.7) * max(sat_curve, 0.6);
+            dying_light = mix(min(alive_hsl.z, 0.55), 0.68, dying_progress * dying_progress);
         } else {
             dying_sat = max(alive_hsl.y, 0.5) * max(sat_curve, 0.4);
             dying_light = mix(alive_hsl.z, 0.12, dying_progress * dying_progress);
@@ -608,8 +602,8 @@ fn state_to_color(state: u32, num_states: u32) -> vec3<f32> {
         if (dying_hue > 1.0) { dying_hue -= 1.0; }
         
         if (is_light) {
-            dying_sat = max(alive_hsl.y, 0.65) * max(1.0 - spectrum_progress * 0.3, 0.55);
-            dying_light = mix(alive_hsl.z, 0.88, dying_progress * dying_progress);
+            dying_sat = max(alive_hsl.y, 0.7) * max(1.0 - spectrum_progress * 0.2, 0.65);
+            dying_light = mix(min(alive_hsl.z, 0.5), 0.65, dying_progress * dying_progress);
         } else {
             dying_sat = max(alive_hsl.y, 0.55) * max(1.0 - spectrum_progress * 0.25, 0.5);
             dying_light = mix(alive_hsl.z, 0.12, dying_progress * dying_progress);
@@ -625,8 +619,8 @@ fn state_to_color(state: u32, num_states: u32) -> vec3<f32> {
         dying_hue = mix(split1, split2, phase);
         
         if (is_light) {
-            dying_sat = max(alive_hsl.y, 0.6) * max(1.0 - spectrum_progress * 0.35, 0.5);
-            dying_light = mix(alive_hsl.z, 0.88, dying_progress * dying_progress);
+            dying_sat = max(alive_hsl.y, 0.7) * max(1.0 - spectrum_progress * 0.25, 0.6);
+            dying_light = mix(min(alive_hsl.z, 0.52), 0.68, dying_progress * dying_progress);
         } else {
             dying_sat = max(alive_hsl.y, 0.5) * max(1.0 - spectrum_progress * 0.3, 0.45);
             dying_light = mix(alive_hsl.z, 0.12, dying_progress * dying_progress);
@@ -642,8 +636,8 @@ fn state_to_color(state: u32, num_states: u32) -> vec3<f32> {
         
         // Keep saturation high since colors are similar
         if (is_light) {
-            dying_sat = max(alive_hsl.y, 0.55) * max(1.0 - spectrum_progress * 0.4, 0.5);
-            dying_light = mix(alive_hsl.z, 0.9, dying_progress * dying_progress);
+            dying_sat = max(alive_hsl.y, 0.65) * max(1.0 - spectrum_progress * 0.25, 0.6);
+            dying_light = mix(min(alive_hsl.z, 0.55), 0.7, dying_progress * dying_progress);
         } else {
             dying_sat = max(alive_hsl.y, 0.45) * max(1.0 - spectrum_progress * 0.35, 0.4);
             dying_light = mix(alive_hsl.z, 0.12, dying_progress * dying_progress);
@@ -651,13 +645,14 @@ fn state_to_color(state: u32, num_states: u32) -> vec3<f32> {
     }
     // Spectrum mode 10: Pastel (soft desaturated tones)
     else if (mode == 10) {
-        // Gentle hue drift with low saturation
+        // Gentle hue drift with low saturation - but still visible in light mode
         dying_hue = alive_hsl.x + spectrum_progress * 0.15;
         if (dying_hue > 1.0) { dying_hue -= 1.0; }
         
         if (is_light) {
-            dying_sat = max(alive_hsl.y * 0.5, 0.2) * (1.0 - spectrum_progress * 0.5);
-            dying_light = mix(max(alive_hsl.z, 0.7), 0.95, dying_progress);
+            // Pastels in light mode: lower saturation but medium lightness
+            dying_sat = max(alive_hsl.y * 0.6, 0.35) * (1.0 - spectrum_progress * 0.3);
+            dying_light = mix(min(alive_hsl.z, 0.55), 0.72, dying_progress);
         } else {
             dying_sat = max(alive_hsl.y * 0.6, 0.25) * (1.0 - spectrum_progress * 0.4);
             dying_light = mix(max(alive_hsl.z, 0.5), 0.2, dying_progress);
@@ -674,8 +669,8 @@ fn state_to_color(state: u32, num_states: u32) -> vec3<f32> {
         // Maximum saturation, slight variation per band
         let band_var = fract(band * 0.37);
         if (is_light) {
-            dying_sat = min(1.0, max(alive_hsl.y, 0.7) + 0.2 * band_var);
-            dying_light = mix(0.5, 0.85, dying_progress * dying_progress);
+            dying_sat = min(1.0, max(alive_hsl.y, 0.8) + 0.15 * band_var);
+            dying_light = mix(0.45, 0.65, dying_progress * dying_progress);
         } else {
             dying_sat = min(1.0, max(alive_hsl.y, 0.75) + 0.15 * band_var);
             dying_light = mix(0.55, 0.1, dying_progress * dying_progress);
@@ -691,13 +686,10 @@ fn state_to_color(state: u32, num_states: u32) -> vec3<f32> {
         let band_t = band / (num_bands - 1.0);
         
         // Journey from alive color through thermal spectrum
-        // Determine if alive is warm or cool to choose direction
         let is_warm_start = alive_hsl.x < 0.17 || alive_hsl.x > 0.83;
         if (is_warm_start) {
-            // Warm start: red/orange -> yellow -> green -> cyan -> blue -> purple
             dying_hue = mix(alive_hsl.x, 0.75, band_t);
         } else {
-            // Cool start: go toward warm
             dying_hue = mix(alive_hsl.x, 0.0, band_t);
         }
         if (dying_hue < 0.0) { dying_hue += 1.0; }
@@ -705,24 +697,26 @@ fn state_to_color(state: u32, num_states: u32) -> vec3<f32> {
         
         dying_sat = select(0.9, 0.7, (band % 2.0) < 1.0);
         let fade = dying_progress * dying_progress;
-        dying_light = select(mix(0.55, 0.12, fade), mix(0.5, 0.88, fade), is_light);
+        if (is_light) {
+            dying_light = mix(0.48, 0.7, fade); // Medium lightness, visible against white
+        } else {
+            dying_light = mix(0.55, 0.12, fade);
+        }
     }
     // Spectrum mode 13: Bands (quantized steps from alive color)
     else if (mode == 13) {
         let num_bands = 10.0;
         let band = floor(spectrum_progress * num_bands);
         
-        // Each band is a discrete step away from alive color
         dying_hue = alive_hsl.x + (band / num_bands) * 0.6;
         if (dying_hue > 1.0) { dying_hue -= 1.0; }
         
-        // Alternating saturation for structure
         dying_sat = select(max(alive_hsl.y, 0.75), max(alive_hsl.y, 0.55), (band % 2.0) < 1.0);
         
         let stripe = (band % 2.0) < 1.0;
         if (is_light) {
-            dying_light = select(0.5, 0.62, stripe);
-            dying_light = mix(dying_light, 0.9, dying_progress * dying_progress);
+            dying_light = select(0.45, 0.55, stripe);
+            dying_light = mix(dying_light, 0.7, dying_progress * dying_progress);
         } else {
             dying_light = select(0.52, 0.4, stripe);
             dying_light = mix(dying_light, 0.1, dying_progress * dying_progress);
@@ -733,7 +727,6 @@ fn state_to_color(state: u32, num_states: u32) -> vec3<f32> {
         let num_bands = 9.0;
         let band = floor(spectrum_progress * num_bands);
         
-        // Cycle through alive + its triadic colors
         let color_idx = band % 3.0;
         if (color_idx < 1.0) {
             dying_hue = alive_hsl.x;
@@ -746,8 +739,8 @@ fn state_to_color(state: u32, num_states: u32) -> vec3<f32> {
         dying_sat = 1.0; // Maximum neon saturation
         
         if (is_light) {
-            dying_light = 0.48 + (band % 3.0) * 0.04;
-            dying_light = mix(dying_light, 0.88, dying_progress * dying_progress);
+            dying_light = 0.42 + (band % 3.0) * 0.04;
+            dying_light = mix(dying_light, 0.65, dying_progress * dying_progress);
         } else {
             dying_light = 0.52 + (band % 3.0) * 0.05;
             dying_light = mix(dying_light, 0.08, dying_progress * dying_progress);
@@ -759,17 +752,15 @@ fn state_to_color(state: u32, num_states: u32) -> vec3<f32> {
         let band = floor(spectrum_progress * num_bands);
         let band_t = band / (num_bands - 1.0);
         
-        // Always go warm -> cool direction from any starting color
-        // Map alive hue to a warm starting point, then transition to cool
-        let warm_hue = mix(alive_hsl.x, 0.08, 0.5); // Pull toward orange
-        let cool_hue = 0.6; // End at blue
+        let warm_hue = mix(alive_hsl.x, 0.08, 0.5);
+        let cool_hue = 0.6;
         dying_hue = mix(warm_hue, cool_hue, band_t);
         if (dying_hue < 0.0) { dying_hue += 1.0; }
         
         dying_sat = select(0.85, 0.65, (band % 2.0) < 1.0);
         
         if (is_light) {
-            dying_light = mix(0.55, 0.88, dying_progress * dying_progress);
+            dying_light = mix(0.48, 0.68, dying_progress * dying_progress);
         } else {
             dying_light = mix(0.55, 0.1, dying_progress * dying_progress);
         }
@@ -780,16 +771,13 @@ fn state_to_color(state: u32, num_states: u32) -> vec3<f32> {
         let band = floor(spectrum_progress * num_bands);
         let band_t = band / (num_bands - 1.0);
         
-        // Ocean range: cyan (0.5) to deep blue (0.66), tinted by alive color
         let base_ocean = mix(0.5, 0.66, band_t);
-        // Tint slightly toward alive color
         dying_hue = mix(alive_hsl.x, base_ocean, 0.3 + spectrum_progress * 0.7);
         
-        // Wave-like saturation
         let wave = sin(band_t * 3.14159 * 2.0) * 0.15;
         if (is_light) {
-            dying_sat = max(0.5, alive_hsl.y * 0.8) + wave;
-            dying_light = mix(0.55, 0.88, dying_progress * dying_progress);
+            dying_sat = max(0.65, alive_hsl.y * 0.9) + wave;
+            dying_light = mix(0.45, 0.65, dying_progress * dying_progress);
         } else {
             dying_sat = max(0.6, alive_hsl.y * 0.9) + wave;
             dying_light = mix(0.5, 0.08, dying_progress * dying_progress);
@@ -803,14 +791,13 @@ fn state_to_color(state: u32, num_states: u32) -> vec3<f32> {
         
         // Forest range: green (0.33) -> yellow-green (0.25) -> brown/orange (0.08)
         let forest_hue = mix(0.33, 0.08, band_t);
-        // Blend with alive color for personalization
         dying_hue = mix(alive_hsl.x, forest_hue, 0.4 + spectrum_progress * 0.6);
         if (dying_hue < 0.0) { dying_hue += 1.0; }
         
-        // Earthy desaturation toward browns
+        // Earthy desaturation toward browns - but keep visible in light mode
         if (is_light) {
-            dying_sat = mix(max(alive_hsl.y, 0.5), 0.35, band_t);
-            dying_light = mix(0.5, 0.88, dying_progress * dying_progress);
+            dying_sat = mix(max(alive_hsl.y, 0.6), 0.45, band_t);
+            dying_light = mix(0.42, 0.62, dying_progress * dying_progress);
         } else {
             dying_sat = mix(max(alive_hsl.y, 0.6), 0.4, band_t);
             dying_light = mix(0.45, 0.1, dying_progress * dying_progress);

@@ -361,7 +361,7 @@
 				simState.brushSize = Math.max(1, simState.brushSize - 1);
 				break;
 			case 'BracketRight':
-				simState.brushSize = Math.min(200, simState.brushSize + 1);
+				simState.brushSize = Math.min(500, simState.brushSize + 1);
 				break;
 			case 'Comma':
 				simState.speed = Math.max(1, simState.speed - 5);
