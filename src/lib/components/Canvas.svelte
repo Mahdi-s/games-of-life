@@ -30,11 +30,14 @@ import { addSnapshotWithBefore, resetHistory } from '../stores/history.js';
 	}
 
 	// Convert brush shape string to number for shader
+	// Must match order in BRUSH_SHAPES and shader is_in_brush function
 	function getBrushShapeIndex(shape: BrushShape): number {
-		const shapes: BrushShape[] = ['circle', 'square', 'diamond', 'line', 'ring', 'star', 'cross', 'scatter', 'custom'];
-		const idx = shapes.indexOf(shape);
-		// Map scatter and custom to circle (0) since shader doesn't support them
-		return idx > 6 ? 0 : idx;
+		const shapes: BrushShape[] = [
+			'circle', 'square', 'diamond', 'hexagon', 'ring', 'triangle',
+			'line', 'cross', 'star', 'heart', 'spiral', 'flower',
+			'burst', 'gear', 'wave', 'checker', 'dots', 'scatter'
+		];
+		return shapes.indexOf(shape);
 	}
 
 	let canvas: HTMLCanvasElement;
@@ -80,12 +83,10 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 	function getBrushConfig() {
 		return {
 			shape: simState.brushShape,
-			falloff: simState.brushFalloff,
 			rotation: simState.brushRotation,
 			density: simState.brushDensity,
 			intensity: simState.brushIntensity,
-			aspectRatio: simState.brushAspectRatio,
-			softness: simState.brushSoftness
+			aspectRatio: simState.brushAspectRatio
 		};
 	}
 

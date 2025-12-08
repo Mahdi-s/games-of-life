@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getSimulationState, BRUSH_SHAPES, BRUSH_TYPES, BRUSH_FALLOFFS, type BrushShape, type BrushType, type BrushFalloff, DEFAULT_BRUSH_CONFIG, getSimulationRef, resetBrushEditorSession, wasBrushEditorSnapshotTaken, wasBrushEditorEdited, setBrushEditorPreSnapshot, getBrushEditorPreSnapshot } from '../stores/simulation.svelte.js';
+	import { getSimulationState, BRUSH_SHAPES, BRUSH_TYPES, type BrushShape, type BrushType, DEFAULT_BRUSH_CONFIG, getSimulationRef, resetBrushEditorSession, wasBrushEditorSnapshotTaken, wasBrushEditorEdited, setBrushEditorPreSnapshot, getBrushEditorPreSnapshot } from '../stores/simulation.svelte.js';
 	import { addSnapshotWithBefore, getHeadId } from '../stores/history.js';
 	import { onMount, onDestroy } from 'svelte';
 	import { draggable, centerInViewport } from '../utils/draggable.js';
@@ -16,24 +16,6 @@
 	// Modal dragging state
 	const modalState = $derived(getModalState('brushEditor'));
 	let modalEl: HTMLDivElement | null = null;
-	
-	// Track if we've initialized the center position
-	let initialPosition = $state<{ x: number; y: number } | null>(null);
-	
-	// Compute initial position - center of viewport for first open
-	$effect(() => {
-		if (!modalState.position && modalEl && !initialPosition) {
-			// Calculate center position
-			const rect = modalEl.getBoundingClientRect();
-			const centerX = (window.innerWidth - rect.width) / 2;
-			const centerY = (window.innerHeight - rect.height) / 2;
-			initialPosition = { x: centerX, y: centerY };
-			// Also save it so it persists
-			setModalPosition('brushEditor', initialPosition);
-		} else if (modalState.position) {
-			initialPosition = modalState.position;
-		}
-	});
 
 	onMount(async () => {
 		resetBrushEditorSession();
@@ -95,17 +77,33 @@
 		onclose();
 	}
 
-	// Shape icons as SVG paths
+	// Check if current shape supports rotation
+	const currentShapeInfo = $derived(BRUSH_SHAPES.find(s => s.id === simState.brushShape));
+	const showRotation = $derived(currentShapeInfo?.rotatable ?? false);
+
+	// Shape icons as SVG paths (18 shapes: 6 per row)
 	const shapeIcons: Record<BrushShape, string> = {
-		circle: '<circle cx="12" cy="12" r="7" />',
-		square: '<rect x="5" y="5" width="14" height="14" />',
+		// Row 1: Basic geometric shapes
+		circle: '<circle cx="12" cy="12" r="6" />',
+		square: '<rect x="6" y="6" width="12" height="12" />',
 		diamond: '<path d="M12 5 L19 12 L12 19 L5 12 Z" />',
-		line: '<line x1="5" y1="12" x2="19" y2="12" stroke-width="3" />',
-		ring: '<circle cx="12" cy="12" r="7" /><circle cx="12" cy="12" r="3.5" />',
-		star: '<path d="M12 3 L13.5 9 L20 9 L15 13 L17 20 L12 16 L7 20 L9 13 L4 9 L10.5 9 Z" />',
-		cross: '<path d="M9 5 L15 5 L15 9 L19 9 L19 15 L15 15 L15 19 L9 19 L9 15 L5 15 L5 9 L9 9 Z" />',
-		scatter: '<circle cx="6" cy="8" r="1.5" /><circle cx="14" cy="6" r="1" /><circle cx="10" cy="13" r="1.5" /><circle cx="17" cy="11" r="1" /><circle cx="8" cy="17" r="1" />',
-		custom: '<path d="M5 18 Q9 10 12 13 T19 5" stroke-width="2" fill="none" />'
+		hexagon: '<path d="M12 5 L18 8 L18 16 L12 19 L6 16 L6 8 Z" />',
+		ring: '<circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="3" />',
+		triangle: '<path d="M12 5 L19 17 L5 17 Z" />',
+		// Row 2: Complex shapes
+		line: '<line x1="5" y1="12" x2="19" y2="12" stroke-width="2.5" />',
+		cross: '<path d="M10 5 L14 5 L14 10 L19 10 L19 14 L14 14 L14 19 L10 19 L10 14 L5 14 L5 10 L10 10 Z" />',
+		star: '<path d="M12 4 L13.5 9 L19 9 L14.5 12.5 L16 18 L12 15 L8 18 L9.5 12.5 L5 9 L10.5 9 Z" />',
+		heart: '<path d="M12 18 C5 13 5 8 8 6.5 C10 5.5 12 7 12 8 C12 7 14 5.5 16 6.5 C19 8 19 13 12 18 Z" />',
+		spiral: '<path d="M12 12 Q15 12 15 9 Q15 5 12 5 Q7 5 7 10 Q7 16 13 16 Q18 16 18 12" fill="none" stroke-width="1.8" />',
+		flower: '<circle cx="12" cy="7" r="2.5" /><circle cx="16" cy="10" r="2.5" /><circle cx="15" cy="15" r="2.5" /><circle cx="9" cy="15" r="2.5" /><circle cx="8" cy="10" r="2.5" /><circle cx="12" cy="12" r="2" />',
+		// Row 3: Textured/pattern shapes
+		burst: '<path d="M12 4 L13 9 L18 6 L14 10 L19 12 L14 14 L18 18 L13 15 L12 20 L11 15 L6 18 L10 14 L5 12 L10 10 L6 6 L11 9 Z" />',
+		gear: '<path d="M12 5 L13 7 L16 6 L15 9 L18 10 L16 12 L18 14 L15 15 L16 18 L13 17 L12 19 L11 17 L8 18 L9 15 L6 14 L8 12 L6 10 L9 9 L8 6 L11 7 Z" /><circle cx="12" cy="12" r="3" />',
+		wave: '<path d="M4 12 Q7 6 10 12 T16 12 T22 12" fill="none" stroke-width="2.5" />',
+		checker: '<rect x="5" y="5" width="4" height="4" /><rect x="13" y="5" width="4" height="4" /><rect x="9" y="9" width="4" height="4" /><rect x="5" y="13" width="4" height="4" /><rect x="13" y="13" width="4" height="4" />',
+		dots: '<circle cx="7" cy="7" r="1.8" /><circle cx="12" cy="7" r="1.8" /><circle cx="17" cy="7" r="1.8" /><circle cx="7" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="17" cy="12" r="1.8" /><circle cx="7" cy="17" r="1.8" /><circle cx="12" cy="17" r="1.8" /><circle cx="17" cy="17" r="1.8" />',
+		scatter: '<circle cx="6" cy="8" r="1.3" /><circle cx="15" cy="5" r="1" /><circle cx="10" cy="13" r="1.3" /><circle cx="18" cy="11" r="0.9" /><circle cx="7" cy="17" r="1.1" /><circle cx="14" cy="16" r="0.9" />'
 	};
 
 	// Fill type icons
@@ -114,14 +112,6 @@
 		gradient: '<defs><radialGradient id="grad"><stop offset="0%" stop-color="currentColor" stop-opacity="1"/><stop offset="100%" stop-color="currentColor" stop-opacity="0.1"/></radialGradient></defs><circle cx="12" cy="12" r="8" fill="url(#grad)" />',
 		noise: '<circle cx="7" cy="8" r="2" fill="currentColor" opacity="0.9" /><circle cx="14" cy="7" r="1.5" fill="currentColor" opacity="0.6" /><circle cx="10" cy="12" r="2.5" fill="currentColor" opacity="0.8" /><circle cx="16" cy="13" r="1.5" fill="currentColor" opacity="0.7" /><circle cx="8" cy="16" r="1.5" fill="currentColor" opacity="0.5" /><circle cx="14" cy="17" r="2" fill="currentColor" opacity="0.6" />',
 		spray: '<circle cx="6" cy="7" r="1" fill="currentColor" /><circle cx="11" cy="5" r="0.8" fill="currentColor" /><circle cx="16" cy="8" r="1" fill="currentColor" /><circle cx="8" cy="12" r="0.7" fill="currentColor" /><circle cx="14" cy="11" r="1" fill="currentColor" /><circle cx="18" cy="14" r="0.8" fill="currentColor" /><circle cx="6" cy="16" r="0.9" fill="currentColor" /><circle cx="12" cy="17" r="1" fill="currentColor" />'
-	};
-
-	// Edge falloff icons (gradient representations)
-	const edgeIcons: Record<BrushFalloff, string> = {
-		hard: '<rect x="6" y="6" width="12" height="12" fill="currentColor" opacity="0.8" />',
-		linear: '<defs><linearGradient id="lin" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="currentColor" stop-opacity="0.9"/><stop offset="100%" stop-color="currentColor" stop-opacity="0.1"/></linearGradient></defs><rect x="4" y="6" width="16" height="12" fill="url(#lin)" />',
-		smooth: '<defs><linearGradient id="smo" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="currentColor" stop-opacity="0.9"/><stop offset="40%" stop-color="currentColor" stop-opacity="0.7"/><stop offset="100%" stop-color="currentColor" stop-opacity="0.05"/></linearGradient></defs><rect x="4" y="6" width="16" height="12" fill="url(#smo)" />',
-		gaussian: '<defs><radialGradient id="gau" cx="30%" cy="50%"><stop offset="0%" stop-color="currentColor" stop-opacity="0.9"/><stop offset="100%" stop-color="currentColor" stop-opacity="0"/></radialGradient></defs><rect x="4" y="6" width="16" height="12" fill="url(#gau)" />'
 	};
 </script>
 
@@ -132,14 +122,13 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 	<div 
 		class="modal"
-		class:centered={!initialPosition}
 		bind:this={modalEl}
-		style={initialPosition ? `transform: translate(${initialPosition.x}px, ${initialPosition.y}px);` : ''}
+		style={modalState.position ? `transform: translate(${modalState.position.x}px, ${modalState.position.y}px);` : ''}
 		onclick={handleModalClick}
 		use:draggable={{ 
 			handle: '.header', 
 			bounds: true,
-			initialPosition: initialPosition,
+			initialPosition: modalState.position ?? (modalEl ? centerInViewport(modalEl) : null),
 			onDragEnd: handleDragEnd
 		}}
 	>
@@ -190,91 +179,71 @@
 			<div class="section">
 				<span class="section-label">Shape</span>
 				<div class="shape-grid">
-					{#each BRUSH_SHAPES.slice(0, 7) as shape}
-						<button 
-							class="shape-btn"
-							class:active={simState.brushShape === shape.id}
-							onclick={() => simState.brushShape = shape.id}
-							title={shape.description}
-						>
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-								{@html shapeIcons[shape.id]}
-							</svg>
-						</button>
-					{/each}
-				</div>
+				{#each BRUSH_SHAPES as shape}
+					<button 
+						class="shape-btn"
+						class:active={simState.brushShape === shape.id}
+						onclick={() => simState.brushShape = shape.id}
+						title={shape.description}
+					>
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+							{@html shapeIcons[shape.id]}
+						</svg>
+					</button>
+				{/each}
+			</div>
+		</div>
+
+		<!-- Fill type selector -->
+		<div class="section">
+			<span class="section-label">Fill</span>
+			<div class="fill-grid">
+				{#each BRUSH_TYPES as type}
+					<button 
+						class="fill-btn"
+						class:active={simState.brushType === type.id}
+						onclick={() => simState.brushType = type.id}
+						title={type.description}
+					>
+						<svg viewBox="0 0 24 24" fill="none" stroke="none">
+							{@html fillIcons[type.id]}
+						</svg>
+						<span>{type.name}</span>
+					</button>
+				{/each}
+			</div>
+		</div>
+
+		<!-- Size slider -->
+		<div class="slider-section">
+			<div class="slider-row">
+				<span class="slider-label">Size</span>
+				<input type="range" min="1" max="150" bind:value={simState.brushSize} />
+				<span class="slider-value">{simState.brushSize}</span>
 			</div>
 
-			<!-- Fill type selector -->
-			<div class="section">
-				<span class="section-label">Fill</span>
-				<div class="fill-grid">
-					{#each BRUSH_TYPES as type}
-						<button 
-							class="fill-btn"
-							class:active={simState.brushType === type.id}
-							onclick={() => simState.brushType = type.id}
-							title={type.description}
-						>
-							<svg viewBox="0 0 24 24" fill="none" stroke="none">
-								{@html fillIcons[type.id]}
-							</svg>
-							<span>{type.name}</span>
-						</button>
-					{/each}
-				</div>
+			<div class="slider-row">
+				<span class="slider-label">Intensity</span>
+				<input type="range" min="0.1" max="1" step="0.05" bind:value={simState.brushIntensity} />
+				<span class="slider-value">{Math.round(simState.brushIntensity * 100)}%</span>
 			</div>
 
-			<!-- Edge falloff selector -->
-			<div class="section">
-				<span class="section-label">Edge</span>
-				<div class="edge-grid">
-					{#each BRUSH_FALLOFFS as falloff}
-						<button 
-							class="edge-btn"
-							class:active={simState.brushFalloff === falloff.id}
-							onclick={() => simState.brushFalloff = falloff.id}
-							title={falloff.description}
-						>
-							<svg viewBox="0 0 24 24">
-								{@html edgeIcons[falloff.id]}
-							</svg>
-							<span>{falloff.name}</span>
-						</button>
-					{/each}
-				</div>
-			</div>
-
-			<!-- Size slider -->
-			<div class="slider-section">
+			{#if showRotation}
 				<div class="slider-row">
-					<span class="slider-label">Size</span>
-					<input type="range" min="1" max="150" bind:value={simState.brushSize} />
-					<span class="slider-value">{simState.brushSize}</span>
+					<span class="slider-label">Angle</span>
+					<input type="range" min="0" max="360" step="5" bind:value={simState.brushRotation} />
+					<span class="slider-value">{simState.brushRotation}°</span>
 				</div>
+			{/if}
 
+			{#if simState.brushType === 'spray' || simState.brushShape === 'scatter'}
 				<div class="slider-row">
-					<span class="slider-label">Intensity</span>
-					<input type="range" min="0.1" max="1" step="0.05" bind:value={simState.brushIntensity} />
-					<span class="slider-value">{Math.round(simState.brushIntensity * 100)}%</span>
+					<span class="slider-label">Density</span>
+					<input type="range" min="0.1" max="1" step="0.05" bind:value={simState.brushDensity} />
+					<span class="slider-value">{Math.round(simState.brushDensity * 100)}%</span>
 				</div>
-
-				{#if simState.brushShape === 'line' || simState.brushShape === 'diamond' || simState.brushAspectRatio !== 1}
-					<div class="slider-row">
-						<span class="slider-label">Angle</span>
-						<input type="range" min="0" max="180" step="5" bind:value={simState.brushRotation} />
-						<span class="slider-value">{simState.brushRotation}°</span>
-					</div>
-				{/if}
-
-				{#if simState.brushType === 'spray' || simState.brushShape === 'scatter'}
-					<div class="slider-row">
-						<span class="slider-label">Density</span>
-						<input type="range" min="0.1" max="1" step="0.05" bind:value={simState.brushDensity} />
-						<span class="slider-value">{Math.round(simState.brushDensity * 100)}%</span>
-					</div>
-				{/if}
-			</div>
+			{/if}
+		</div>
 
 			<!-- Footer with reset -->
 			<div class="footer">
@@ -315,12 +284,6 @@
 		left: 0;
 	}
 
-	/* Center the modal when no saved position exists */
-	.modal.centered {
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
-	}
 
 	.modal:global(.dragging) {
 		box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
@@ -464,16 +427,16 @@
 	/* Shape grid */
 	.shape-grid {
 		display: grid;
-		grid-template-columns: repeat(7, 1fr);
-		gap: 3px;
+		grid-template-columns: repeat(6, 1fr);
+		gap: 2px;
 	}
 
 	.shape-btn {
 		aspect-ratio: 1;
-		padding: 5px;
+		padding: 3px;
 		background: var(--ui-input-bg, rgba(0, 0, 0, 0.3));
 		border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.06));
-		border-radius: 5px;
+		border-radius: 4px;
 		color: var(--ui-text, #666);
 		cursor: pointer;
 		transition: all 0.1s;
@@ -494,8 +457,8 @@
 	}
 
 	.shape-btn svg {
-		width: 100%;
-		height: 100%;
+		width: 20px;
+		height: 20px;
 	}
 
 	/* Fill grid */
@@ -536,49 +499,6 @@
 	}
 
 	.fill-btn span {
-		font-size: 0.55rem;
-		text-transform: uppercase;
-		letter-spacing: 0.02em;
-	}
-
-	/* Edge grid */
-	.edge-grid {
-		display: grid;
-		grid-template-columns: repeat(4, 1fr);
-		gap: 3px;
-	}
-
-	.edge-btn {
-		padding: 0.3rem 0.2rem;
-		background: var(--ui-input-bg, rgba(0, 0, 0, 0.3));
-		border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.06));
-		border-radius: 5px;
-		color: var(--ui-text, #888);
-		cursor: pointer;
-		transition: all 0.1s;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.15rem;
-	}
-
-	.edge-btn:hover {
-		background: var(--ui-border-hover, rgba(255, 255, 255, 0.08));
-		color: var(--ui-text-hover, #fff);
-	}
-
-	.edge-btn.active {
-		background: var(--ui-accent-bg, rgba(45, 212, 191, 0.2));
-		border-color: var(--ui-accent-border, rgba(45, 212, 191, 0.5));
-		color: var(--ui-accent, #2dd4bf);
-	}
-
-	.edge-btn svg {
-		width: 20px;
-		height: 20px;
-	}
-
-	.edge-btn span {
 		font-size: 0.55rem;
 		text-transform: uppercase;
 		letter-spacing: 0.02em;
@@ -713,18 +633,18 @@
 
 		/* Shape grid - 4 columns on mobile instead of 7 */
 		.shape-grid {
-			grid-template-columns: repeat(4, 1fr);
-			gap: 4px;
+			grid-template-columns: repeat(6, 1fr);
+			gap: 2px;
 		}
 
 		.shape-btn {
-			padding: 6px;
-			min-height: 36px;
+			padding: 3px;
+			min-height: 28px;
 		}
 
 		.shape-btn svg {
-			width: 18px;
-			height: 18px;
+			width: 14px;
+			height: 14px;
 		}
 
 		/* Fill grid - 2x2 on mobile */
@@ -748,26 +668,6 @@
 			font-size: 0.6rem;
 		}
 
-		/* Edge grid - 2x2 on mobile */
-		.edge-grid {
-			grid-template-columns: repeat(2, 1fr);
-			gap: 4px;
-		}
-
-		.edge-btn {
-			padding: 0.35rem;
-			flex-direction: row;
-			gap: 0.3rem;
-		}
-
-		.edge-btn svg {
-			width: 18px;
-			height: 18px;
-		}
-
-		.edge-btn span {
-			font-size: 0.6rem;
-		}
 
 		/* Mode buttons */
 		.mode-btn {
@@ -826,11 +726,10 @@
 		}
 
 		.shape-grid {
-			grid-template-columns: repeat(4, 1fr);
+			grid-template-columns: repeat(6, 1fr);
 		}
 
-		.fill-grid,
-		.edge-grid {
+		.fill-grid {
 			grid-template-columns: repeat(2, 1fr);
 		}
 	}

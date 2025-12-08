@@ -14,12 +14,10 @@ let brushSize = $state(25);
 let brushState = $state(1); // 1 = draw alive, 0 = erase
 let brushType = $state<BrushType>('solid'); // Brush fill type
 let brushShape = $state<BrushShape>('circle');
-let brushFalloff = $state<BrushFalloff>('hard');
 let brushRotation = $state(0); // 0-360 degrees
 let brushDensity = $state(0.5); // 0-1 for spray/scatter
 let brushIntensity = $state(1.0); // 0-1 overall strength
 let brushAspectRatio = $state(1.0); // 0.25-4.0 for elongated shapes
-let brushSoftness = $state(0); // 0-1 edge softness
 let currentRule = $state<CARule>(getDefaultRule());
 
 // Tool mode - either 'brush' (drawing) or 'pan' (navigation)
@@ -38,37 +36,42 @@ export const BRUSH_TYPES: { id: BrushType; name: string; description: string }[]
 ];
 
 // Brush shapes - the geometry of the brush
-export type BrushShape = 'circle' | 'square' | 'diamond' | 'line' | 'ring' | 'star' | 'cross' | 'scatter' | 'custom';
+// 18 shapes in 3 rows of 6
+export type BrushShape = 
+	| 'circle' | 'square' | 'diamond' | 'hexagon' | 'ring' | 'triangle'
+	| 'line' | 'cross' | 'star' | 'heart' | 'spiral' | 'flower'
+	| 'burst' | 'gear' | 'wave' | 'checker' | 'dots' | 'scatter';
 
 export interface BrushShapeInfo {
 	id: BrushShape;
 	name: string;
 	icon: string;
 	description: string;
-	hex?: boolean; // If true, only for hexagonal grids
-	square?: boolean; // If true, only for square grids
+	rotatable?: boolean; // If true, rotation has visible effect
 }
 
 export const BRUSH_SHAPES: BrushShapeInfo[] = [
+	// Row 1: Basic geometric shapes
 	{ id: 'circle', name: 'Circle', icon: 'circle', description: 'Round brush' },
-	{ id: 'square', name: 'Square', icon: 'square', description: 'Square brush' },
-	{ id: 'diamond', name: 'Diamond', icon: 'diamond', description: 'Rotated square' },
-	{ id: 'line', name: 'Line', icon: 'line', description: 'Directional stroke' },
+	{ id: 'square', name: 'Square', icon: 'square', description: 'Square brush', rotatable: true },
+	{ id: 'diamond', name: 'Diamond', icon: 'diamond', description: 'Diamond shape', rotatable: true },
+	{ id: 'hexagon', name: 'Hex', icon: 'hexagon', description: 'Six-sided', rotatable: true },
 	{ id: 'ring', name: 'Ring', icon: 'ring', description: 'Hollow circle' },
-	{ id: 'star', name: 'Star', icon: 'star', description: 'Star pattern' },
-	{ id: 'cross', name: 'Cross', icon: 'cross', description: 'Plus shape' },
-	{ id: 'scatter', name: 'Scatter', icon: 'scatter', description: 'Random points' },
-	{ id: 'custom', name: 'Custom', icon: 'custom', description: 'Draw your own shape' }
-];
-
-// Brush falloff - how intensity decreases from center
-export type BrushFalloff = 'hard' | 'linear' | 'smooth' | 'gaussian';
-
-export const BRUSH_FALLOFFS: { id: BrushFalloff; name: string; description: string }[] = [
-	{ id: 'hard', name: 'Hard', description: 'Sharp edge, no falloff' },
-	{ id: 'linear', name: 'Linear', description: 'Even gradient to edge' },
-	{ id: 'smooth', name: 'Smooth', description: 'S-curve falloff' },
-	{ id: 'gaussian', name: 'Soft', description: 'Gaussian blur falloff' }
+	{ id: 'triangle', name: 'Tri', icon: 'triangle', description: 'Triangle', rotatable: true },
+	// Row 2: Complex shapes
+	{ id: 'line', name: 'Line', icon: 'line', description: 'Stroke', rotatable: true },
+	{ id: 'cross', name: 'Cross', icon: 'cross', description: 'Cross shape', rotatable: true },
+	{ id: 'star', name: 'Star', icon: 'star', description: 'Star pattern', rotatable: true },
+	{ id: 'heart', name: 'Heart', icon: 'heart', description: 'Heart shape', rotatable: true },
+	{ id: 'spiral', name: 'Spiral', icon: 'spiral', description: 'Spiral arms', rotatable: true },
+	{ id: 'flower', name: 'Flower', icon: 'flower', description: 'Petal pattern', rotatable: true },
+	// Row 3: Textured/pattern shapes
+	{ id: 'burst', name: 'Burst', icon: 'burst', description: 'Explosion rays', rotatable: true },
+	{ id: 'gear', name: 'Gear', icon: 'gear', description: 'Cog teeth', rotatable: true },
+	{ id: 'wave', name: 'Wave', icon: 'wave', description: 'Sine wave', rotatable: true },
+	{ id: 'checker', name: 'Check', icon: 'checker', description: 'Checkerboard' },
+	{ id: 'dots', name: 'Dots', icon: 'dots', description: 'Grid of dots' },
+	{ id: 'scatter', name: 'Scatter', icon: 'scatter', description: 'Random spray' }
 ];
 
 // Complete brush configuration
@@ -76,24 +79,20 @@ export interface BrushConfig {
 	size: number;
 	shape: BrushShape;
 	type: BrushType;
-	falloff: BrushFalloff;
 	rotation: number; // 0-360 degrees
 	density: number; // 0-1 for spray/scatter
 	intensity: number; // 0-1 overall strength
 	aspectRatio: number; // 0.25-4.0 for elongated shapes
-	softness: number; // 0-1 edge softness
 }
 
 export const DEFAULT_BRUSH_CONFIG: BrushConfig = {
 	size: 25,
 	shape: 'circle',
 	type: 'solid',
-	falloff: 'hard',
 	rotation: 0,
 	density: 0.5,
 	intensity: 1.0,
-	aspectRatio: 1.0,
-	softness: 0
+	aspectRatio: 1.0
 };
 let generation = $state(0);
 let showGrid = $state(true);
@@ -602,13 +601,6 @@ export function getSimulationState() {
 			brushShape = value;
 		},
 
-		get brushFalloff() {
-			return brushFalloff;
-		},
-		set brushFalloff(value: BrushFalloff) {
-			brushFalloff = value;
-		},
-
 		get brushRotation() {
 			return brushRotation;
 		},
@@ -637,37 +629,26 @@ export function getSimulationState() {
 			brushAspectRatio = Math.max(0.25, Math.min(4, value));
 		},
 
-		get brushSoftness() {
-			return brushSoftness;
-		},
-		set brushSoftness(value: number) {
-			brushSoftness = Math.max(0, Math.min(1, value));
-		},
-
 		// Full brush config getter/setter for convenience
 		get brushConfig(): BrushConfig {
 			return {
 				size: brushSize,
 				shape: brushShape,
 				type: brushType,
-				falloff: brushFalloff,
 				rotation: brushRotation,
 				density: brushDensity,
 				intensity: brushIntensity,
-				aspectRatio: brushAspectRatio,
-				softness: brushSoftness
+				aspectRatio: brushAspectRatio
 			};
 		},
 		set brushConfig(config: BrushConfig) {
 			brushSize = config.size;
 			brushShape = config.shape;
 			brushType = config.type;
-			brushFalloff = config.falloff;
 			brushRotation = config.rotation;
 			brushDensity = config.density;
 			brushIntensity = config.intensity;
 			brushAspectRatio = config.aspectRatio;
-			brushSoftness = config.softness;
 		},
 
 		get toolMode() {

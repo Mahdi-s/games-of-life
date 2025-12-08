@@ -28,7 +28,7 @@ struct RenderParams {
     spectrum_frequency: f32, // How many times to repeat the spectrum (1.0 = normal)
     neighbor_shading: f32, // 0=off, 1=count alive, 2=sum vitality
     boundary_mode: f32,  // 0=plane, 1=cylinderX, 2=cylinderY, 3=torus, 4=mobiusX, 5=mobiusY, 6=kleinX, 7=kleinY, 8=projective
-    brush_shape: f32,    // 0=circle, 1=square, 2=diamond, 3=line, 4=ring, 5=star, 6=cross
+    brush_shape: f32,    // 0-17: circle, square, diamond, hexagon, ring, triangle, line, cross, star, heart, spiral, flower, burst, gear, wave, checker, dots, scatter
     brush_rotation: f32, // Rotation in radians
     brush_aspect: f32,   // Width/height aspect ratio
 }
@@ -886,46 +886,195 @@ fn is_in_brush(cell_x: i32, cell_y: i32) -> bool {
     let ax = rx / aspect;
     let ay = ry;
     
-    // Check shape
-    // Shape 0: Circle
+    // Check shape (18 shapes total)
+    let PI = 3.14159265;
+    
+    // 0: Circle
     if (shape == 0) {
         let dist_sq = ax * ax + ay * ay;
         return dist_sq <= r * r;
     }
-    // Shape 1: Square
+    // 1: Square
     else if (shape == 1) {
         return abs(ax) <= r && abs(ay) <= r;
     }
-    // Shape 2: Diamond
+    // 2: Diamond
     else if (shape == 2) {
         return (abs(ax) + abs(ay)) <= r;
     }
-    // Shape 3: Line
+    // 3: Hexagon (flat-top, properly scaled)
     else if (shape == 3) {
-        let line_thickness = r * 0.15;
-        return abs(ax) <= r && abs(ay) <= line_thickness;
+        // Hexagon using 3-axis check
+        let hx = abs(ax) / r;
+        let hy = abs(ay) / r;
+        // For flat-top hexagon: check 3 constraints
+        // Using the formula: max(|x|*2/sqrt(3), |x|/sqrt(3) + |y|) <= 1
+        let hex_dist = max(hx * 1.1547, hx * 0.5774 + hy);
+        return hex_dist <= 1.0;
     }
-    // Shape 4: Ring
+    // 4: Ring
     else if (shape == 4) {
         let dist_sq = ax * ax + ay * ay;
         let outer_r = r * r;
         let inner_r = (r * 0.6) * (r * 0.6);
         return dist_sq <= outer_r && dist_sq >= inner_r;
     }
-    // Shape 5: Star (5-pointed)
+    // 5: Triangle
     else if (shape == 5) {
+        let tri_h = r * 0.866;
+        let ty = ay + tri_h * 0.5;
+        if (ty >= 0.0 && ty <= tri_h * 1.5) {
+            let half_width = (tri_h * 1.5 - ty) * 0.577;
+            return abs(ax) <= half_width;
+        }
+        return false;
+    }
+    // 6: Line
+    else if (shape == 6) {
+        let line_thickness = r * 0.15;
+        return abs(ax) <= r && abs(ay) <= line_thickness;
+    }
+    // 7: Cross
+    else if (shape == 7) {
+        let arm_width = r * 0.25;
+        let in_vertical = abs(ax) <= arm_width && abs(ay) <= r;
+        let in_horizontal = abs(ay) <= arm_width && abs(ax) <= r;
+        return in_vertical || in_horizontal;
+    }
+    // 8: Star (5-pointed)
+    else if (shape == 8) {
         let angle = atan2(ay, ax);
         let dist = sqrt(ax * ax + ay * ay);
         let star_factor = 0.5 + 0.5 * cos(5.0 * angle);
         let effective_r = r * (0.4 + 0.6 * star_factor);
         return dist <= effective_r;
     }
-    // Shape 6: Cross
-    else if (shape == 6) {
-        let arm_width = r * 0.3;
-        let in_vertical = abs(ax) <= arm_width && abs(ay) <= r;
-        let in_horizontal = abs(ay) <= arm_width && abs(ax) <= r;
-        return in_vertical || in_horizontal;
+    // 9: Heart (smooth SDF-based approach)
+    else if (shape == 9) {
+        // Normalize coordinates, flip Y so heart points down
+        let scale = 0.8;
+        var px = abs(ax / (r * scale)); // Mirror on X axis
+        var py = -ay / (r * scale) + 0.35; // Flip and shift so tip is at bottom
+        
+        // Heart SDF based on Inigo Quilez's approach
+        // The heart is composed of: two quarter circles at top, curved sides tapering to point
+        if (py + px > 1.0) {
+            // Upper outer region - distance to the circle arc
+            let dx = px - 0.25;
+            let dy = py - 0.75;
+            let d = sqrt(dx * dx + dy * dy) - 0.3536; // sqrt(2)/4 ≈ 0.3536
+            return d <= 0.0;
+        } else {
+            // Lower region - distance to the point and curved sides
+            // Distance to the tip point at (0, 0)
+            let d1 = sqrt(px * px + (py - 0.0) * (py - 0.0));
+            // Distance to the diagonal edge
+            let d2_proj = max(px + py, 0.0) * 0.5;
+            let d2x = px - d2_proj;
+            let d2y = py - d2_proj;
+            let d2 = sqrt(d2x * d2x + d2y * d2y);
+            let d = min(d1, d2);
+            // Sign: negative inside, positive outside
+            let s = sign(px - py);
+            return d * s <= 0.0;
+        }
+    }
+    // 10: Spiral (fixed modulo handling)
+    else if (shape == 10) {
+        let sr = sqrt(ax * ax + ay * ay);
+        let normalized_r = sr / r;
+        if (normalized_r > 1.0) { return false; }
+        
+        let sangle = atan2(ay, ax); // -PI to PI
+        let spiral_arms = 3.0;
+        let spiral_width = 0.18;
+        
+        // Calculate which spiral arm this angle should be near
+        let arm_spacing = 2.0 * PI / spiral_arms;
+        let target_angle = normalized_r * 2.0 * PI * spiral_arms;
+        
+        // Find the angular distance to nearest spiral arm
+        var angle_diff = sangle - target_angle;
+        // Wrap to -PI to PI range
+        angle_diff = angle_diff - floor((angle_diff + PI) / (2.0 * PI)) * 2.0 * PI;
+        // Then wrap to the arm spacing
+        angle_diff = angle_diff - floor((angle_diff + arm_spacing * 0.5) / arm_spacing) * arm_spacing;
+        
+        return abs(angle_diff) < spiral_width * (0.5 + normalized_r);
+    }
+    // 11: Flower (6 petals)
+    else if (shape == 11) {
+        let fangle = atan2(ay, ax);
+        let fr = sqrt(ax * ax + ay * ay);
+        let petal_factor = 0.5 + 0.5 * cos(6.0 * fangle);
+        let effective_r = r * (0.3 + 0.7 * petal_factor);
+        return fr <= effective_r;
+    }
+    // 12: Burst (starburst with rays)
+    else if (shape == 12) {
+        let bangle = atan2(ay, ax);
+        let br = sqrt(ax * ax + ay * ay);
+        let rays = 12.0;
+        let ray_factor = abs(cos(rays * bangle));
+        let effective_r = r * (0.3 + 0.7 * ray_factor);
+        return br <= effective_r;
+    }
+    // 13: Gear (cog with teeth)
+    else if (shape == 13) {
+        let gangle = atan2(ay, ax);
+        let gr = sqrt(ax * ax + ay * ay);
+        let teeth = 8.0;
+        let tooth_depth = 0.25;
+        var tooth_factor = 1.0;
+        if (cos(teeth * gangle) <= 0.3) {
+            tooth_factor = 1.0 - tooth_depth;
+        }
+        let effective_r = r * tooth_factor;
+        return gr <= effective_r && gr >= r * 0.4;
+    }
+    // 14: Wave (sine wave band)
+    else if (shape == 14) {
+        let wave_freq = 3.0;
+        let wave_amp = r * 0.3;
+        let center_y = sin(ax / r * PI * wave_freq) * wave_amp;
+        let band_width = r * 0.25;
+        return abs(ax) <= r && abs(ay - center_y) <= band_width;
+    }
+    // 15: Checker (checkerboard pattern)
+    else if (shape == 15) {
+        let cell_size = r / 3.0;
+        let cx = i32(floor((ax + r) / cell_size));
+        let cy = i32(floor((ay + r) / cell_size));
+        let dist = sqrt(ax * ax + ay * ay);
+        return dist <= r && ((cx + cy) % 2) == 0;
+    }
+    // 16: Dots (grid of circular dots)
+    else if (shape == 16) {
+        let dot_spacing = r / 2.5;
+        let dot_radius = dot_spacing * 0.35;
+        let nearest_x = round(ax / dot_spacing) * dot_spacing;
+        let nearest_y = round(ay / dot_spacing) * dot_spacing;
+        let dot_dist = sqrt((ax - nearest_x) * (ax - nearest_x) + (ay - nearest_y) * (ay - nearest_y));
+        let dist = sqrt(ax * ax + ay * ay);
+        return dist <= r && dot_dist <= dot_radius;
+    }
+    // 17: Scatter (show sparse dots pattern in preview)
+    else if (shape == 17) {
+        let dist = sqrt(ax * ax + ay * ay);
+        if (dist > r) { return false; }
+        // Show a sparse dot pattern to indicate scatter
+        let dot_spacing = r / 2.0;
+        let dot_radius = dot_spacing * 0.25;
+        let nearest_x = round(ax / dot_spacing) * dot_spacing;
+        let nearest_y = round(ay / dot_spacing) * dot_spacing;
+        let dot_dist = sqrt((ax - nearest_x) * (ax - nearest_x) + (ay - nearest_y) * (ay - nearest_y));
+        // Only show every other dot for sparse look
+        let ix = i32(round(ax / dot_spacing));
+        let iy = i32(round(ay / dot_spacing));
+        if ((ix + iy) % 2 == 0) {
+            return dot_dist <= dot_radius;
+        }
+        return false;
     }
     
     // Default to circle

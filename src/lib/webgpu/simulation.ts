@@ -28,7 +28,7 @@ export interface ViewState {
 	brushX: number;      // Brush center in grid coordinates
 	brushY: number;
 	brushRadius: number; // Brush radius in cells (-1 to hide)
-	brushShape: number;  // 0=circle, 1=square, 2=diamond, 3=line, 4=ring, 5=star, 6=cross
+	brushShape: number;  // 0-17: circle, square, diamond, hexagon, ring, triangle, line, cross, star, heart, spiral, flower, burst, gear, wave, checker, dots, scatter
 	brushRotation: number; // Rotation in radians
 	brushAspectRatio: number; // Width/height ratio (1.0 = square)
 	boundaryMode: BoundaryMode; // Topological boundary condition
@@ -371,7 +371,7 @@ export class Simulation {
 			this.view.spectrumFrequency, // how many times to repeat the spectrum
 			this.view.neighborShading, // neighbor shading mode: 0=off, 1=alive, 2=vitality
 			boundaryModeToIndex(this.view.boundaryMode), // boundary mode for seamless panning
-			this.view.brushShape, // 0=circle, 1=square, 2=diamond, 3=line, 4=ring, 5=star, 6=cross
+			this.view.brushShape, // 0-17: see ViewState for shape list
 			this.view.brushRotation, // rotation in radians
 			this.view.brushAspectRatio  // aspect ratio
 		]);
@@ -569,12 +569,10 @@ export class Simulation {
 		
 		// Extract config with defaults
 		const shape = config?.shape ?? 'circle';
-		const falloff = config?.falloff ?? 'hard';
 		const rotation = ((config?.rotation ?? 0) * Math.PI) / 180;
 		const density = config?.density ?? 0.5;
 		const intensity = config?.intensity ?? 1.0;
 		const aspectRatio = config?.aspectRatio ?? 1.0;
-		const softness = config?.softness ?? 0;
 		
 		const cos = Math.cos(rotation);
 		const sin = Math.sin(rotation);
@@ -601,17 +599,41 @@ export class Simulation {
 					dist = (Math.abs(ax) + Math.abs(ay)) / r;
 					inside = dist <= 1;
 					break;
+				case 'hexagon': {
+					const hx = Math.abs(ax);
+					const hy = Math.abs(ay);
+					dist = Math.max(hx, hy * 0.866 + hx * 0.5) / r;
+					inside = dist <= 1;
+					break;
+				}
+				case 'ring':
+					dist = Math.sqrt(ax * ax + ay * ay) / r;
+					inside = dist >= 0.6 && dist <= 1;
+					break;
+				case 'triangle': {
+					const triH = r * 0.866;
+					const ty = ay + triH * 0.5;
+					if (ty >= 0 && ty <= triH * 1.5) {
+						const halfWidth = (triH * 1.5 - ty) * 0.577;
+						inside = Math.abs(ax) <= halfWidth;
+						dist = inside ? Math.max(Math.abs(ax) / r, ty / (triH * 1.5)) : 2;
+					}
+					break;
+				}
 				case 'line':
 					dist = Math.abs(ay) / (r * 0.15);
 					inside = Math.abs(ax) <= r && dist <= 1;
 					if (inside) dist = Math.max(Math.abs(ax) / r, Math.abs(ay) / (r * 0.15));
 					break;
-				case 'ring':
-					dist = Math.sqrt(ax * ax + ay * ay) / r;
-					inside = dist >= 0.6 && dist <= 1;
+				case 'cross': {
+					const armRatio = 0.25;
+					const inVertical = Math.abs(ax) <= r * armRatio && Math.abs(ay) <= r;
+					const inHorizontal = Math.abs(ay) <= r * armRatio && Math.abs(ax) <= r;
+					inside = inVertical || inHorizontal;
+					dist = inside ? Math.max(Math.abs(ax), Math.abs(ay)) / r : 2;
 					break;
+				}
 				case 'star': {
-					// 5-pointed star
 					const angle = Math.atan2(ay, ax);
 					const starR = Math.sqrt(ax * ax + ay * ay);
 					const starFactor = 0.5 + 0.5 * Math.cos(5 * angle);
@@ -620,12 +642,105 @@ export class Simulation {
 					inside = dist <= 1;
 					break;
 				}
-				case 'cross': {
-					const armRatio = 0.3;
-					const inVertical = Math.abs(ax) <= r * armRatio && Math.abs(ay) <= r;
-					const inHorizontal = Math.abs(ay) <= r * armRatio && Math.abs(ax) <= r;
-					inside = inVertical || inHorizontal;
-					dist = inside ? Math.max(Math.abs(ax), Math.abs(ay)) / r : 2;
+				case 'heart': {
+					// Heart SDF - matches shader implementation
+					const scale = 0.8;
+					const px = Math.abs(ax / (r * scale));
+					const py = -ay / (r * scale) + 0.35;
+					
+					if (py + px > 1.0) {
+						// Upper outer region - distance to circle arc
+						const dx = px - 0.25;
+						const dy = py - 0.75;
+						const d = Math.sqrt(dx * dx + dy * dy) - 0.3536;
+						inside = d <= 0;
+					} else {
+						// Lower region
+						const d1 = Math.sqrt(px * px + py * py);
+						const d2_proj = Math.max(px + py, 0) * 0.5;
+						const d2x = px - d2_proj;
+						const d2y = py - d2_proj;
+						const d2 = Math.sqrt(d2x * d2x + d2y * d2y);
+						const d = Math.min(d1, d2);
+						const s = Math.sign(px - py);
+						inside = d * s <= 0;
+					}
+					dist = inside ? Math.sqrt((ax / r) ** 2 + (ay / r) ** 2) : 2;
+					break;
+				}
+				case 'spiral': {
+					const sr = Math.sqrt(ax * ax + ay * ay);
+					const sangle = Math.atan2(ay, ax);
+					const normalizedR = sr / r;
+					const spiralArms = 3;
+					const spiralWidth = 0.15;
+					const targetAngle = normalizedR * Math.PI * 2 * spiralArms;
+					const angleDiff = Math.abs(((sangle - targetAngle) % (Math.PI * 2 / spiralArms) + Math.PI) % (Math.PI * 2 / spiralArms) - Math.PI);
+					inside = normalizedR <= 1 && angleDiff < spiralWidth * (1 + normalizedR);
+					dist = normalizedR;
+					break;
+				}
+				case 'flower': {
+					// 6-petal flower
+					const fangle = Math.atan2(ay, ax);
+					const fr = Math.sqrt(ax * ax + ay * ay);
+					const petalFactor = 0.5 + 0.5 * Math.cos(6 * fangle);
+					const effectiveR = r * (0.3 + 0.7 * petalFactor);
+					dist = fr / effectiveR;
+					inside = dist <= 1;
+					break;
+				}
+				case 'burst': {
+					// Starburst with many rays
+					const bangle = Math.atan2(ay, ax);
+					const br = Math.sqrt(ax * ax + ay * ay);
+					const rays = 12;
+					const rayFactor = Math.abs(Math.cos(rays * bangle));
+					const effectiveR = r * (0.3 + 0.7 * rayFactor);
+					dist = br / effectiveR;
+					inside = dist <= 1;
+					break;
+				}
+				case 'gear': {
+					// Gear/cog with teeth
+					const gangle = Math.atan2(ay, ax);
+					const gr = Math.sqrt(ax * ax + ay * ay);
+					const teeth = 8;
+					const toothDepth = 0.25;
+					const toothFactor = Math.cos(teeth * gangle) > 0.3 ? 1 : (1 - toothDepth);
+					const effectiveR = r * toothFactor;
+					dist = gr / r;
+					inside = gr <= effectiveR && gr >= r * 0.4;
+					break;
+				}
+				case 'wave': {
+					// Sine wave band
+					const waveFreq = 3;
+					const waveAmp = r * 0.3;
+					const centerY = Math.sin(ax / r * Math.PI * waveFreq) * waveAmp;
+					const bandWidth = r * 0.25;
+					dist = Math.abs(ax) / r;
+					inside = Math.abs(ax) <= r && Math.abs(ay - centerY) <= bandWidth;
+					break;
+				}
+				case 'checker': {
+					// Checkerboard pattern
+					const cellSize = r / 3;
+					const cx = Math.floor((ax + r) / cellSize);
+					const cy = Math.floor((ay + r) / cellSize);
+					dist = Math.sqrt(ax * ax + ay * ay) / r;
+					inside = dist <= 1 && (cx + cy) % 2 === 0;
+					break;
+				}
+				case 'dots': {
+					// Grid of circular dots
+					const dotSpacing = r / 2.5;
+					const dotRadius = dotSpacing * 0.35;
+					const nearestX = Math.round(ax / dotSpacing) * dotSpacing;
+					const nearestY = Math.round(ay / dotSpacing) * dotSpacing;
+					const dotDist = Math.sqrt((ax - nearestX) ** 2 + (ay - nearestY) ** 2);
+					dist = Math.sqrt(ax * ax + ay * ay) / r;
+					inside = dist <= 1 && dotDist <= dotRadius;
 					break;
 				}
 				case 'scatter':
@@ -641,31 +756,9 @@ export class Simulation {
 			return { inside, dist };
 		};
 		
-		// Calculate falloff alpha based on distance
-		const getFalloffAlpha = (dist: number): number => {
-			let alpha = 1;
-			switch (falloff) {
-				case 'linear':
-					alpha = 1 - dist;
-					break;
-				case 'smooth':
-					alpha = 1 - (dist * dist * (3 - 2 * dist));
-					break;
-				case 'gaussian':
-					alpha = Math.exp(-dist * dist * 3);
-					break;
-				case 'hard':
-				default:
-					alpha = 1;
-			}
-			
-			// Apply softness at edges
-			if (softness > 0 && dist > (1 - softness)) {
-				const edgeFactor = (dist - (1 - softness)) / softness;
-				alpha *= Math.max(0, 1 - edgeFactor);
-			}
-			
-			return alpha * intensity;
+		// Get alpha based on distance (simpler now - just intensity)
+		const getAlpha = (dist: number): number => {
+			return intensity;
 		};
 		
 		// Simple hash function for noise
@@ -812,7 +905,7 @@ export class Simulation {
 					
 					const result = isInBrush(vdx, vdy, visualRadius);
 					if (result.inside) {
-						const alpha = getFalloffAlpha(result.dist);
+						const alpha = getAlpha(result.dist);
 						const cellState = getCellState(alpha, cellX, cellY, result.dist);
 						// -1 means "don't change this cell" (for probabilistic/additive brushes)
 						if (cellState >= 0) {
@@ -831,7 +924,7 @@ export class Simulation {
 					const cellY = brushCenterY + dy;
 					const result = isInBrush(dx, dy, radius);
 					if (result.inside) {
-						const alpha = getFalloffAlpha(result.dist);
+						const alpha = getAlpha(result.dist);
 						const cellState = getCellState(alpha, cellX, cellY, result.dist);
 						// -1 means "don't change this cell" (for probabilistic/additive brushes)
 						if (cellState >= 0) {
