@@ -529,7 +529,7 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 		};
 	}
 
-	async function handleTouchStart(e: TouchEvent) {
+	function handleTouchStart(e: TouchEvent) {
 		if (!simulation) return;
 		
 		// Disable drawing during tour
@@ -566,7 +566,7 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 					ensureBrushEditorSnapshot();
 					markBrushEditorEdited();
 				} else {
-					await beginStroke(simulation);
+					capturePreStroke();
 					strokeTracked = true;
 				}
 				touchMode = 'draw';

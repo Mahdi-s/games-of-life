@@ -669,4 +669,145 @@
 		color: var(--ui-text, #555);
 		font-style: italic;
 	}
+
+	/* Mobile responsive styles */
+	@media (max-width: 768px), (pointer: coarse) {
+		.modal {
+			width: min(280px, 90vw);
+			max-width: 90vw;
+			padding: 0.6rem;
+			gap: 0.4rem;
+		}
+
+		.header {
+			padding-bottom: 0.3rem;
+		}
+
+		.title {
+			font-size: 0.8rem;
+		}
+
+		/* Shape grid - 4 columns on mobile instead of 7 */
+		.shape-grid {
+			grid-template-columns: repeat(4, 1fr);
+			gap: 4px;
+		}
+
+		.shape-btn {
+			padding: 6px;
+			min-height: 36px;
+		}
+
+		.shape-btn svg {
+			width: 18px;
+			height: 18px;
+		}
+
+		/* Fill grid - 2x2 on mobile */
+		.fill-grid {
+			grid-template-columns: repeat(2, 1fr);
+			gap: 4px;
+		}
+
+		.fill-btn {
+			padding: 0.35rem;
+			flex-direction: row;
+			gap: 0.3rem;
+		}
+
+		.fill-btn svg {
+			width: 18px;
+			height: 18px;
+		}
+
+		.fill-btn span {
+			font-size: 0.6rem;
+		}
+
+		/* Edge grid - 2x2 on mobile */
+		.edge-grid {
+			grid-template-columns: repeat(2, 1fr);
+			gap: 4px;
+		}
+
+		.edge-btn {
+			padding: 0.35rem;
+			flex-direction: row;
+			gap: 0.3rem;
+		}
+
+		.edge-btn svg {
+			width: 18px;
+			height: 18px;
+		}
+
+		.edge-btn span {
+			font-size: 0.6rem;
+		}
+
+		/* Mode buttons */
+		.mode-btn {
+			padding: 0.5rem;
+		}
+
+		.mode-btn svg {
+			width: 16px;
+			height: 16px;
+		}
+
+		/* Sliders - larger touch targets */
+		.slider-section {
+			padding: 0.6rem;
+		}
+
+		.slider-row input[type='range'] {
+			height: 6px;
+		}
+
+		.slider-row input[type='range']::-webkit-slider-thumb {
+			width: 20px;
+			height: 20px;
+		}
+
+		.slider-row input[type='range']::-moz-range-thumb {
+			width: 20px;
+			height: 20px;
+		}
+
+		.slider-label {
+			font-size: 0.65rem;
+			min-width: 52px;
+		}
+
+		.slider-value {
+			font-size: 0.65rem;
+			min-width: 32px;
+		}
+
+		/* Hide hint on mobile */
+		.hint {
+			display: none;
+		}
+
+		.footer {
+			justify-content: center;
+		}
+	}
+
+	/* Very small screens */
+	@media (max-width: 360px) {
+		.modal {
+			width: 95vw;
+			padding: 0.5rem;
+		}
+
+		.shape-grid {
+			grid-template-columns: repeat(4, 1fr);
+		}
+
+		.fill-grid,
+		.edge-grid {
+			grid-template-columns: repeat(2, 1fr);
+		}
+	}
 </style>

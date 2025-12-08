@@ -977,7 +977,7 @@ import { addSnapshotWithBefore, getHeadId } from '../stores/history.js';
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 	<div 
 		class="editor" 
-		style="z-index: {modalState.zIndex};"
+		style={`z-index: ${modalState.zIndex}; ${modalState.position ? `transform: translate(${modalState.position.x}px, ${modalState.position.y}px);` : ''}`}
 		onclick={handleModalClick}
 		use:draggable={{ 
 			handle: '.header', 
