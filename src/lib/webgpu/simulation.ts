@@ -28,6 +28,9 @@ export interface ViewState {
 	brushX: number;      // Brush center in grid coordinates
 	brushY: number;
 	brushRadius: number; // Brush radius in cells (-1 to hide)
+	brushShape: number;  // 0=circle, 1=square, 2=diamond, 3=line, 4=ring, 5=star, 6=cross
+	brushRotation: number; // Rotation in radians
+	brushAspectRatio: number; // Width/height ratio (1.0 = square)
 	boundaryMode: BoundaryMode; // Topological boundary condition
 	spectrumMode: number; // 0=hueShift, 1=rainbow, 2=warm, 3=cool, 4=monochrome, 5=fire
 	spectrumFrequency: number; // How many times to repeat spectrum (1.0 = normal)
@@ -76,6 +79,7 @@ export class Simulation {
 
 	// Pending paint operations
 	private pendingPaints: Map<number, number> = new Map();
+	private undoBuffer: Uint32Array | null = null;
 
 	constructor(ctx: WebGPUContext, config: SimulationConfig) {
 		this.device = ctx.device;
@@ -102,6 +106,9 @@ export class Simulation {
 			brushX: -1000,
 			brushY: -1000,
 			brushRadius: -1, // Hidden by default
+			brushShape: 0, // Circle by default
+			brushRotation: 0,
+			brushAspectRatio: 1.0,
 			boundaryMode: 'torus', // Default to toroidal wrapping
 			spectrumMode: 0, // Default to hue shift
 			spectrumFrequency: 1.0, // Default to single spectrum span
@@ -364,9 +371,9 @@ export class Simulation {
 			this.view.spectrumFrequency, // how many times to repeat the spectrum
 			this.view.neighborShading, // neighbor shading mode: 0=off, 1=alive, 2=vitality
 			boundaryModeToIndex(this.view.boundaryMode), // boundary mode for seamless panning
-			0.0, // padding1
-			0.0, // padding2
-			0.0  // padding3
+			this.view.brushShape, // 0=circle, 1=square, 2=diamond, 3=line, 4=ring, 5=star, 6=cross
+			this.view.brushRotation, // rotation in radians
+			this.view.brushAspectRatio  // aspect ratio
 		]);
 		this.device.queue.writeBuffer(this.renderParamsBuffer, 0, params);
 	}
@@ -532,28 +539,235 @@ export class Simulation {
 	}
 
 	/**
-	 * Paint cells in a brush area
-	 * brushType: 'solid' = all cells at given state, 'gradient' = random states
+	 * Paint cells in a brush area with advanced brush configuration
+	 * @param centerX - Center X position in grid coordinates
+	 * @param centerY - Center Y position in grid coordinates
+	 * @param radius - Brush radius in cells
+	 * @param state - Target state (1 = alive, 0 = dead/erase)
+	 * @param brushType - Fill type: 'solid', 'gradient', 'noise', 'spray'
+	 * @param config - Optional advanced brush configuration
 	 */
-	paintBrush(centerX: number, centerY: number, radius: number, state: number, brushType: string = 'solid'): void {
+	paintBrush(
+		centerX: number, 
+		centerY: number, 
+		radius: number, 
+		state: number, 
+		brushType: string = 'solid',
+		config?: {
+			shape?: string;
+			falloff?: string;
+			rotation?: number;
+			density?: number;
+			intensity?: number;
+			aspectRatio?: number;
+			softness?: number;
+		}
+	): void {
 		const HEX_HEIGHT_RATIO = 0.866025404; // sqrt(3)/2
 		const isHex = this.rule.neighborhood === 'hexagonal' || this.rule.neighborhood === 'extendedHexagonal';
 		const numStates = this.rule.numStates;
 		
-		if (isHex) {
-			// For hexagonal grids, we need to check visual distance
-			// using hex center positions
-			const brushCenterX = Math.floor(centerX);
-			const brushCenterY = Math.floor(centerY);
+		// Extract config with defaults
+		const shape = config?.shape ?? 'circle';
+		const falloff = config?.falloff ?? 'hard';
+		const rotation = ((config?.rotation ?? 0) * Math.PI) / 180;
+		const density = config?.density ?? 0.5;
+		const intensity = config?.intensity ?? 1.0;
+		const aspectRatio = config?.aspectRatio ?? 1.0;
+		const softness = config?.softness ?? 0;
+		
+		const cos = Math.cos(rotation);
+		const sin = Math.sin(rotation);
+		
+		// Check if a cell is within the brush shape
+		const isInBrush = (dx: number, dy: number, r: number): { inside: boolean; dist: number } => {
+			// Apply rotation
+			const rx = dx * cos + dy * sin;
+			const ry = -dx * sin + dy * cos;
 			
-			// Get visual center of brush cell
+			// Apply aspect ratio
+			const ax = rx / aspectRatio;
+			const ay = ry;
+			
+			let dist: number;
+			let inside = false;
+			
+			switch (shape) {
+				case 'square':
+					dist = Math.max(Math.abs(ax), Math.abs(ay)) / r;
+					inside = dist <= 1;
+					break;
+				case 'diamond':
+					dist = (Math.abs(ax) + Math.abs(ay)) / r;
+					inside = dist <= 1;
+					break;
+				case 'line':
+					dist = Math.abs(ay) / (r * 0.15);
+					inside = Math.abs(ax) <= r && dist <= 1;
+					if (inside) dist = Math.max(Math.abs(ax) / r, Math.abs(ay) / (r * 0.15));
+					break;
+				case 'ring':
+					dist = Math.sqrt(ax * ax + ay * ay) / r;
+					inside = dist >= 0.6 && dist <= 1;
+					break;
+				case 'star': {
+					// 5-pointed star
+					const angle = Math.atan2(ay, ax);
+					const starR = Math.sqrt(ax * ax + ay * ay);
+					const starFactor = 0.5 + 0.5 * Math.cos(5 * angle);
+					const effectiveR = r * (0.4 + 0.6 * starFactor);
+					dist = starR / effectiveR;
+					inside = dist <= 1;
+					break;
+				}
+				case 'cross': {
+					const armRatio = 0.3;
+					const inVertical = Math.abs(ax) <= r * armRatio && Math.abs(ay) <= r;
+					const inHorizontal = Math.abs(ay) <= r * armRatio && Math.abs(ax) <= r;
+					inside = inVertical || inHorizontal;
+					dist = inside ? Math.max(Math.abs(ax), Math.abs(ay)) / r : 2;
+					break;
+				}
+				case 'scatter':
+					dist = Math.sqrt(ax * ax + ay * ay) / r;
+					inside = dist <= 1 && Math.random() < density;
+					break;
+				case 'circle':
+				default:
+					dist = Math.sqrt(ax * ax + ay * ay) / r;
+					inside = dist <= 1;
+			}
+			
+			return { inside, dist };
+		};
+		
+		// Calculate falloff alpha based on distance
+		const getFalloffAlpha = (dist: number): number => {
+			let alpha = 1;
+			switch (falloff) {
+				case 'linear':
+					alpha = 1 - dist;
+					break;
+				case 'smooth':
+					alpha = 1 - (dist * dist * (3 - 2 * dist));
+					break;
+				case 'gaussian':
+					alpha = Math.exp(-dist * dist * 3);
+					break;
+				case 'hard':
+				default:
+					alpha = 1;
+			}
+			
+			// Apply softness at edges
+			if (softness > 0 && dist > (1 - softness)) {
+				const edgeFactor = (dist - (1 - softness)) / softness;
+				alpha *= Math.max(0, 1 - edgeFactor);
+			}
+			
+			return alpha * intensity;
+		};
+		
+		// Simple hash function for noise
+		const hash = (x: number, y: number): number => {
+			const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+			return n - Math.floor(n);
+		};
+		
+		// Value noise function (coherent random)
+		const valueNoise = (x: number, y: number, scale: number): number => {
+			const sx = x / scale;
+			const sy = y / scale;
+			const x0 = Math.floor(sx);
+			const y0 = Math.floor(sy);
+			const fx = sx - x0;
+			const fy = sy - y0;
+			
+			// Smooth interpolation
+			const u = fx * fx * (3 - 2 * fx);
+			const v = fy * fy * (3 - 2 * fy);
+			
+			// Corner values
+			const n00 = hash(x0, y0);
+			const n10 = hash(x0 + 1, y0);
+			const n01 = hash(x0, y0 + 1);
+			const n11 = hash(x0 + 1, y0 + 1);
+			
+			// Bilinear interpolation
+			return n00 * (1 - u) * (1 - v) +
+				   n10 * u * (1 - v) +
+				   n01 * (1 - u) * v +
+				   n11 * u * v;
+		};
+		
+		// Get the cell state to paint based on brush type and alpha
+		const getCellState = (alpha: number, cellX: number, cellY: number, dist: number): number => {
+			if (state === 0) return 0; // Erase mode
+			if (alpha <= 0) return 0;
+			
+			switch (brushType) {
+				case 'gradient': {
+					// True gradient: state varies based on distance from center
+					// Center = fully alive (state 1), edge = dying states
+					if (numStates <= 2) {
+						// For 2-state rules, use probability based on distance
+						return Math.random() < alpha * (1 - dist * 0.7) ? 1 : 0;
+					}
+					// For multi-state, use distance to determine vitality
+					// dist=0 (center) -> state 1 (alive)
+					// dist=1 (edge) -> higher states (more dead)
+					const vitality = alpha * (1 - dist);
+					if (vitality > 0.8) return 1;
+					if (vitality < 0.1) return 0;
+					// Map vitality to state (higher state = more dead)
+					const dyingState = 2 + Math.floor((1 - vitality) * (numStates - 2));
+					return Math.min(dyingState, numStates);
+				}
+				case 'noise': {
+					// Coherent noise pattern - creates organic clusters
+					const noiseScale = Math.max(3, radius / 4); // Scale noise with brush size
+					const n1 = valueNoise(cellX, cellY, noiseScale);
+					const n2 = valueNoise(cellX * 2.1, cellY * 1.7, noiseScale * 0.5);
+					const noise = (n1 + n2 * 0.5) / 1.5; // Multi-octave noise
+					
+					// Threshold creates distinct patches
+					const threshold = 0.5 - alpha * 0.3; // More alpha = more fill
+					if (noise > threshold) {
+						if (numStates > 2 && noise > threshold + 0.2) {
+							return 1; // Fully alive in dense areas
+						}
+						return Math.random() < 0.7 ? 1 : Math.min(2, numStates);
+					}
+					return 0;
+				}
+				case 'spray': {
+					// Very sparse scattered cells - like airbrush dots
+					// density controls how many dots (0.1 = very sparse, 1.0 = dense)
+					const sparsity = 1 - density * density; // Square for more control at low end
+					if (Math.random() > sparsity * 0.95 + 0.04) { // Always at least 4% chance
+						return alpha > 0.5 ? 1 : 0;
+					}
+					return 0;
+				}
+				case 'solid':
+				default:
+					// Solid fill: all cells within brush get the state
+					// intensity affects the alpha threshold
+					return 1;
+			}
+		};
+		
+		const brushCenterX = Math.floor(centerX);
+		const brushCenterY = Math.floor(centerY);
+		
+		if (isHex) {
+			// For hexagonal grids, use visual distance
 			const isOddBrush = (brushCenterY & 1) === 1;
 			const brushVisualX = brushCenterX + 0.5 + (isOddBrush ? 0.5 : 0);
 			const brushVisualY = (brushCenterY + 0.5) * HEX_HEIGHT_RATIO;
 			
-			// Visual radius (half because hex centers are spaced by 1 in X)
+			// Visual radius
 			const visualRadius = radius * 0.5;
-			const visualRadiusSq = visualRadius * visualRadius;
 			
 			// Search a larger area to account for hex layout
 			const searchRadius = Math.ceil(radius / HEX_HEIGHT_RATIO) + 1;
@@ -568,40 +782,34 @@ export class Simulation {
 					const cellVisualX = cellX + 0.5 + (isOdd ? 0.5 : 0);
 					const cellVisualY = (cellY + 0.5) * HEX_HEIGHT_RATIO;
 					
-					// Calculate visual distance
+					// Calculate visual distance from brush center
 					const vdx = cellVisualX - brushVisualX;
 					const vdy = cellVisualY - brushVisualY;
-					const distSq = vdx * vdx + vdy * vdy;
 					
-					if (distSq <= visualRadiusSq) {
-						if (brushType === 'gradient' && state > 0) {
-							// Random state from 1 to numStates (alive states only)
-							const randomState = Math.floor(Math.random() * numStates) + 1;
-							// Clamp to valid range (1 = alive, 2+ = dying states)
-							const cellState = Math.min(randomState, numStates);
+					const result = isInBrush(vdx, vdy, visualRadius);
+					if (result.inside) {
+						const alpha = getFalloffAlpha(result.dist);
+						const cellState = getCellState(alpha, cellX, cellY, result.dist);
+						if (cellState > 0 || state === 0) {
 							this.setCell(cellX, cellY, cellState);
-						} else {
-							this.setCell(cellX, cellY, state);
 						}
 					}
 				}
 			}
 		} else {
-			// Square grids: simple Euclidean distance in cell coordinates
-			const r = Math.floor(radius);
-			const brushCenterX = Math.floor(centerX);
-			const brushCenterY = Math.floor(centerY);
+			// Square grids: simple grid coordinates
+			const r = Math.ceil(radius * Math.max(1, aspectRatio));
 			
 			for (let dy = -r; dy <= r; dy++) {
 				for (let dx = -r; dx <= r; dx++) {
-					if (dx * dx + dy * dy <= radius * radius) {
-						if (brushType === 'gradient' && state > 0) {
-							// Random state from 1 to numStates
-							const randomState = Math.floor(Math.random() * numStates) + 1;
-							const cellState = Math.min(randomState, numStates);
-							this.setCell(brushCenterX + dx, brushCenterY + dy, cellState);
-						} else {
-							this.setCell(brushCenterX + dx, brushCenterY + dy, state);
+					const cellX = brushCenterX + dx;
+					const cellY = brushCenterY + dy;
+					const result = isInBrush(dx, dy, radius);
+					if (result.inside) {
+						const alpha = getFalloffAlpha(result.dist);
+						const cellState = getCellState(alpha, cellX, cellY, result.dist);
+						if (cellState > 0 || state === 0) {
+							this.setCell(cellX, cellY, cellState);
 						}
 					}
 				}
@@ -819,6 +1027,30 @@ export class Simulation {
 			if (data[i] === 1) count++;
 		}
 		this._aliveCells = count;
+	}
+
+	/**
+	 * Snapshot current grid for undo (one level)
+	 */
+	async snapshotUndo(): Promise<void> {
+		this.undoBuffer = await this.getCellDataAsync();
+	}
+
+	/**
+	 * Clear undo buffer
+	 */
+	clearUndo(): void {
+		this.undoBuffer = null;
+	}
+
+	/**
+	 * Undo to last snapshot (if any)
+	 */
+	async undoLast(): Promise<boolean> {
+		if (!this.undoBuffer) return false;
+		this.setCellData(this.undoBuffer);
+		this.undoBuffer = null;
+		return true;
 	}
 
 	/**

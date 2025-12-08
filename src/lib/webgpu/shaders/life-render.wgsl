@@ -28,9 +28,9 @@ struct RenderParams {
     spectrum_frequency: f32, // How many times to repeat the spectrum (1.0 = normal)
     neighbor_shading: f32, // 0=off, 1=count alive, 2=sum vitality
     boundary_mode: f32,  // 0=plane, 1=cylinderX, 2=cylinderY, 3=torus, 4=mobiusX, 5=mobiusY, 6=kleinX, 7=kleinY, 8=projective
-    _padding1: f32,      // Padding for 16-byte alignment
-    _padding2: f32,
-    _padding3: f32,
+    brush_shape: f32,    // 0=circle, 1=square, 2=diamond, 3=line, 4=ring, 5=star, 6=cross
+    brush_rotation: f32, // Rotation in radians
+    brush_aspect: f32,   // Width/height aspect ratio
 }
 
 @group(0) @binding(0) var<uniform> params: RenderParams;
@@ -839,49 +839,98 @@ fn get_hex_center(cell_x: i32, cell_y: i32) -> vec2<f32> {
     return vec2<f32>(center_x, center_y);
 }
 
-// Check if a cell is within the brush radius
-// For hexagonal grids, we need to account for the visual compression
+// Check if a cell is within the brush area
+// Supports different brush shapes: circle, square, diamond, line, ring, star, cross
 fn is_in_brush(cell_x: i32, cell_y: i32) -> bool {
     if (params.brush_radius < 0.0) {
         return false; // Brush preview disabled
     }
     
-    let brush_center_x = floor(params.brush_x);
-    let brush_center_y = floor(params.brush_y);
-    let r = floor(params.brush_radius);
+    let brush_center_x = params.brush_x;
+    let brush_center_y = params.brush_y;
+    let r = params.brush_radius;
+    let shape = i32(params.brush_shape);
+    let rotation = params.brush_rotation;
+    let aspect = params.brush_aspect;
     
-    // For hexagonal grids, use visual distance (accounting for hex aspect ratio)
+    var dx: f32;
+    var dy: f32;
+    
+    // For hexagonal grids, use visual distance
     if (params.neighborhood > 2.5) {
-        // Hexagonal: calculate visual distance using hex centers
         let cell_center = get_hex_center(cell_x, cell_y);
-        let brush_cell_center = get_hex_center(i32(brush_center_x), i32(brush_center_y));
-        
-        // Visual distance in grid units
-        let dx = cell_center.x - brush_cell_center.x;
-        let dy = cell_center.y - brush_cell_center.y;
-        
-        // For hex, we want a circular brush in visual space
-        // The visual radius in Y is compressed by HEX_HEIGHT_RATIO
-        let visual_radius = params.brush_radius * 0.5; // Half because hex centers are 0.5 apart
-        let dist_sq = dx * dx + dy * dy;
-        let radius_sq = visual_radius * visual_radius;
-        
-        return dist_sq <= radius_sq;
+        let brush_cell_center = get_hex_center(i32(floor(brush_center_x)), i32(floor(brush_center_y)));
+        dx = cell_center.x - brush_cell_center.x;
+        dy = cell_center.y - brush_cell_center.y;
+        // Adjust for hex visual scale
+        dx *= 2.0;
+        dy *= 2.0;
     } else {
-        // Square grids: simple Euclidean distance in cell coordinates
-        let dx = f32(cell_x) - brush_center_x;
-        let dy = f32(cell_y) - brush_center_y;
-        
-        // Check if within the iteration range AND within the circular brush
-        if (abs(dx) > r || abs(dy) > r) {
-            return false;
-        }
-        
-        let dist_sq = dx * dx + dy * dy;
-        let radius_sq = params.brush_radius * params.brush_radius;
-        
-        return dist_sq <= radius_sq;
+        dx = f32(cell_x) - floor(brush_center_x);
+        dy = f32(cell_y) - floor(brush_center_y);
     }
+    
+    // Quick bounds check
+    let max_extent = r * max(aspect, 1.0 / aspect) + 1.0;
+    if (abs(dx) > max_extent || abs(dy) > max_extent) {
+        return false;
+    }
+    
+    // Apply rotation
+    let cos_r = cos(rotation);
+    let sin_r = sin(rotation);
+    let rx = dx * cos_r + dy * sin_r;
+    let ry = -dx * sin_r + dy * cos_r;
+    
+    // Apply aspect ratio
+    let ax = rx / aspect;
+    let ay = ry;
+    
+    // Check shape
+    // Shape 0: Circle
+    if (shape == 0) {
+        let dist_sq = ax * ax + ay * ay;
+        return dist_sq <= r * r;
+    }
+    // Shape 1: Square
+    else if (shape == 1) {
+        return abs(ax) <= r && abs(ay) <= r;
+    }
+    // Shape 2: Diamond
+    else if (shape == 2) {
+        return (abs(ax) + abs(ay)) <= r;
+    }
+    // Shape 3: Line
+    else if (shape == 3) {
+        let line_thickness = r * 0.15;
+        return abs(ax) <= r && abs(ay) <= line_thickness;
+    }
+    // Shape 4: Ring
+    else if (shape == 4) {
+        let dist_sq = ax * ax + ay * ay;
+        let outer_r = r * r;
+        let inner_r = (r * 0.6) * (r * 0.6);
+        return dist_sq <= outer_r && dist_sq >= inner_r;
+    }
+    // Shape 5: Star (5-pointed)
+    else if (shape == 5) {
+        let angle = atan2(ay, ax);
+        let dist = sqrt(ax * ax + ay * ay);
+        let star_factor = 0.5 + 0.5 * cos(5.0 * angle);
+        let effective_r = r * (0.4 + 0.6 * star_factor);
+        return dist <= effective_r;
+    }
+    // Shape 6: Cross
+    else if (shape == 6) {
+        let arm_width = r * 0.3;
+        let in_vertical = abs(ax) <= arm_width && abs(ay) <= r;
+        let in_horizontal = abs(ay) <= arm_width && abs(ax) <= r;
+        return in_vertical || in_horizontal;
+    }
+    
+    // Default to circle
+    let dist_sq = ax * ax + ay * ay;
+    return dist_sq <= r * r;
 }
 
 // Find the nearest hex cell to a point using axial coordinates

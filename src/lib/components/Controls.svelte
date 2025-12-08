@@ -43,9 +43,8 @@
 	function toggleBrush() {
 		// Clicking brush button always activates brush mode
 		simState.toolMode = 'brush';
-		const wasOpen = showBrushSlider;
 		closeAllPopups();
-		uiState.showBrushPopup = !wasOpen;
+		openModal('brushEditor');
 	}
 
 	function openRules() {

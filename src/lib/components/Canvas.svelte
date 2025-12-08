@@ -2,8 +2,9 @@
 	import { onMount } from 'svelte';
 	import { initWebGPU, type WebGPUContext, type WebGPUError } from '../webgpu/context.js';
 	import { Simulation } from '../webgpu/simulation.js';
-	import { getSimulationState, getUIState, GRID_SCALES, type GridScale, type SpectrumMode } from '../stores/simulation.svelte.js';
+	import { getSimulationState, getUIState, GRID_SCALES, type GridScale, type SpectrumMode, type BrushShape, setSimulationRef } from '../stores/simulation.svelte.js';
 	import { isTourActive } from '../utils/tour.js';
+	import { isModalOpen } from '../stores/modalManager.svelte.js';
 
 	const simState = getSimulationState();
 	const uiState = getUIState();
@@ -24,6 +25,14 @@
 		if (mode === 'alive') return 1;
 		if (mode === 'vitality') return 2;
 		return 0;
+	}
+
+	// Convert brush shape string to number for shader
+	function getBrushShapeIndex(shape: BrushShape): number {
+		const shapes: BrushShape[] = ['circle', 'square', 'diamond', 'line', 'ring', 'star', 'cross', 'scatter', 'custom'];
+		const idx = shapes.indexOf(shape);
+		// Map scatter and custom to circle (0) since shader doesn't support them
+		return idx > 6 ? 0 : idx;
 	}
 
 	let canvas: HTMLCanvasElement;
@@ -48,6 +57,19 @@
 	
 	// Effective tool mode: pan if pan mode selected OR space is held
 	const effectiveToolMode = $derived(simState.isSpaceHeld ? 'pan' : simState.toolMode);
+
+	// Get brush configuration for painting
+	function getBrushConfig() {
+		return {
+			shape: simState.brushShape,
+			falloff: simState.brushFalloff,
+			rotation: simState.brushRotation,
+			density: simState.brushDensity,
+			intensity: simState.brushIntensity,
+			aspectRatio: simState.brushAspectRatio,
+			softness: simState.brushSoftness
+		};
+	}
 
 	// Touch state
 	let touchMode: 'none' | 'draw' | 'pan' | 'pinch' = 'none';
@@ -145,6 +167,7 @@
 			canvas.removeEventListener('touchmove', handleTouchMove);
 			canvas.removeEventListener('touchend', handleTouchEnd);
 			canvas.removeEventListener('touchcancel', handleTouchEnd);
+			setSimulationRef(null);
 			simulation?.destroy();
 		};
 	});
@@ -173,6 +196,7 @@
 			height,
 			rule: simState.currentRule
 		});
+		setSimulationRef(simulation);
 
 		// Apply the selected initialization method
 		applyLastInitialization();
@@ -230,12 +254,14 @@
 		}
 
 		// Sync view state including brush preview
-		const showBrush = (mouseInCanvas && effectiveToolMode === 'brush' && !isPanning) || uiState.showBrushPopup;
-		// When brush popup is open and mouse not in canvas, show brush at center of grid
-		const brushX = uiState.showBrushPopup && !mouseInCanvas 
+		const brushEditorOpen = isModalOpen('brushEditor');
+		const showBrush = (mouseInCanvas && effectiveToolMode === 'brush' && !isPanning) || uiState.showBrushPopup || brushEditorOpen;
+		// When brush popup/modal is open and mouse not in canvas, show brush at center of grid
+		const brushPopupOrModalOpen = uiState.showBrushPopup || brushEditorOpen;
+		const brushX = brushPopupOrModalOpen && !mouseInCanvas 
 			? Math.floor(simState.gridWidth / 2) 
 			: gridMouseX;
-		const brushY = uiState.showBrushPopup && !mouseInCanvas 
+		const brushY = brushPopupOrModalOpen && !mouseInCanvas 
 			? Math.floor(simState.gridHeight / 2) 
 			: gridMouseY;
 		simulation.setView({
@@ -245,6 +271,9 @@
 			brushX: showBrush ? brushX : -1000,
 			brushY: showBrush ? brushY : -1000,
 			brushRadius: showBrush ? simState.brushSize : -1,
+			brushShape: getBrushShapeIndex(simState.brushShape),
+			brushRotation: (simState.brushRotation * Math.PI) / 180, // Convert degrees to radians
+			brushAspectRatio: simState.brushAspectRatio,
 			boundaryMode: simState.boundaryMode,
 			spectrumMode: getSpectrumModeIndex(simState.spectrumMode),
 			spectrumFrequency: simState.spectrumFrequency,
@@ -298,7 +327,7 @@
 		
 		continuousDrawInterval = setInterval(() => {
 			if (!simulation || !isDrawing) return;
-			simulation.paintBrush(gridMouseX, gridMouseY, simState.brushSize, drawingState, simState.brushType);
+			simulation.paintBrush(gridMouseX, gridMouseY, simState.brushSize, drawingState, simState.brushType, getBrushConfig());
 		}, 50); // Draw every 50ms (20 times per second)
 	}
 
@@ -347,7 +376,7 @@
 			const gridPos = simulation.screenToGrid(x, y, canvasWidth, canvasHeight);
 			gridMouseX = gridPos.x;
 			gridMouseY = gridPos.y;
-			simulation.paintBrush(gridPos.x, gridPos.y, simState.brushSize, drawingState, simState.brushType);
+			simulation.paintBrush(gridPos.x, gridPos.y, simState.brushSize, drawingState, simState.brushType, getBrushConfig());
 			
 			// Start continuous drawing for hold-to-draw
 			startContinuousDrawing();
@@ -361,7 +390,7 @@
 			const gridPos = simulation.screenToGrid(x, y, canvasWidth, canvasHeight);
 			gridMouseX = gridPos.x;
 			gridMouseY = gridPos.y;
-			simulation.paintBrush(gridPos.x, gridPos.y, simState.brushSize, drawingState, simState.brushType);
+			simulation.paintBrush(gridPos.x, gridPos.y, simState.brushSize, drawingState, simState.brushType, getBrushConfig());
 			
 			// Start continuous drawing for hold-to-draw
 			startContinuousDrawing();
@@ -391,7 +420,7 @@
 
 		if (isDrawing) {
 			// Paint immediately on move (in addition to continuous interval)
-			simulation.paintBrush(gridPos.x, gridPos.y, simState.brushSize, drawingState, simState.brushType);
+			simulation.paintBrush(gridPos.x, gridPos.y, simState.brushSize, drawingState, simState.brushType, getBrushConfig());
 		}
 	}
 
@@ -491,7 +520,7 @@
 				gridMouseX = gridPos.x;
 				gridMouseY = gridPos.y;
 				drawingState = simState.brushState; // Use current brush state for touch
-				simulation.paintBrush(gridPos.x, gridPos.y, simState.brushSize, drawingState, simState.brushType);
+				simulation.paintBrush(gridPos.x, gridPos.y, simState.brushSize, drawingState, simState.brushType, getBrushConfig());
 				
 				// Start continuous drawing for hold-to-draw on touch
 				startContinuousDrawing();
@@ -523,7 +552,7 @@
 			const gridPos = simulation.screenToGrid(x, y, canvasWidth, canvasHeight);
 			gridMouseX = gridPos.x;
 			gridMouseY = gridPos.y;
-			simulation.paintBrush(gridPos.x, gridPos.y, simState.brushSize, simState.brushState, simState.brushType);
+			simulation.paintBrush(gridPos.x, gridPos.y, simState.brushSize, simState.brushState, simState.brushType, getBrushConfig());
 			
 			lastTouchX = touch.clientX;
 			lastTouchY = touch.clientY;

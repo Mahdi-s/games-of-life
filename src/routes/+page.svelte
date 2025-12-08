@@ -9,6 +9,7 @@
 	import InfoOverlay from '$lib/components/InfoOverlay.svelte';
 	import ClickHint from '$lib/components/ClickHint.svelte';
 	import AboutModal from '$lib/components/AboutModal.svelte';
+	import BrushEditorModal from '$lib/components/BrushEditorModal.svelte';
 	import { getSimulationState, getUIState, DARK_THEME_COLORS, LIGHT_THEME_COLORS, SPECTRUM_MODES, type GridScale } from '$lib/stores/simulation.svelte.js';
 	import { 
 		openModal, closeModal, toggleModal, isModalOpen, getModalStates,
@@ -27,6 +28,7 @@
 	const showAbout = $derived(modalStates.about.isOpen);
 	const showRuleEditor = $derived(modalStates.ruleEditor.isOpen);
 	const showSettings = $derived(modalStates.settings.isOpen);
+	const showBrushEditor = $derived(modalStates.brushEditor.isOpen);
 	let canvas: Canvas;
 	let tourStyleElement: HTMLStyleElement | null = null;
 
@@ -400,6 +402,12 @@
 	{#if showSettings}
 		<Settings
 			onclose={() => closeModal('settings')}
+		/>
+	{/if}
+
+	{#if showBrushEditor}
+		<BrushEditorModal
+			onclose={() => closeModal('brushEditor')}
 		/>
 	{/if}
 
