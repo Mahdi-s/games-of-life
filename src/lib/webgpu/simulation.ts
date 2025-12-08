@@ -1254,53 +1254,50 @@ export class Simulation {
 	}
 
 	/**
-	 * Reset view to show entire grid, fitting it to the canvas
+	 * Reset view to show entire grid, fitting it to the canvas height
+	 * This ensures the full grid height is visible, centered horizontally.
 	 * @param canvasWidth - Canvas width in pixels (optional, uses stored value if not provided)
 	 * @param canvasHeight - Canvas height in pixels (optional, uses stored value if not provided)
 	 */
 	resetView(canvasWidth?: number, canvasHeight?: number): void {
-		// Calculate zoom to fit entire grid in view (no padding)
-		// zoom = cells visible across the canvas width
-		// We need to ensure both dimensions fit
-		
-		let zoom: number;
-		let offsetX = 0;
-		let offsetY = 0;
-		
 		// For hexagonal grids, the visual coordinate system is different:
 		// - X: columns with odd rows offset by 0.5
 		// - Y: rows * sqrt(3)/2 (rows are closer together)
-		// Reference: https://www.redblobgames.com/grids/hexagons/
 		const HEX_HEIGHT_RATIO = 0.866025404; // sqrt(3)/2
 		const isHex = this.rule.neighborhood === 'hexagonal' || this.rule.neighborhood === 'extendedHexagonal';
 		
 		// Calculate effective grid dimensions in visual coordinates
-		// For hex grids: the visual height is compressed because hex rows overlap
 		const effectiveGridWidth = isHex ? this.width + 0.5 : this.width;
 		const effectiveGridHeight = isHex ? (this.height + 0.5) * HEX_HEIGHT_RATIO : this.height;
 		
+		let zoom: number;
+		let offsetX = 0;
+		const offsetY = 0; // Always start at top of grid
+		
 		if (canvasWidth && canvasHeight) {
 			const canvasAspect = canvasWidth / canvasHeight;
-			const gridAspect = effectiveGridWidth / effectiveGridHeight;
 			
-			if (gridAspect >= canvasAspect) {
-				// Grid is wider than canvas (relative to aspect) - fit to width
-				zoom = effectiveGridWidth;
-			} else {
-				// Grid is taller than canvas (relative to aspect) - fit to height
-				zoom = effectiveGridHeight * canvasAspect;
-			}
+			// Always fit to HEIGHT: zoom so that the entire grid height is visible
+			// This means: cellsVisibleY = effectiveGridHeight
+			// Since cellsVisibleY = zoom / canvasAspect, we get:
+			// zoom = effectiveGridHeight * canvasAspect
+			zoom = effectiveGridHeight * canvasAspect;
 			
-			// Calculate cells visible in each dimension
+			// Calculate how many cells are visible horizontally
 			const cellsVisibleX = zoom;
-			const cellsVisibleY = zoom / canvasAspect;
 			
-			// Center the grid: offset so grid is in the middle of visible area
-			offsetX = (effectiveGridWidth - cellsVisibleX) / 2;
-			offsetY = (effectiveGridHeight - cellsVisibleY) / 2;
+			// Center horizontally if the grid is narrower than the visible area
+			// (happens on landscape screens with a tall grid)
+			if (cellsVisibleX > effectiveGridWidth) {
+				// More horizontal space than grid - center the grid
+				offsetX = (effectiveGridWidth - cellsVisibleX) / 2;
+			} else {
+				// Grid is wider than visible - start at left edge, centered
+				offsetX = (effectiveGridWidth - cellsVisibleX) / 2;
+			}
 		} else {
-			// Fallback: assume grid matches canvas aspect, so zoom = width
-			zoom = effectiveGridWidth;
+			// Fallback: assume square canvas, fit to grid height
+			zoom = effectiveGridHeight;
 		}
 		
 		// Only update position/zoom, preserve all other view settings

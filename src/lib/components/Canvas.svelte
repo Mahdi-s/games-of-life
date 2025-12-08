@@ -220,11 +220,12 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 		// Apply the selected initialization method
 		applyLastInitialization();
 		
-		// Note: We don't call resetView here because the grid was created with
-		// dimensions matching the container aspect ratio. The initial view state
-		// in Simulation constructor (zoom = min(width, height), offset = 0,0)
-		// already shows the grid filling the canvas correctly.
-		// Calling resetView would add unnecessary padding.
+		// Set initial view to fit the grid height to the canvas
+		// Use viewport dimensions since canvas may not be sized yet
+		const dpr = window.devicePixelRatio || 1;
+		const initialCanvasWidth = viewport.width * dpr;
+		const initialCanvasHeight = viewport.height * dpr;
+		simulation.resetView(initialCanvasWidth, initialCanvasHeight);
 
 		// Start animation loop
 		animationLoop(performance.now());
