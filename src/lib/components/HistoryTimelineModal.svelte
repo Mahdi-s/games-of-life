@@ -356,16 +356,20 @@ function cancelEdit() {
 							>
 								<div class="node-info">
 									<div class="node-header">
-										<span class="node-name">{ln.node.name}</span>
-										{#if isHead}
-											<span class="badge head">HEAD</span>
-										{/if}
-										{#if isRoot}
-											<span class="badge root">ROOT</span>
+										{#if !ln.node.name.toLowerCase().includes('(pre)')}
+											<span class="node-name">{ln.node.name}</span>
+											{#if isHead}
+												<span class="badge head">HEAD</span>
+											{/if}
+											{#if isRoot}
+												<span class="badge root">ROOT</span>
+											{/if}
 										{/if}
 									</div>
 									<div class="node-meta">
-										<span class="kind">{ln.node.kind}</span>
+										{#if !ln.node.name.toLowerCase().includes('(pre)')}
+											<span class="kind">{ln.node.kind}</span>
+										{/if}
 										<span class="time">{new Date(ln.node.createdAt).toLocaleTimeString()}</span>
 									</div>
 								</div>

@@ -163,7 +163,7 @@ export async function addSnapshotWithBefore(
 ) {
 	ensureRoot(sim);
 	const simState = getSimulationState();
-	const parentId = parentIdOverride ?? headId;
+	let parentId = parentIdOverride ?? headId;
 
 	// If we're extending the current head (no explicit parent override) AND last nav was undo,
 	// drop redo branches. If last nav was jump, we branch instead and keep existing children.
@@ -172,24 +172,38 @@ export async function addSnapshotWithBefore(
 	}
 
 	const beforeSnap = beforeSnapshot ?? (await sim.getCellDataAsync());
-	const beforeId = genId();
-	const beforeNode: HistoryNode = {
-		id: beforeId,
-		parentId,
-		name: `${name} (pre)`,
-		createdAt: Date.now(),
-		kind,
-		snapshot: beforeSnap,
-		rule: { ...simState.currentRule },
-		boundaryMode: simState.boundaryMode
-	};
-	nodes.set(beforeId, beforeNode);
+
+	// If the current head is already a pre-node, reuse it instead of creating another
+	let beforeNodeId: string;
+	if (!parentIdOverride && headId && nodes.get(headId)?.name.toLowerCase().includes('(pre)')) {
+		const existing = nodes.get(headId)!;
+		existing.snapshot = beforeSnap;
+		existing.rule = { ...simState.currentRule };
+		existing.boundaryMode = simState.boundaryMode;
+		existing.createdAt = Date.now();
+		beforeNodeId = existing.id;
+		parentId = existing.id;
+	} else {
+		const beforeId = genId();
+		const beforeNode: HistoryNode = {
+			id: beforeId,
+			parentId,
+			name: `${name} (pre)`,
+			createdAt: Date.now(),
+			kind,
+			snapshot: beforeSnap,
+			rule: { ...simState.currentRule },
+			boundaryMode: simState.boundaryMode
+		};
+		nodes.set(beforeId, beforeNode);
+		beforeNodeId = beforeId;
+	}
 
 	const afterSnap = await sim.getCellDataAsync();
 	const afterId = genId();
 	const afterNode: HistoryNode = {
 		id: afterId,
-		parentId: beforeId,
+		parentId: beforeNodeId,
 		name,
 		createdAt: Date.now(),
 		kind,
