@@ -357,7 +357,30 @@ function cancelEdit() {
 								<div class="node-info">
 									<div class="node-header">
 										{#if !ln.node.name.toLowerCase().includes('(pre)')}
-											<span class="node-name">{ln.node.name}</span>
+											{#if editingId === ln.node.id}
+												<!-- Inline edit mode -->
+												<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+												<div class="inline-edit" onclick={(e) => e.stopPropagation()}>
+													<input
+														type="text"
+														bind:value={editingValue}
+														placeholder="Name"
+														onkeydown={(e) => {
+															if (e.key === 'Enter') { e.preventDefault(); commitEdit(); }
+															if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
+														}}
+														onblur={commitEdit}
+														autofocus
+													/>
+												</div>
+											{:else}
+												<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+												<span 
+													class="node-name editable" 
+													onclick={(e) => { e.stopPropagation(); handleRename(ln.node.id); }}
+													title="Click to rename"
+												>{ln.node.name}</span>
+											{/if}
 											{#if isHead}
 												<span class="badge head">HEAD</span>
 											{/if}
@@ -374,50 +397,20 @@ function cancelEdit() {
 									</div>
 								</div>
 
-								{#if isSelected}
+								{#if isSelected && !ln.node.name.toLowerCase().includes('(pre)') && !isRoot}
 									<div class="node-actions">
-			{#if editingId === ln.node.id}
-				<div class="edit-field" onclick={(e) => e.stopPropagation()}>
-					<input
-						type="text"
-						bind:value={editingValue}
-						placeholder="Name"
-						onkeydown={(e) => {
-							if (e.key === 'Enter') { e.preventDefault(); commitEdit(); }
-							if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
-						}}
-						onblur={commitEdit}
-						autofocus
-					/>
-				</div>
-			{:else}
-				<button 
-					type="button"
-					class="action-btn" 
-					onclick={(e) => { e.stopPropagation(); handleRename(ln.node.id); }} 
-					title="Rename"
-					aria-label="Rename"
-				>
-					<svg viewBox="0 0 24 24" aria-hidden="true">
-						<path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
-						<path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-					</svg>
-				</button>
-			{/if}
-										{#if !isRoot}
-											<button 
-												type="button"
-												class="action-btn danger" 
-												onclick={(e) => { e.stopPropagation(); handleDelete(ln.node.id); }} 
-												title="Delete"
-												aria-label="Delete"
-											>
-												<svg viewBox="0 0 24 24" aria-hidden="true">
-													<polyline points="3 6 5 6 21 6" />
-													<path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-												</svg>
-											</button>
-										{/if}
+										<button 
+											type="button"
+											class="action-btn danger" 
+											onclick={(e) => { e.stopPropagation(); handleDelete(ln.node.id); }} 
+											title="Delete"
+											aria-label="Delete"
+										>
+											<svg viewBox="0 0 24 24" aria-hidden="true">
+												<polyline points="3 6 5 6 21 6" />
+												<path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+											</svg>
+										</button>
 									</div>
 								{/if}
 							</div>
@@ -622,6 +615,36 @@ function cancelEdit() {
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
+	.node-name.editable {
+		cursor: text;
+		padding: 0.1rem 0.25rem;
+		margin: -0.1rem -0.25rem;
+		border-radius: 4px;
+		transition: background 0.15s;
+	}
+	.node-name.editable:hover {
+		background: rgba(255, 255, 255, 0.08);
+	}
+	.inline-edit {
+		display: flex;
+		align-items: center;
+	}
+	.inline-edit input {
+		min-width: 100px;
+		max-width: 140px;
+		padding: 0.18rem 0.35rem;
+		border-radius: 4px;
+		border: 1px solid var(--ui-accent, rgba(45, 212, 191, 0.6));
+		background: color-mix(in srgb, var(--ui-bg, #0f1115) 85%, white 15%);
+		color: var(--ui-text-hover, #e5e7eb);
+		font-size: 0.78rem;
+		font-weight: 500;
+		outline: none;
+	}
+	.inline-edit input:focus {
+		border-color: var(--ui-accent, #2dd4bf);
+		box-shadow: 0 0 0 2px rgba(var(--ui-accent-rgb, 45, 212, 191), 0.2);
+	}
 	.badge {
 		font-size: 0.52rem;
 		padding: 0.08rem 0.28rem;
@@ -654,20 +677,6 @@ function cancelEdit() {
 		display: flex;
 		gap: 0.2rem;
 		flex-shrink: 0;
-	}
-	.edit-field {
-		display: flex;
-		align-items: center;
-	}
-	.edit-field input {
-		min-width: 120px;
-		padding: 0.25rem 0.4rem;
-		border-radius: 5px;
-		border: 1px solid rgba(var(--ui-accent-rgb, 45, 212, 191), 0.5);
-		background: color-mix(in srgb, var(--ui-bg, #0f1115) 85%, white 15%);
-		color: var(--ui-text-hover, #e5e7eb);
-		font-size: 0.75rem;
-		outline: none;
 	}
 	.action-btn {
 		width: 22px;

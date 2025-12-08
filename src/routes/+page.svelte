@@ -153,6 +153,24 @@
 
 	// Auto-start tour on first visit
 	onMount(() => {
+		// Prevent browser-level zoom gestures on iOS Safari
+		const preventGesture = (e: Event) => {
+			e.preventDefault();
+		};
+		
+		// Prevent pinch zoom via gesturestart (iOS)
+		document.addEventListener('gesturestart', preventGesture, { passive: false });
+		document.addEventListener('gesturechange', preventGesture, { passive: false });
+		document.addEventListener('gestureend', preventGesture, { passive: false });
+		
+		// Prevent Ctrl+scroll zoom on desktop browsers
+		const preventCtrlScroll = (e: WheelEvent) => {
+			if (e.ctrlKey || e.metaKey) {
+				e.preventDefault();
+			}
+		};
+		document.addEventListener('wheel', preventCtrlScroll, { passive: false });
+		
 		// Small delay to ensure everything is rendered
 		setTimeout(() => {
 			if (!hasTourBeenCompleted()) {
@@ -165,6 +183,11 @@
 			if (tourStyleElement) {
 				tourStyleElement.remove();
 			}
+			// Cleanup zoom prevention
+			document.removeEventListener('gesturestart', preventGesture);
+			document.removeEventListener('gesturechange', preventGesture);
+			document.removeEventListener('gestureend', preventGesture);
+			document.removeEventListener('wheel', preventCtrlScroll);
 		};
 	});
 

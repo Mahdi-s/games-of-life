@@ -36,6 +36,11 @@ body {
 		sans-serif;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
+	/* Prevent browser-level zoom gestures - only allow pan/manipulation */
+	touch-action: pan-x pan-y;
+	-ms-touch-action: pan-x pan-y;
+	/* Prevent double-tap zoom on iOS */
+	-webkit-touch-callout: none;
 }
 
 /* Prevent text selection during drag operations */
