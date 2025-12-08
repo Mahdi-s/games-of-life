@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { initWebGPU, type WebGPUContext, type WebGPUError } from '../webgpu/context.js';
-	import { Simulation } from '../webgpu/simulation.js';
-	import { getSimulationState, getUIState, GRID_SCALES, type GridScale, type SpectrumMode, type BrushShape, setSimulationRef } from '../stores/simulation.svelte.js';
+import { Simulation } from '../webgpu/simulation.js';
+import { getSimulationState, getUIState, GRID_SCALES, type GridScale, type SpectrumMode, type BrushShape, setSimulationRef, wasBrushEditorSnapshotTaken, markBrushEditorSnapshotTaken, markBrushEditorEdited } from '../stores/simulation.svelte.js';
 import { addSnapshot, resetHistory } from '../stores/history.js';
 	import { isTourActive } from '../utils/tour.js';
 	import { isModalOpen } from '../stores/modalManager.svelte.js';
@@ -60,6 +60,13 @@ let strokeTracked = false;
 	
 	// Effective tool mode: pan if pan mode selected OR space is held
 	const effectiveToolMode = $derived(simState.isSpaceHeld ? 'pan' : simState.toolMode);
+
+	function ensureBrushEditorSnapshot() {
+		if (isModalOpen('brushEditor') && simulation && !wasBrushEditorSnapshotTaken()) {
+			simulation.snapshotUndo().catch(() => {});
+			markBrushEditorSnapshotTaken();
+		}
+	}
 
 	// Get brush configuration for painting
 	function getBrushConfig() {
@@ -376,7 +383,10 @@ let strokeTracked = false;
 				return;
 			}
 			// Brush mode - draw
-			if (!brushEditorOpen) {
+			if (brushEditorOpen) {
+				ensureBrushEditorSnapshot();
+				markBrushEditorEdited();
+			} else {
 				strokeTracked = true;
 			}
 			isDrawing = true;
@@ -393,7 +403,10 @@ let strokeTracked = false;
 		
 		// Right click = erase (always, regardless of mode)
 		if (e.button === 2) {
-			if (!brushEditorOpen) {
+			if (brushEditorOpen) {
+				ensureBrushEditorSnapshot();
+				markBrushEditorEdited();
+			} else {
 				strokeTracked = true;
 			}
 			isDrawing = true;
@@ -532,7 +545,10 @@ let strokeTracked = false;
 				touchMode = 'pan';
 			} else {
 				// Brush mode - single touch draws
-				if (!brushEditorOpen) {
+				if (brushEditorOpen) {
+					ensureBrushEditorSnapshot();
+					markBrushEditorEdited();
+				} else {
 					await beginStroke(simulation);
 					strokeTracked = true;
 				}

@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { getSimulationState, BRUSH_SHAPES, BRUSH_TYPES, BRUSH_FALLOFFS, type BrushShape, type BrushType, type BrushFalloff, DEFAULT_BRUSH_CONFIG, getSimulationRef } from '../stores/simulation.svelte.js';
-	import { onMount } from 'svelte';
+	import { getSimulationState, BRUSH_SHAPES, BRUSH_TYPES, BRUSH_FALLOFFS, type BrushShape, type BrushType, type BrushFalloff, DEFAULT_BRUSH_CONFIG, getSimulationRef, resetBrushEditorSession, wasBrushEditorSnapshotTaken, wasBrushEditorEdited } from '../stores/simulation.svelte.js';
+	import { addSnapshot, getHeadId } from '../stores/history.js';
+	import { onMount, onDestroy } from 'svelte';
 	import { draggable, centerInViewport } from '../utils/draggable.js';
 	import { bringToFront, setModalPosition, getModalState } from '../stores/modalManager.svelte.js';
 
@@ -16,12 +17,14 @@
 	const modalState = $derived(getModalState('brushEditor'));
 	let modalEl: HTMLDivElement | null = null;
 
-onMount(() => {
-	const sim = getSimulationRef();
-	if (sim) {
-		sim.snapshotUndo().catch(() => {});
-	}
-});
+	onMount(() => {
+		resetBrushEditorSession();
+	});
+
+	onDestroy(() => {
+		// If modal closes unexpectedly, avoid stale flags
+		resetBrushEditorSession();
+	});
 	
 	function handleDragEnd(position: { x: number; y: number }) {
 		setModalPosition('brushEditor', position);
@@ -41,18 +44,30 @@ onMount(() => {
 
 	function applyAndClose() {
 		const sim = getSimulationRef();
-		sim?.clearUndo();
+		if (sim && wasBrushEditorSnapshotTaken()) {
+			// If edits happened, record to history and clear the temp snapshot
+			if (wasBrushEditorEdited()) {
+				addSnapshot(sim, 'Brush editor', 'brush', getHeadId());
+			}
+			sim.clearUndo();
+		}
+		resetBrushEditorSession();
 		onclose();
 	}
 
 	function cancelAndClose() {
 		const sim = getSimulationRef();
-		// Revert grid if we have an undo snapshot
-		if (sim) {
-			sim.undoLast().catch(() => {});
+		if (sim && wasBrushEditorSnapshotTaken()) {
+			if (wasBrushEditorEdited()) {
+				sim.undoLast().catch(() => {});
+			} else {
+				// No edits; just drop the snapshot
+				sim.clearUndo();
+			}
 		}
 		simState.brushConfig = originalConfig;
 		simState.brushState = originalBrushState;
+		resetBrushEditorSession();
 		onclose();
 	}
 

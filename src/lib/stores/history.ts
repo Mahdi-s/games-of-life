@@ -91,13 +91,13 @@ function enforceLimit() {
 	}
 }
 
-export async function addSnapshot(sim: Simulation, name = 'Stroke', kind: HistoryKind = 'brush') {
+export async function addSnapshot(sim: Simulation, name = 'Stroke', kind: HistoryKind = 'brush', parentIdOverride?: string | null) {
 	ensureRoot(sim);
 	const snap = await sim.getCellDataAsync();
 	const id = genId();
 	const node: HistoryNode = {
 		id,
-		parentId: headId,
+		parentId: parentIdOverride ?? headId,
 		name,
 		createdAt: Date.now(),
 		kind,
