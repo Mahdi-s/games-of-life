@@ -985,9 +985,10 @@ export class Simulation {
 			}
 			
 			// Scale: maps grid cell offsets to bitmap pixel offsets
-			// Note: shader uses (r * 2) / bh but paintBrush needs just radius / bh
-			// to match the actual preview size
-			const scale = radius / bh;
+			// Hex grids multiply dx/dy by 2.0 in shader, so we need different scales:
+			// - Square grid: scale = (radius * 2) / bh (matches shader directly)
+			// - Hex grid: scale = radius / bh (because shader doubles dx/dy for hex)
+			const scale = isHex ? (radius / bh) : ((radius * 2) / bh);
 			const halfWidth = bw * 0.5;
 			const halfHeight = bh * 0.5;
 			
