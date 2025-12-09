@@ -44,6 +44,12 @@
 let editingId = $state<string | null>(null);
 let editingValue = $state('');
 
+// Action to focus input on mount (avoids autofocus attribute warning)
+function focusOnMount(node: HTMLInputElement) {
+	node.focus();
+	node.select();
+}
+
 	onMount(async () => {
 		refresh();
 		selectedId = getHeadId();
@@ -356,31 +362,38 @@ function cancelEdit() {
 							>
 								<div class="node-info">
 									<div class="node-header">
-										{#if !ln.node.name.toLowerCase().includes('(pre)')}
-											{#if editingId === ln.node.id}
-												<!-- Inline edit mode -->
-												<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-												<div class="inline-edit" onclick={(e) => e.stopPropagation()}>
-													<input
-														type="text"
-														bind:value={editingValue}
-														placeholder="Name"
-														onkeydown={(e) => {
-															if (e.key === 'Enter') { e.preventDefault(); commitEdit(); }
-															if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
-														}}
-														onblur={commitEdit}
-														autofocus
-													/>
-												</div>
-											{:else}
-												<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-												<span 
-													class="node-name editable" 
-													onclick={(e) => { e.stopPropagation(); handleRename(ln.node.id); }}
-													title="Click to rename"
-												>{ln.node.name}</span>
-											{/if}
+									{#if !ln.node.name.toLowerCase().includes('(pre)')}
+										{#if editingId === ln.node.id}
+											<!-- Inline edit mode -->
+											<div 
+												class="inline-edit" 
+												onclick={(e) => e.stopPropagation()}
+												onkeydown={(e) => e.stopPropagation()}
+												role="textbox"
+												tabindex="-1"
+											>
+												<input
+													type="text"
+													bind:value={editingValue}
+													placeholder="Name"
+													onkeydown={(e) => {
+														if (e.key === 'Enter') { e.preventDefault(); commitEdit(); }
+														if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
+													}}
+													onblur={commitEdit}
+													use:focusOnMount
+												/>
+											</div>
+										{:else}
+											<span 
+												class="node-name editable" 
+												onclick={(e) => { e.stopPropagation(); handleRename(ln.node.id); }}
+												onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); handleRename(ln.node.id); }}}
+												title="Click to rename"
+												role="button"
+												tabindex="0"
+											>{ln.node.name}</span>
+										{/if}
 											{#if isHead}
 												<span class="badge head">HEAD</span>
 											{/if}

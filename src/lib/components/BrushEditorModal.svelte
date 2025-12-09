@@ -15,7 +15,7 @@
 	
 	// Modal dragging state
 	const modalState = $derived(getModalState('brushEditor'));
-	let modalEl: HTMLDivElement | null = null;
+	let modalEl = $state<HTMLDivElement | null>(null);
 
 	onMount(async () => {
 		resetBrushEditorSession();

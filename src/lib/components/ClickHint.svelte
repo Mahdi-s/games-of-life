@@ -32,10 +32,10 @@
 	<div class="click-hint" class:light={simState.isLightTheme}>
 		<span class="hint-text">{hintText}</span>
 		<svg class="hint-arrow" viewBox="0 0 50 50" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-			<!-- Curved line going down -->
-			<path class="arrow-line" d="M25 5 Q 27 22, 28 35 Q 29 42, 28 46" />
-			<!-- Arrowhead - longer and narrower -->
-			<path class="arrow-head" d="M24 36 L28 46 L32 36" />
+			<!-- Curved line going down, centered -->
+			<path class="arrow-line" d="M25 5 Q 26 20, 25 35 Q 25 42, 25 48" />
+			<!-- Arrowhead centered at bottom -->
+			<path class="arrow-head" d="M21 38 L25 48 L29 38" />
 		</svg>
 	</div>
 {/if}
@@ -43,7 +43,7 @@
 <style>
 	.click-hint {
 		position: fixed;
-		top: calc(50% - 30px);
+		top: calc(50% - 12px);
 		left: 50%;
 		transform: translate(-50%, -100%);
 		display: flex;
