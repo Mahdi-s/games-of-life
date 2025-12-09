@@ -124,7 +124,7 @@ let gridHeight = $state(256);
 
 // Visual settings
 let isLightTheme = $state(false);
-let aliveColor = $state<[number, number, number]>([0, 1, 1]); // Cyan (default color)
+let aliveColor = $state<[number, number, number]>([1.0, 0.45, 0.65]); // Pink (default color)
 
 // Spectrum modes for multi-state color transitions
 export type SpectrumMode = 
@@ -190,7 +190,7 @@ export function boundaryModeToIndex(mode: BoundaryMode): number {
 	return modes.indexOf(mode);
 }
 
-let spectrumMode = $state<SpectrumMode>('rainbow');
+let spectrumMode = $state<SpectrumMode>('fire');
 
 // Spectrum frequency - how many times to repeat the spectrum across dying states
 // 1.0 = normal (once), 2.0 = twice, 0.5 = stretched to half
