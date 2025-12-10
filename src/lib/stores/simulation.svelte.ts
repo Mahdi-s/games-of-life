@@ -3,8 +3,8 @@
  * Manages reactive state for the cellular automaton
  */
 
-import type { CARule, VitalityMode, VitalitySettings } from '../utils/rules.js';
-import { getDefaultRule, DEFAULT_VITALITY } from '../utils/rules.js';
+import type { CARule, VitalityMode, VitalitySettings, CurvePoint } from '../utils/rules.js';
+import { getDefaultRule, DEFAULT_VITALITY, sampleCurvePoints } from '../utils/rules.js';
 import type { Simulation } from '../webgpu/simulation.js';
 
 // Simulation state
@@ -117,12 +117,6 @@ export const GRID_SCALES: { name: GridScale; label: string; baseCells: number }[
 	{ name: 'huge', label: 'Huge', baseCells: 2048 }
 ];
 
-// Detect if we're on mobile (will be checked at runtime)
-function isMobileDevice(): boolean {
-	if (typeof window === 'undefined') return false;
-	return window.innerWidth <= 768;
-}
-
 // Grid configuration - now calculated from scale
 // Default to 'medium' on all devices
 let gridScale = $state<GridScale>('medium');
@@ -217,7 +211,14 @@ let vitalityThreshold = $state(defaultRuleVitality?.threshold ?? 1.0);
 let vitalityGhostFactor = $state(defaultRuleVitality?.ghostFactor ?? 0.0);
 let vitalitySigmoidSharpness = $state(defaultRuleVitality?.sigmoidSharpness ?? 10.0);
 let vitalityDecayPower = $state(defaultRuleVitality?.decayPower ?? 1.0);
-let vitalityCurveSamples = $state<number[]>(defaultRuleVitality?.curveSamples ?? new Array(128).fill(0));
+// Curve points are the source of truth for the vitality curve
+let vitalityCurvePoints = $state<CurvePoint[]>(defaultRuleVitality?.curvePoints ?? []);
+// Samples are computed on-demand from curve points (for the shader)
+let vitalityCurveSamplesCache = $state<number[]>(
+	defaultRuleVitality?.curvePoints && defaultRuleVitality.curvePoints.length >= 2
+		? sampleCurvePoints(defaultRuleVitality.curvePoints)
+		: new Array(128).fill(0)
+);
 
 // Color palettes for dark and light themes
 export const DARK_THEME_COLORS: { name: string; color: [number, number, number]; hex: string }[] = [
@@ -852,15 +853,21 @@ export function getSimulationState() {
 			vitalityDecayPower = Math.max(0.5, Math.min(3.0, value));
 		},
 
+		// Curve samples are computed from curve points (read-only)
 		get vitalityCurveSamples() {
-			return vitalityCurveSamples;
+			return vitalityCurveSamplesCache;
 		},
-		set vitalityCurveSamples(value: number[]) {
-			// Ensure we have exactly 128 samples, clamped to -2 to 2
-			vitalityCurveSamples = value.slice(0, 128).map(v => Math.max(-2, Math.min(2, v)));
-			while (vitalityCurveSamples.length < 128) {
-				vitalityCurveSamples.push(0);
-			}
+
+		// Curve points are the source of truth
+		get vitalityCurvePoints() {
+			return vitalityCurvePoints;
+		},
+		set vitalityCurvePoints(value: CurvePoint[]) {
+			vitalityCurvePoints = value;
+			// Recompute samples when points change
+			vitalityCurveSamplesCache = value && value.length >= 2
+				? sampleCurvePoints(value)
+				: new Array(128).fill(0);
 		},
 
 		// Get current vitality settings as an object
@@ -871,7 +878,7 @@ export function getSimulationState() {
 				ghostFactor: vitalityGhostFactor,
 				sigmoidSharpness: vitalitySigmoidSharpness,
 				decayPower: vitalityDecayPower,
-				curveSamples: [...vitalityCurveSamples]
+				curvePoints: vitalityCurvePoints.length > 0 ? [...vitalityCurvePoints] : undefined
 			};
 		},
 
@@ -883,7 +890,11 @@ export function getSimulationState() {
 				vitalityGhostFactor = settings.ghostFactor;
 				vitalitySigmoidSharpness = settings.sigmoidSharpness ?? DEFAULT_VITALITY.sigmoidSharpness;
 				vitalityDecayPower = settings.decayPower ?? DEFAULT_VITALITY.decayPower;
-				vitalityCurveSamples = settings.curveSamples ?? new Array(128).fill(0);
+				vitalityCurvePoints = settings.curvePoints ?? [];
+				// Compute samples from curve points
+				vitalityCurveSamplesCache = vitalityCurvePoints.length >= 2
+					? sampleCurvePoints(vitalityCurvePoints)
+					: new Array(128).fill(0);
 			} else {
 				// Reset to defaults
 				vitalityMode = DEFAULT_VITALITY.mode;
@@ -891,7 +902,8 @@ export function getSimulationState() {
 				vitalityGhostFactor = DEFAULT_VITALITY.ghostFactor;
 				vitalitySigmoidSharpness = DEFAULT_VITALITY.sigmoidSharpness;
 				vitalityDecayPower = DEFAULT_VITALITY.decayPower;
-				vitalityCurveSamples = new Array(128).fill(0);
+				vitalityCurvePoints = [];
+				vitalityCurveSamplesCache = new Array(128).fill(0);
 			}
 		},
 

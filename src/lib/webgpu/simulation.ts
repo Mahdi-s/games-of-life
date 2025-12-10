@@ -4,7 +4,7 @@
  */
 
 import type { WebGPUContext } from './context.js';
-import type { CARule, NeighborhoodType, VitalityMode } from '../utils/rules.js';
+import type { CARule, VitalityMode } from '../utils/rules.js';
 import { getDefaultRule } from '../utils/rules.js';
 import { SEED_PATTERNS, SEED_PATTERNS_HEX, type SeedPatternId, type BoundaryMode, boundaryModeToIndex } from '../stores/simulation.svelte.js';
 
@@ -990,7 +990,8 @@ export class Simulation {
 		};
 		
 		// Get alpha based on distance (simpler now - just intensity)
-		const getAlpha = (dist: number): number => {
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
+		const getAlpha = (_dist: number): number => {
 			return intensity;
 		};
 		

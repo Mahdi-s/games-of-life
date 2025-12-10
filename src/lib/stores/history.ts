@@ -21,7 +21,7 @@ export interface HistoryNode {
 
 const MAX_HISTORY = 12;
 
-let nodes = new Map<string, HistoryNode>();
+const nodes = new Map<string, HistoryNode>();
 let headId: string | null = null;
 let rootId: string | null = null;
 let counter = 0;
@@ -52,6 +52,7 @@ function getChildren(id: string): HistoryNode[] {
 	return Array.from(nodes.values()).filter(n => n.parentId === id).sort((a, b) => a.createdAt - b.createdAt);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function getDepth(id: string): number {
 	let d = 0;
 	let cur = nodes.get(id);

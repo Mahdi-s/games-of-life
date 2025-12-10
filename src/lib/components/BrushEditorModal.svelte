@@ -186,7 +186,7 @@
 			<div class="section">
 				<span class="section-label">Shape</span>
 				<div class="shape-grid">
-				{#each BRUSH_SHAPES as shape}
+				{#each BRUSH_SHAPES as shape (shape.id)}
 					<button 
 						class="shape-btn"
 						class:active={simState.brushShape === shape.id}
@@ -194,6 +194,7 @@
 						title={shape.description}
 					>
 						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+							<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 							{@html shapeIcons[shape.id]}
 						</svg>
 					</button>
@@ -214,7 +215,7 @@
 				/>
 				<div class="text-options">
 					<div class="font-selector">
-						{#each TEXT_FONTS as font}
+						{#each TEXT_FONTS as font (font.id)}
 							<button 
 								class="font-btn"
 								class:active={simState.brushTextFont === font.id}
@@ -250,7 +251,7 @@
 		<div class="section">
 			<span class="section-label">Fill</span>
 			<div class="fill-grid">
-				{#each BRUSH_TYPES as type}
+				{#each BRUSH_TYPES as type (type.id)}
 					<button 
 						class="fill-btn"
 						class:active={simState.brushType === type.id}
@@ -258,6 +259,7 @@
 						title={type.description}
 					>
 						<svg viewBox="0 0 24 24" fill="none" stroke="none">
+							<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 							{@html fillIcons[type.id]}
 						</svg>
 						<span>{type.name}</span>

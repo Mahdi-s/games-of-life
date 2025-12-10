@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { getSimulationState, getUIState, BRUSH_TYPES, getSimulationRef } from '../stores/simulation.svelte.js';
+	import { getSimulationState, getUIState, getSimulationRef } from '../stores/simulation.svelte.js';
 	import { openModal, getModalStates } from '../stores/modalManager.svelte.js';
 	import HeartIcon from './HeartIcon.svelte';
 	import { canUndo, canRedo, undo as historyUndo, redo as historyRedo, subscribeHistory } from '../stores/history.js';

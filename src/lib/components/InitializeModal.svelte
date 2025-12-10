@@ -197,7 +197,8 @@
 	// Use universal patterns for all rules
 	const currentPatterns = UNIVERSAL_PATTERNS;
 
-	const hasStructuredPatterns = true; // Always true now with universal patterns
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	const _hasStructuredPatterns = true; // Always true now with universal patterns (reserved)
 
 	// Restore last selections
 	let selectedCategory = $state(simState.lastInitCategory);
@@ -205,7 +206,8 @@
 	let customDensity = $state(30);
 
 	// Scale factor for preview (main grid vs preview grid)
-	const previewScale = $derived(PREVIEW_SIZE_X / simState.gridWidth);
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	const _previewScale = $derived(PREVIEW_SIZE_X / simState.gridWidth); // Reserved for future use
 
 	// Calculate pattern bounding box size
 	function getPatternSize(patternId: string): { width: number; height: number } {
@@ -260,7 +262,7 @@
 
 	// Clamp spacing when pattern changes (minSpacing may have changed)
 	$effect(() => {
-		selectedPattern; // track
+		void selectedPattern; // track dependency
 		if (tilingSpacing < minSpacing) {
 			tilingSpacing = minSpacing;
 		}
@@ -268,10 +270,10 @@
 
 	// Re-render preview when pattern or settings change
 	$effect(() => {
-		selectedPattern;
-		customDensity;
-		tilingEnabled;
-		tilingSpacing;
+		void selectedPattern;
+		void customDensity;
+		void tilingEnabled;
+		void tilingSpacing;
 		initPreviewGrid();
 		renderPreview();
 	});
@@ -878,7 +880,7 @@
 									<span class="pattern-desc">{Math.round(ruleDensity * 100)}% - best for {simState.currentRule.name}</span>
 								</button>
 							{/if}
-							{#each currentPatterns.random as pattern}
+							{#each currentPatterns.random as pattern (pattern.id)}
 								<button 
 									class="pattern-btn"
 									class:selected={selectedPattern === pattern.id}
@@ -906,7 +908,7 @@
 								/>
 							{/if}
 						{:else if selectedCategory === 'structures'}
-							{#each currentPatterns.structures as pattern}
+							{#each currentPatterns.structures as pattern (pattern.id)}
 								<button 
 									class="pattern-btn"
 									class:selected={selectedPattern === pattern.id}
@@ -921,7 +923,7 @@
 								</button>
 							{/each}
 						{:else if selectedCategory === 'oscillators'}
-							{#each currentPatterns.oscillators as pattern}
+							{#each currentPatterns.oscillators as pattern (pattern.id)}
 								<button 
 									class="pattern-btn"
 									class:selected={selectedPattern === pattern.id}
@@ -936,7 +938,7 @@
 								</button>
 							{/each}
 						{:else if selectedCategory === 'still'}
-							{#each currentPatterns.still as pattern}
+							{#each currentPatterns.still as pattern (pattern.id)}
 								<button 
 									class="pattern-btn"
 									class:selected={selectedPattern === pattern.id}
@@ -1040,7 +1042,7 @@
 								<!-- svelte-ignore a11y_no_static_element_interactions -->
 								<div class="dropdown-backdrop" onclick={() => seedPatternDropdownOpen = false} onkeydown={() => {}}></div>
 								<div class="seed-pattern-dropdown">
-									{#each currentSeedPatterns as pattern}
+									{#each currentSeedPatterns as pattern (pattern.id)}
 										<button 
 											class="seed-pattern-item"
 											class:selected={simState.seedPattern === pattern.id}
@@ -1082,7 +1084,7 @@
 					<span class="scale-dims">{currentDimensions}</span>
 				</div>
 				<div class="scale-btns">
-					{#each GRID_SCALES as scale}
+					{#each GRID_SCALES as scale (scale.name)}
 						<button
 							class="scale-btn"
 							class:selected={simState.gridScale === scale.name}

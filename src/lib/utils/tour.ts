@@ -31,7 +31,8 @@ let miniSimInterval: number | null = null;
 let miniSimCanvas: HTMLCanvasElement | null = null;
 let miniSimCtx: CanvasRenderingContext2D | null = null;
 let miniSimGrid: Uint8Array | null = null;
-let miniSimGeneration = 0;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+let _miniSimGeneration = 0; // Tracks generation count (used internally for debugging)
 const MINI_SIM_SIZE = 40;
 const MINI_SIM_CELL_SIZE = 3;
 
@@ -45,9 +46,10 @@ const TOUR_RULE = {
 // Seeding rate: probability per cell per frame of spawning a new cell
 const SEED_RATE = 0.002; // ~0.2% chance per dead cell per frame
 
-function initMiniSim(accentColor: string): void {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function initMiniSim(_accentColor: string): void {
 	miniSimGrid = new Uint8Array(MINI_SIM_SIZE * MINI_SIM_SIZE);
-	miniSimGeneration = 0;
+	_miniSimGeneration = 0;
 	
 	// Star Wars needs ~35% density and continuous activity
 	// Seed with random cells at optimal density
@@ -72,7 +74,7 @@ function continuousSeed(): void {
 function stepMiniSim(): void {
 	if (!miniSimGrid) return;
 	
-	miniSimGeneration++;
+	_miniSimGeneration++;
 	
 	// Continuous seeding - natural, distributed new cells each frame
 	continuousSeed();
@@ -599,6 +601,7 @@ export function createTour(options?: {
 	const isLight = options?.isLightTheme ?? false;
 	
 	// Create driver instance first so we can reference it in callbacks
+	// eslint-disable-next-line prefer-const
 	let driverObj: ReturnType<typeof driver>;
 	
 	const config: Config = {

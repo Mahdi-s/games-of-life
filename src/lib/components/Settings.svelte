@@ -370,7 +370,7 @@
 				<div class="row">
 					<span class="label">Color</span>
 					<div class="colors">
-						{#each colorPalettes as cp, i}
+						{#each colorPalettes as cp, i (cp.name)}
 							<button
 								class="swatch"
 								class:selected={getSelectedColorIndex() === i}
@@ -386,7 +386,7 @@
 				<div class="row col">
 					<span class="label">Spectrum</span>
 					<div class="spectrum-grid">
-						{#each smoothModes as mode}
+						{#each smoothModes as mode (mode.id)}
 							<button 
 								class="spectrum-btn" 
 								class:active={simState.spectrumMode === mode.id}
@@ -403,7 +403,7 @@
 				<!-- Spectrum Mode - Row 2: Color Harmonies -->
 				<div class="row col spectrum-row-extra">
 					<div class="spectrum-grid">
-						{#each harmonyModes as mode}
+						{#each harmonyModes as mode (mode.id)}
 							<button 
 								class="spectrum-btn" 
 								class:active={simState.spectrumMode === mode.id}
@@ -420,7 +420,7 @@
 				<!-- Spectrum Mode - Row 3: Banded/Themed -->
 				<div class="row col spectrum-row-extra">
 					<div class="spectrum-grid">
-						{#each bandedModes as mode}
+						{#each bandedModes as mode (mode.id)}
 							<button 
 								class="spectrum-btn" 
 								class:active={simState.spectrumMode === mode.id}

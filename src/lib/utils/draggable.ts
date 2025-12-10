@@ -168,8 +168,8 @@ export function draggable(node: HTMLElement, options: DraggableOptions = {}): Dr
 			hasMoved = true;
 		}
 
-		let newX = initialX + dx;
-		let newY = initialY + dy;
+		const newX = initialX + dx;
+		const newY = initialY + dy;
 
 		const constrained = constrainToBounds(newX, newY);
 		currentX = constrained.x;

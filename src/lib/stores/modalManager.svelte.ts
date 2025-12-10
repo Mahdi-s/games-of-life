@@ -15,7 +15,7 @@ export interface ModalState {
 const BASE_Z_INDEX = 1000;
 
 // Create modal states
-let modalStates = $state<Record<ModalId, ModalState>>({
+const modalStates = $state<Record<ModalId, ModalState>>({
 	ruleEditor: { isOpen: false, position: null, zIndex: BASE_Z_INDEX },
 	initialize: { isOpen: false, position: null, zIndex: BASE_Z_INDEX },
 	about: { isOpen: false, position: null, zIndex: BASE_Z_INDEX },

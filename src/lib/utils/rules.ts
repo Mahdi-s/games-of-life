@@ -85,6 +85,12 @@ export const VITALITY_MODES: VitalityModeInfo[] = [
 // Higher = smoother curve response, but more GPU memory
 export const VITALITY_CURVE_SAMPLES = 128;
 
+// Curve point type for vitality influence curve
+export interface CurvePoint {
+	x: number;
+	y: number;
+}
+
 // Vitality settings for a rule
 export interface VitalitySettings {
 	mode: VitalityMode;
@@ -92,7 +98,7 @@ export interface VitalitySettings {
 	ghostFactor: number;   // For 'ghost'/'decay' mode: 0.0-1.0 (default 0.0)
 	sigmoidSharpness: number; // For 'sigmoid' mode: 1.0-20.0 (default 10.0)
 	decayPower: number;    // For 'decay' mode: 0.5-3.0 (default 1.0)
-	curveSamples?: number[]; // For 'curve' mode: 16 samples from vitality 0 to 1
+	curvePoints?: CurvePoint[]; // For 'curve' mode: the control points (source of truth)
 }
 
 // Default vitality settings (standard behavior)
@@ -101,9 +107,111 @@ export const DEFAULT_VITALITY: VitalitySettings = {
 	threshold: 1.0,
 	ghostFactor: 0.0,
 	sigmoidSharpness: 10.0,
-	decayPower: 1.0,
-	curveSamples: Array(VITALITY_CURVE_SAMPLES).fill(0) // All zeros = dying cells don't count
+	decayPower: 1.0
 };
+
+// Monotonic Cubic Hermite Interpolation (Fritsch-Carlson method)
+// This ensures the curve never overshoots and is always a proper function
+function monotonicCubicInterpolation(points: CurvePoint[], xVal: number): number {
+	const n = points.length;
+	if (n === 0) return 0;
+	if (n === 1) return points[0].y;
+
+	// Ensure points are sorted by x
+	const sorted = [...points].sort((a, b) => a.x - b.x);
+
+	// Handle out of bounds
+	if (xVal <= sorted[0].x) return sorted[0].y;
+	if (xVal >= sorted[n - 1].x) return sorted[n - 1].y;
+
+	// Find the segment containing xVal
+	let i = 0;
+	while (i < n - 1 && sorted[i + 1].x < xVal) i++;
+
+	const x0 = sorted[i].x;
+	const x1 = sorted[i + 1].x;
+	const y0 = sorted[i].y;
+	const y1 = sorted[i + 1].y;
+
+	// Calculate secant slopes for all segments
+	const deltas: number[] = [];
+	const slopes: number[] = [];
+	for (let j = 0; j < n - 1; j++) {
+		const dx = sorted[j + 1].x - sorted[j].x;
+		deltas.push(dx);
+		slopes.push(dx === 0 ? 0 : (sorted[j + 1].y - sorted[j].y) / dx);
+	}
+
+	// Calculate tangents at each point using Fritsch-Carlson method
+	const tangents: number[] = [];
+	for (let j = 0; j < n; j++) {
+		if (j === 0) {
+			tangents.push(slopes[0]);
+		} else if (j === n - 1) {
+			tangents.push(slopes[n - 2]);
+		} else {
+			// Average of adjacent slopes, but check for sign changes
+			const m0 = slopes[j - 1];
+			const m1 = slopes[j];
+			if (m0 * m1 <= 0) {
+				// Sign change or zero - use zero tangent to prevent overshoot
+				tangents.push(0);
+			} else {
+				// Harmonic mean weighted by segment lengths for smoother curves
+				const w0 = 2 * deltas[j] + deltas[j - 1];
+				const w1 = deltas[j] + 2 * deltas[j - 1];
+				tangents.push((w0 + w1) / (w0 / m0 + w1 / m1));
+			}
+		}
+	}
+
+	// Monotonicity constraint - ensure tangents don't cause overshoot
+	for (let j = 0; j < n - 1; j++) {
+		const dk = slopes[j];
+		if (dk === 0) {
+			tangents[j] = 0;
+			tangents[j + 1] = 0;
+		} else {
+			const alpha = tangents[j] / dk;
+			const beta = tangents[j + 1] / dk;
+			// Restrict to circle of radius 3 for monotonicity
+			const tau = alpha * alpha + beta * beta;
+			if (tau > 9) {
+				const scale = 3 / Math.sqrt(tau);
+				tangents[j] = scale * alpha * dk;
+				tangents[j + 1] = scale * beta * dk;
+			}
+		}
+	}
+
+	// Hermite basis functions
+	const h = x1 - x0;
+	const t = (xVal - x0) / h;
+	const t2 = t * t;
+	const t3 = t2 * t;
+
+	const h00 = 2 * t3 - 3 * t2 + 1;
+	const h10 = t3 - 2 * t2 + t;
+	const h01 = -2 * t3 + 3 * t2;
+	const h11 = t3 - t2;
+
+	return h00 * y0 + h10 * h * tangents[i] + h01 * y1 + h11 * h * tangents[i + 1];
+}
+
+// Sample curve points to generate 128 samples for the shader
+export function sampleCurvePoints(points: CurvePoint[]): number[] {
+	if (!points || points.length < 2) {
+		return new Array(VITALITY_CURVE_SAMPLES).fill(0);
+	}
+	
+	const samples: number[] = [];
+	for (let i = 0; i < VITALITY_CURVE_SAMPLES; i++) {
+		const vitality = i / (VITALITY_CURVE_SAMPLES - 1); // 0 to 1
+		const y = monotonicCubicInterpolation(points, vitality);
+		samples.push(Math.max(-2, Math.min(2, y))); // Clamp to valid range
+	}
+	return samples;
+}
 
 export interface CARule {
 	name: string;
@@ -185,7 +293,7 @@ export function parseRule(ruleString: string): CARule | null {
 
 	// Match B[spec]/S[spec] or B[spec]/S[spec]/C[digits]
 	// spec can be digits, ranges like "9-17", or comma-separated
-	const match = normalized.match(/^B([\d,\-]*)\/S([\d,\-]*)(?:\/C(\d+))?$/);
+	const match = normalized.match(/^B([\d,-]*)\/S([\d,-]*)(?:\/C(\d+))?$/);
 	if (!match) {
 		return null;
 	}
@@ -1040,7 +1148,13 @@ export const RULE_PRESETS: CARule[] = [
 			ghostFactor: 0,
 			sigmoidSharpness: 10.0,
 			decayPower: 1.0,
-			curveSamples: [0,-0.016,-0.033,-0.05,-0.068,-0.086,-0.105,-0.124,-0.144,-0.164,-0.184,-0.204,-0.225,-0.246,-0.267,-0.288,-0.309,-0.33,-0.351,-0.372,-0.392,-0.413,-0.433,-0.453,-0.473,-0.492,-0.512,-0.53,-0.548,-0.566,-0.583,-0.599,-0.615,-0.63,-0.644,-0.658,-0.671,-0.683,-0.694,-0.704,-0.713,-0.721,-0.728,-0.734,-0.739,-0.742,-0.745,-0.746,-0.742,-0.724,-0.693,-0.65,-0.598,-0.537,-0.47,-0.397,-0.321,-0.242,-0.163,-0.085,-0.01,0.062,0.128,0.187,0.237,0.277,0.305,0.319,0.319,0.308,0.285,0.253,0.213,0.165,0.112,0.053,-0.01,-0.075,-0.142,-0.21,-0.277,-0.343,-0.406,-0.465,-0.519,-0.568,-0.609,-0.641,-0.665,-0.681,-0.695,-0.709,-0.723,-0.735,-0.748,-0.759,-0.77,-0.781,-0.791,-0.8,-0.81,-0.818,-0.827,-0.835,-0.843,-0.85,-0.857,-0.864,-0.871,-0.878,-0.884,-0.891,-0.897,-0.903,-0.909,-0.916,-0.922,-0.928,-0.934,-0.941,-0.948,-0.954,-0.961,-0.968,-0.976,-0.984,-0.992,-1]
+			curvePoints: [
+				{ x: 0, y: 0 },
+				{ x: 0.372, y: -0.746 },
+				{ x: 0.531, y: 0.321 },
+				{ x: 0.695, y: -0.669 },
+				{ x: 1, y: -1 }
+			]
 		}
 	},
 	{
@@ -1210,7 +1324,8 @@ export function getRuleBehaviorHint(rule: CARule): string {
 	const hints: string[] = [];
 	
 	// Birth analysis
-	if (rule.birthMask & 0b11) hints.push('Explosive growth (low birth)');
+	if (birthCount === 0) hints.push('No births possible');
+	else if (rule.birthMask & 0b11) hints.push('Explosive growth (low birth)');
 	if (rule.birthMask & 0b11100000) hints.push('Dense patterns form');
 	
 	// Survival analysis  

@@ -6,7 +6,6 @@ import { getSimulationState, getUIState, GRID_SCALES, type GridScale, type Spect
 import { addSnapshotWithBefore, resetHistory } from '../stores/history.js';
 	import { isTourActive } from '../utils/tour.js';
 	import { isModalOpen } from '../stores/modalManager.svelte.js';
-	import { openModal } from '../stores/modalManager.svelte.js';
 
 	const simState = getSimulationState();
 	const uiState = getUIState();
@@ -100,7 +99,8 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 	let lastTouchX = 0;
 	let lastTouchY = 0;
 	let lastPinchDistance = 0;
-	let touchStartTime = 0;
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	let _touchStartTime = 0; // Reserved for potential long-press detection
 
 	// Animation
 	let animationId: number | null = null;
@@ -989,7 +989,8 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 	let mediaRecorder: MediaRecorder | null = null;
 	let recordedChunks: Blob[] = [];
 	let recordingCanvas: HTMLCanvasElement | null = null;
-	let preRecordingAxisProgress = 0; // Store axis progress before recording
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	let _preRecordingAxisProgress = 0; // Store axis progress before recording (reserved)
 
 	export function getIsRecording() {
 		return isRecording;

@@ -7,19 +7,6 @@ export function isRuleEditorTourActive(): boolean {
 	return ruleEditorTourActive;
 }
 
-// Get CSS color from CSS variable - try .app element first, then documentElement
-function getCSSVariable(name: string): string {
-	if (typeof document === 'undefined') return '#2dd4bf';
-	// First try to get from .app element where the variable is actually set
-	const appEl = document.querySelector('.app');
-	if (appEl) {
-		const value = getComputedStyle(appEl).getPropertyValue(name).trim();
-		if (value) return value;
-	}
-	// Fallback to documentElement
-	return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#2dd4bf';
-}
-
 // SVG Icons for the tour
 const icons = {
 	// Rules/function icon (bold italic f)
@@ -415,9 +402,9 @@ export function createRuleEditorTour(options?: {
 	accentColor?: string;
 	isLightTheme?: boolean;
 }): ReturnType<typeof driver> {
-	const accentColor = options?.accentColor || getCSSVariable('--ui-accent');
 	const isLight = options?.isLightTheme ?? false;
 	
+	// eslint-disable-next-line prefer-const
 	let driverObj: ReturnType<typeof driver>;
 	
 	const config: Config = {

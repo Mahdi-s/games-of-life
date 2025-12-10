@@ -2,6 +2,7 @@
 	import HeartIcon from './HeartIcon.svelte';
 	import { draggable } from '../utils/draggable.js';
 	import { bringToFront, setModalPosition, getModalState } from '../stores/modalManager.svelte.js';
+	import { getSimulationState } from '../stores/simulation.svelte.js';
 
 	interface Props {
 		onclose: () => void;
@@ -9,6 +10,8 @@
 	}
 
 	let { onclose, onstarttour }: Props = $props();
+	
+	const simState = getSimulationState();
 	
 	// Modal dragging state
 	const modalState = $derived(getModalState('about'));
@@ -26,6 +29,44 @@
 		// Small delay to let the modal close
 		setTimeout(() => onstarttour(), 150);
 	}
+
+	// CA Tutorial visualization
+	// A simple 5x5 grid showing a blinker oscillator
+	// Initial state: vertical line of 3 cells
+	const beforeGrid = [
+		[0, 0, 0, 0, 0],
+		[0, 0, 1, 0, 0],
+		[0, 0, 1, 0, 0],
+		[0, 0, 1, 0, 0],
+		[0, 0, 0, 0, 0]
+	];
+	
+	// After one step: horizontal line of 3 cells (blinker)
+	const afterGrid = [
+		[0, 0, 0, 0, 0],
+		[0, 0, 0, 0, 0],
+		[0, 1, 1, 1, 0],
+		[0, 0, 0, 0, 0],
+		[0, 0, 0, 0, 0]
+	];
+
+	// Get colors based on theme and alive color
+	const aliveColor = $derived(() => {
+		const [r, g, b] = simState.aliveColor;
+		return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
+	});
+	
+	const deadColor = $derived(() => {
+		return simState.isLightTheme 
+			? 'rgba(0, 0, 0, 0.08)' 
+			: 'rgba(255, 255, 255, 0.08)';
+	});
+	
+	const gridBorderColor = $derived(() => {
+		return simState.isLightTheme 
+			? 'rgba(0, 0, 0, 0.15)' 
+			: 'rgba(255, 255, 255, 0.15)';
+	});
 </script>
 
 <svelte:window onkeydown={(e) => e.key === 'Escape' && onclose()} />
@@ -116,22 +157,54 @@
 
 				<!-- Right column -->
 				<div class="column">
-					<div class="section">
+					<div class="section ca-tutorial">
 						<h3>
 							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-								<path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>
+								<rect x="3" y="3" width="7" height="7"/>
+								<rect x="14" y="3" width="7" height="7"/>
+								<rect x="14" y="14" width="7" height="7"/>
+								<rect x="3" y="14" width="7" height="7"/>
 							</svg>
-							Quick Start
+							How It Works
 						</h3>
-						<ul>
-							<li><kbd>Enter</kbd> Play / Pause simulation</li>
-							<li><kbd>B</kbd> Toggle brush/pan mode</li>
-							<li><kbd>Click</kbd> Draw cells · <kbd>Right-click</kbd> Erase</li>
-							<li><kbd>Scroll</kbd> Zoom · <kbd>Space</kbd> hold Pan · <kbd>F</kbd> Fit</li>
-							<li><kbd>E</kbd> Edit rules · <kbd>I</kbd> Initialize grid</li>
-							<li><kbd>R</kbd> Reinitialize · <kbd>D</kbd> Delete/Clear grid</li>
-							<li><kbd>T</kbd> Toggle theme · <kbd>C</kbd> Cycle colors</li>
-						</ul>
+						<div class="tutorial-content">
+							<div class="tutorial-description">
+								<p>The grid is made of <strong>cells</strong>. Each cell's state is somewhere between <strong>alive</strong> and <strong>dead</strong>.</p>
+								<p>A cell's <strong>neighbors</strong> are the surrounding cells (8 in this example: up, down, left, right, and diagonals).</p>
+								<p>Every step, each cell follows the rules:</p>
+								<ul class="rules-list">
+									<li><span class="rule-birth">Birth</span> — Dead + exactly 3 alive neighbors → alive</li>
+									<li><span class="rule-survive">Survive</span> — Alive + 2-3 alive neighbors → stays</li>
+									<li><span class="rule-death">Death</span> — Otherwise → dies</li>
+								</ul>
+							</div>
+							<div class="tutorial-grids">
+								<div class="grid-container">
+									<div class="mini-grid" style="--alive-color: {aliveColor()}; --dead-color: {deadColor()}; --grid-border: {gridBorderColor()};">
+										{#each beforeGrid as row, rowIdx (rowIdx)}
+											{#each row as cell, colIdx (`before-${rowIdx}-${colIdx}`)}
+												<div class="mini-cell" class:alive={cell === 1}></div>
+											{/each}
+										{/each}
+									</div>
+								</div>
+								<div class="rule-arrow">
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+										<path d="M5 12h14M12 5l7 7-7 7"/>
+									</svg>
+									<span>rule</span>
+								</div>
+								<div class="grid-container">
+									<div class="mini-grid" style="--alive-color: {aliveColor()}; --dead-color: {deadColor()}; --grid-border: {gridBorderColor()};">
+										{#each afterGrid as row, rowIdx (rowIdx)}
+											{#each row as cell, colIdx (`after-${rowIdx}-${colIdx}`)}
+												<div class="mini-cell" class:alive={cell === 1}></div>
+											{/each}
+										{/each}
+									</div>
+								</div>
+							</div>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -316,15 +389,118 @@
 		color: var(--ui-text-hover, #fff);
 	}
 
-	kbd {
-		display: inline-block;
-		padding: 0.1rem 0.3rem;
-		background: var(--ui-border, rgba(255, 255, 255, 0.1));
-		border: 1px solid var(--ui-border-hover, rgba(255, 255, 255, 0.15));
-		border-radius: 3px;
-		font-family: 'SF Mono', Monaco, monospace;
-		font-size: 0.6rem;
+	/* CA Tutorial Styles */
+	.ca-tutorial {
+		height: 100%;
+	}
+
+	.tutorial-content {
+		display: flex;
+		flex-direction: column;
+		gap: 0.6rem;
+	}
+
+	.tutorial-description p {
+		margin: 0;
+		font-size: 0.65rem;
 		color: var(--ui-text-hover, #ccc);
+		line-height: 1.4;
+	}
+
+	.tutorial-description p + p {
+		margin-top: 0.25rem;
+	}
+
+	.tutorial-description strong {
+		color: var(--ui-accent, #2dd4bf);
+	}
+
+	.rules-list {
+		margin: 0.4rem 0 0 0;
+		padding: 0;
+		list-style: none;
+		font-size: 0.65rem;
+	}
+
+	.rules-list li {
+		padding: 0.15rem 0;
+		padding-left: 0;
+		color: var(--ui-text, #999);
+	}
+
+	.rules-list li::before {
+		display: none;
+	}
+
+	.rule-birth {
+		color: #4ade80;
+		font-weight: 600;
+	}
+
+	.rule-survive {
+		color: #60a5fa;
+		font-weight: 600;
+	}
+
+	.rule-death {
+		color: #ef4444;
+		font-weight: 600;
+	}
+
+	.tutorial-grids {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.8rem;
+	}
+
+	.grid-container {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+	}
+
+	.mini-grid {
+		display: grid;
+		grid-template-columns: repeat(5, 1fr);
+		gap: 2px;
+		padding: 3px;
+		background: var(--grid-border);
+		border-radius: 4px;
+	}
+
+	.mini-cell {
+		width: 16px;
+		height: 16px;
+		background: var(--dead-color);
+		border-radius: 2px;
+		transition: background 0.3s ease;
+	}
+
+	.mini-cell.alive {
+		background: var(--alive-color);
+		box-shadow: 0 0 6px var(--alive-color);
+	}
+
+	.rule-arrow {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.2rem;
+	}
+
+	.rule-arrow svg {
+		width: 20px;
+		height: 20px;
+		color: var(--ui-accent, #2dd4bf);
+	}
+
+	.rule-arrow span {
+		font-size: 0.55rem;
+		font-weight: 600;
+		color: var(--ui-text, #888);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
 	}
 
 	.footer {
@@ -431,9 +607,13 @@
 			font-size: 0.65rem;
 		}
 
-		/* Hide keyboard shortcuts section on mobile since touch doesn't use them */
-		.column:last-child .section:has(kbd) {
-			display: none;
+		.mini-cell {
+			width: 12px;
+			height: 12px;
+		}
+
+		.tutorial-grids {
+			gap: 0.5rem;
 		}
 	}
 </style>

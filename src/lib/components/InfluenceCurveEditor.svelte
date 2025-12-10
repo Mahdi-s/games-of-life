@@ -9,6 +9,10 @@
 	
 	let { width = 480, height = 140 }: Props = $props();
 	
+	// Helper arrays for iteration (avoids unused variable warnings)
+	const gradientStops = Array.from({ length: 33 }, (_, i) => i);
+	const sampleIndicators = Array.from({ length: 16 }, (_, i) => i);
+	
 	const simState = getSimulationState();
 	
 	// Curve points: array of {x, y} where x is vitality (0-1), y is contribution (-1 to +1)
@@ -70,36 +74,49 @@
 		]
 	};
 	
-	// Detect if current samples match a known profile
-	function detectProfile(samples: number[]): string | null {
-		// Check for Midlife Crisis (has distinctive oscillating pattern ending at -1)
-		if (samples.length >= 128 && Math.abs(samples[127] - (-1)) < 0.01) {
-			// Check a few key points
-			if (samples[47] !== undefined && Math.abs(samples[47] - (-0.746)) < 0.02) {
-				return 'midlife-crisis';
+	// Detect if curve points match a known profile
+	function detectProfileFromPoints(points: {x: number, y: number}[]): string | null {
+		if (!points || points.length < 2) return null;
+		
+		// Helper to check if two point arrays are approximately equal
+		const pointsMatch = (a: {x: number, y: number}[], b: {x: number, y: number}[]): boolean => {
+			if (a.length !== b.length) return false;
+			return a.every((p, i) => 
+				Math.abs(p.x - b[i].x) < 0.01 && Math.abs(p.y - b[i].y) < 0.01
+			);
+		};
+		
+		// Check against known profiles
+		for (const [profileId, profilePoints] of Object.entries(PROFILE_CURVES)) {
+			if (pointsMatch(points, profilePoints)) {
+				return profileId;
 			}
 		}
-		// Check for Off (all zeros)
-		if (samples.every(s => Math.abs(s) < 0.01)) {
+		
+		// Check for Off (all points at y=0)
+		if (points.every(p => Math.abs(p.y) < 0.01)) {
 			return 'off';
 		}
-		// Check for Linear (ramps from 0 to 1)
-		if (samples.length >= 128 && Math.abs(samples[127] - 1) < 0.02 && Math.abs(samples[64] - 0.5) < 0.05) {
+		
+		// Check for Linear (2 points, starts at 0, ends at 1)
+		if (points.length === 2 && 
+			Math.abs(points[0].y) < 0.01 && 
+			Math.abs(points[1].y - 1) < 0.01) {
 			return 'linear';
 		}
+		
 		return null;
 	}
 	
 	// Track last known vitality settings to detect external changes (rule switches)
 	let lastVitalityMode = $state<string | null>(null);
 	let lastGhostFactor = $state<number | null>(null);
-	let lastCurveSamplesHash = $state<string | null>(null);
+	let lastCurvePointsHash = $state<string | null>(null);
 	
-	// Compute a simple hash of curve samples to detect changes
-	function hashSamples(samples: number[]): string {
-		// Just use first, middle, and last few samples for a quick fingerprint
-		if (!samples || samples.length < 128) return '';
-		return `${samples[0].toFixed(3)}_${samples[32].toFixed(3)}_${samples[64].toFixed(3)}_${samples[96].toFixed(3)}_${samples[127].toFixed(3)}`;
+	// Compute a simple hash of curve points to detect changes
+	function hashCurvePoints(points: {x: number, y: number}[]): string {
+		if (!points || points.length === 0) return '';
+		return points.map(p => `${p.x.toFixed(3)},${p.y.toFixed(3)}`).join('|');
 	}
 	
 	// Initialize curve from current vitality settings on mount
@@ -108,7 +125,7 @@
 		// Store initial state to detect future external changes
 		lastVitalityMode = simState.vitalityMode;
 		lastGhostFactor = simState.vitalityGhostFactor;
-		lastCurveSamplesHash = hashSamples(simState.vitalityCurveSamples);
+		lastCurvePointsHash = hashCurvePoints(simState.vitalityCurvePoints);
 		initialized = true;
 	});
 	
@@ -118,19 +135,19 @@
 		
 		const currentMode = simState.vitalityMode;
 		const currentGhostFactor = simState.vitalityGhostFactor;
-		const currentHash = hashSamples(simState.vitalityCurveSamples);
+		const currentHash = hashCurvePoints(simState.vitalityCurvePoints);
 		
 		// Detect if this is an external change (rule switch) vs internal edit
 		const modeChanged = currentMode !== lastVitalityMode;
 		const ghostChanged = currentMode === 'ghost' && Math.abs(currentGhostFactor - (lastGhostFactor ?? 0)) > 0.01;
-		const curveSamplesChanged = currentMode === 'curve' && currentHash !== lastCurveSamplesHash;
+		const curvePointsChanged = currentMode === 'curve' && currentHash !== lastCurvePointsHash;
 		
-		if (modeChanged || ghostChanged || curveSamplesChanged) {
+		if (modeChanged || ghostChanged || curvePointsChanged) {
 			// External change detected - reinitialize
 			initializeFromVitalitySettings();
 			lastVitalityMode = currentMode;
 			lastGhostFactor = currentGhostFactor;
-			lastCurveSamplesHash = currentHash;
+			lastCurvePointsHash = currentHash;
 		}
 	});
 	
@@ -202,45 +219,22 @@
 				selectedProfileId = null; // Custom
 			}
 		} else if (mode === 'curve') {
-			// Initialize from stored curve samples (128 samples)
-			const samples = simState.vitalityCurveSamples;
+			const storedPoints = simState.vitalityCurvePoints;
 			
-			// First, try to detect if this matches a known profile
-			const detectedProfile = detectProfile(samples);
-			if (detectedProfile) {
-				selectedProfileId = detectedProfile;
-				// Use the canonical curve points for known profiles
-				if (PROFILE_CURVES[detectedProfile]) {
-					curvePoints = [...PROFILE_CURVES[detectedProfile]];
-					return;
-				}
+			// Use stored curve points directly (they are the source of truth)
+			if (storedPoints && storedPoints.length >= 2) {
+				curvePoints = storedPoints.map(p => ({ x: p.x, y: p.y }));
+				// Try to detect if this matches a known profile
+				selectedProfileId = detectProfileFromPoints(storedPoints);
+				return;
 			}
 			
-			// Otherwise, reconstruct curve points from samples
+			// Fallback: Off profile
 			curvePoints = [
-				{ x: 0, y: samples[0] ?? 0 }
+				{ x: 0, y: 0 },
+				{ x: 1, y: 0 }
 			];
-			// Add intermediate points where there are significant changes (check every 8th sample for 128 samples)
-			for (let i = 8; i < 120; i += 8) {
-				const y = samples[i] ?? 0;
-				const prevY = samples[i - 8] ?? 0;
-				const nextY = samples[i + 8] ?? 0;
-				// Add point if it's a local extremum or significant change
-				const isExtremum = (y > prevY && y > nextY) || (y < prevY && y < nextY);
-				const isSignificant = Math.abs(y - prevY) > 0.15 || Math.abs(y - nextY) > 0.15;
-				if (isExtremum || isSignificant) {
-					curvePoints.push({ x: i / 127, y });
-				}
-			}
-			curvePoints.push({ x: 1, y: samples[127] ?? 0 });
-			
-			// Ensure we have at least 2 points
-			if (curvePoints.length < 2) {
-				curvePoints = [
-					{ x: 0, y: samples[0] ?? 0 },
-					{ x: 1, y: samples[127] ?? 0 }
-				];
-			}
+			selectedProfileId = 'off';
 		} else {
 			// Unknown mode or undefined - default to Off profile
 			curvePoints = [
@@ -749,6 +743,7 @@
 	}
 	
 	// Legacy function for compatibility - now just wraps the monotonic interpolation
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	function catmullRomSpline(points: {x: number, y: number}[], t: number, _tension: number = 0.5): {x: number, y: number} {
 		const sorted = [...points].sort((a, b) => a.x - b.x);
 		if (sorted.length < 2) return sorted[0] || { x: 0, y: 0 };
@@ -1085,31 +1080,26 @@
 		return Math.max(yMin, Math.min(yMax, y));
 	}
 	
-	// Update simulation state from curve by sampling at 128 fixed points
+	// Update simulation state from curve points
+	// Samples are computed automatically by the store when curvePoints change
 	function updateSimState() {
-		// Sample the curve at 128 evenly spaced vitality values (0/127, 1/127, ..., 127/127)
-		const samples: number[] = [];
-		for (let i = 0; i < 128; i++) {
-			const vitality = i / 127; // 0 to 1
-			samples.push(sampleCurveAt(vitality));
-		}
-		
-		// Check if curve is essentially "off" (all samples near zero)
-		const isOff = samples.every(s => Math.abs(s) < 0.01);
+		// Check if curve is essentially "off" (all points at y=0)
+		const isOff = curvePoints.every(p => Math.abs(p.y) < 0.01);
 		
 		if (isOff) {
 			simState.vitalityMode = 'none';
+			simState.vitalityCurvePoints = []; // Clear curve points
 			// Update tracking variables to prevent false external change detection
 			lastVitalityMode = 'none';
 			lastGhostFactor = 0;
-			lastCurveSamplesHash = '';
+			lastCurvePointsHash = '';
 		} else {
-			// Use curve mode with the sampled values
+			// Use curve mode - store will compute samples automatically
 			simState.vitalityMode = 'curve';
-			simState.vitalityCurveSamples = samples;
+			simState.vitalityCurvePoints = curvePoints.map(p => ({ x: p.x, y: p.y }));
 			// Update tracking variables to prevent false external change detection
 			lastVitalityMode = 'curve';
-			lastCurveSamplesHash = hashSamples(samples);
+			lastCurvePointsHash = hashCurvePoints(curvePoints);
 		}
 	}
 	
@@ -1184,28 +1174,16 @@
 		updateSimState();
 	}
 	
-	// When curve is manually edited, clear the selected profile
-	function onCurveModified() {
-		selectedProfileId = null;
-	}
-	
-	// Get accent color (alive color)
-	const accentColor = $derived.by(() => {
-		const [r, g, b] = simState.aliveColor;
-		return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
-	});
-	
 	// Theme-aware colors - subtle and elegant
 	const gridColor = $derived(simState.isLightTheme ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)');
 	const zeroLineColor = $derived(simState.isLightTheme ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.2)');
 	const textColor = $derived(simState.isLightTheme ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.4)');
 	
-	// Download curve as JSON
+	// Download curve as JSON (only curve points - the source of truth)
 	function downloadCurve() {
 		const data = {
 			name: 'Custom Curve',
-			points: curvePoints.map(p => ({ x: Math.round(p.x * 1000) / 1000, y: Math.round(p.y * 1000) / 1000 })),
-			samples: simState.vitalityCurveSamples.map(s => Math.round(s * 1000) / 1000)
+			curvePoints: curvePoints.map(p => ({ x: Math.round(p.x * 1000) / 1000, y: Math.round(p.y * 1000) / 1000 }))
 		};
 		const json = JSON.stringify(data, null, 2);
 		const blob = new Blob([json], { type: 'application/json' });
@@ -1245,14 +1223,14 @@
 		<defs>
 			<!-- Full opacity gradient for the curve stroke -->
 			<linearGradient id="vitalityGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-				{#each Array(33) as _, i}
+				{#each gradientStops as i (i)}
 					{@const vitality = i / 32}
 					<stop offset="{vitality * 100}%" stop-color={getVitalityColor(vitality)} />
 				{/each}
 			</linearGradient>
 			<!-- Semi-transparent gradient for fill areas -->
 			<linearGradient id="vitalityFillGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-				{#each Array(33) as _, i}
+				{#each gradientStops as i (i)}
 					{@const vitality = i / 32}
 					<stop offset="{vitality * 100}%" stop-color={getVitalityColor(vitality)} stop-opacity="0.25" />
 				{/each}
@@ -1305,7 +1283,7 @@
 		/>
 		
 		<!-- Sample point indicators (subtle, show sampling resolution) -->
-		{#each Array(16) as _, i}
+		{#each sampleIndicators as i (i)}
 			{@const vitality = (i * 8) / 127}
 			{@const sampleY = sampleCurveAt(vitality)}
 			<circle 
@@ -1407,7 +1385,7 @@
 					<div class="dropdown-list" bind:this={profileListRef}>
 						{#if filteredProfiles.filter(p => p.category === 'basic').length > 0}
 							<div class="dropdown-section">Basic</div>
-							{#each filteredProfiles.filter(p => p.category === 'basic') as profile}
+							{#each filteredProfiles.filter(p => p.category === 'basic') as profile (profile.id)}
 								<button class="dropdown-item" class:selected={selectedProfileId === profile.id} onclick={() => { applyProfile(profile.id); profileDropdownOpen = false; profileSearchQuery = ''; }}>
 									<span class="item-name">{profile.name}</span>
 									<span class="item-desc">{profile.description}</span>
@@ -1416,7 +1394,7 @@
 						{/if}
 						{#if filteredProfiles.filter(p => p.category === 'advanced').length > 0}
 							<div class="dropdown-section">Advanced</div>
-							{#each filteredProfiles.filter(p => p.category === 'advanced') as profile}
+							{#each filteredProfiles.filter(p => p.category === 'advanced') as profile (profile.id)}
 								<button class="dropdown-item" class:selected={selectedProfileId === profile.id} onclick={() => { applyProfile(profile.id); profileDropdownOpen = false; profileSearchQuery = ''; }}>
 									<span class="item-name">{profile.name}</span>
 									<span class="item-desc">{profile.description}</span>

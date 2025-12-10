@@ -12,10 +12,7 @@
 	import HistoryTimelineModal from '$lib/components/HistoryTimelineModal.svelte';
 	import BrushEditorModal from '$lib/components/BrushEditorModal.svelte';
 	import { getSimulationState, getUIState, DARK_THEME_COLORS, LIGHT_THEME_COLORS, SPECTRUM_MODES, type GridScale } from '$lib/stores/simulation.svelte.js';
-	import { 
-		openModal, closeModal, toggleModal, isModalOpen, getModalStates,
-		type ModalId
-	} from '$lib/stores/modalManager.svelte.js';
+	import { closeModal, toggleModal, getModalStates } from '$lib/stores/modalManager.svelte.js';
 	import { hasTourBeenCompleted, startTour, getTourStyles } from '$lib/utils/tour.js';
 	import 'driver.js/dist/driver.css';
 
@@ -193,9 +190,9 @@
 
 	// Update tour styles when theme/color changes
 	$effect(() => {
-		// Track dependencies
-		accentColor;
-		simState.isLightTheme;
+		// Track dependencies (void to avoid unused-expression warnings)
+		void accentColor;
+		void simState.isLightTheme;
 		// Update styles
 		updateTourStyles();
 	});

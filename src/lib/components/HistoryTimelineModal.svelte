@@ -82,11 +82,13 @@ function focusOnMount(node: HTMLInputElement) {
 			return;
 		}
 
-		// Build maps
+		// Build maps (using native Map for non-reactive local computation)
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const nodeMap = new Map<string, HistoryNode>();
 		nodes.forEach(n => nodeMap.set(n.id, n));
 
 		// Build children map
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const childrenMap = new Map<string, HistoryNode[]>();
 		nodes.forEach(n => {
 			if (n.parentId && nodeMap.has(n.parentId)) {
@@ -110,6 +112,7 @@ function focusOnMount(node: HTMLInputElement) {
 		}
 
 		// DFS to assign columns - first child continues, others branch
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const layoutMap = new Map<string, LayoutNode>();
 		let columnCounter = 0;
 
@@ -155,6 +158,7 @@ function focusOnMount(node: HTMLInputElement) {
 	// Generate SVG paths for connections
 	function getConnectionPaths(): string[] {
 		const paths: string[] = [];
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const layoutMap = new Map<string, LayoutNode>();
 		layoutNodes.forEach(ln => layoutMap.set(ln.node.id, ln));
 
@@ -294,12 +298,12 @@ function cancelEdit() {
 						aria-hidden="true"
 					>
 						<!-- Connection lines -->
-						{#each connectionPaths as path}
+						{#each connectionPaths as path, i (i)}
 							<path d={path} class="conn-line" />
 						{/each}
 
 						<!-- Node dots with icons -->
-						{#each layoutNodes as ln}
+						{#each layoutNodes as ln (ln.node.id)}
 							{@const x = getX(ln.col)}
 							{@const y = getY(ln.row)}
 							{@const isHead = ln.node.id === headId}
@@ -346,7 +350,7 @@ function cancelEdit() {
 
 					<!-- Node labels -->
 					<div class="labels" style="left: {contentLeft}px;">
-						{#each layoutNodes as ln}
+						{#each layoutNodes as ln (ln.node.id)}
 							{@const isHead = ln.node.id === headId}
 							{@const isRoot = ln.node.id === rootId}
 							{@const isSelected = ln.node.id === selectedId}

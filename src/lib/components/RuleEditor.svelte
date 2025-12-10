@@ -9,13 +9,11 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 		RULE_PRESETS, 
 		RULE_CATEGORIES, 
 		NEIGHBORHOODS,
-		VITALITY_MODES,
 		parseRule, 
 		getNeighborDescription,
 		type CARule, 
 		type RuleCategory,
-		type NeighborhoodType,
-		type VitalityMode
+		type NeighborhoodType
 	} from '../utils/rules.js';
 	import { draggable } from '../utils/draggable.js';
 	import { bringToFront, setModalPosition, getModalState } from '../stores/modalManager.svelte.js';
@@ -238,11 +236,6 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 		return RULE_CATEGORIES.find(c => c.id === selectedFilter)?.name ?? 'All';
 	});
 
-	// Count rules for each filter (for display in dropdown) - uses grid-filtered presets
-	function getFilterCount(filter: string): number {
-		return getFilteredRulesForGridType(filter, gridFilteredPresets).length;
-	}
-
 	// Precompute counts for all filters - reactive to grid type
 	const filterCounts = $derived.by(() => {
 		const presets = gridFilteredPresets;
@@ -303,9 +296,9 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 
 	// Re-render preview when theme or color changes
 	$effect(() => {
-		// Track theme and color changes
-		simState.isLightTheme;
-		simState.aliveColor;
+		// Track theme and color changes (void to avoid unused-expression warnings)
+		void simState.isLightTheme;
+		void simState.aliveColor;
 		// Re-render if we have a context
 		if (previewCtx) {
 			renderPreview();
@@ -1235,6 +1228,173 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 		ruleSearchMode = false;
 	}
 
+	// File input reference for upload
+	let fileInput: HTMLInputElement;
+
+	// Download current rule as JSON
+	function downloadRule() {
+		const rule: CARule = {
+			name: selectedPreset >= 0 ? RULE_PRESETS[selectedPreset].name : 'Custom Rule',
+			birthMask: birthToggles.reduce((mask, on, i) => mask | (on ? (1 << i) : 0), 0),
+			surviveMask: surviveToggles.reduce((mask, on, i) => mask | (on ? (1 << i) : 0), 0),
+			numStates,
+			ruleString,
+			neighborhood,
+			category: selectedPreset >= 0 ? RULE_PRESETS[selectedPreset].category : 'custom' as RuleCategory,
+			description: selectedPreset >= 0 ? RULE_PRESETS[selectedPreset].description : 'Custom rule',
+			density: selectedPreset >= 0 ? RULE_PRESETS[selectedPreset].density : 0.25
+		};
+
+		// Include vitality settings if not default (mode !== 'none')
+		const vitalitySettings = simState.getVitalitySettings();
+		if (vitalitySettings.mode !== 'none' || (vitalitySettings.curvePoints && vitalitySettings.curvePoints.length > 0)) {
+			rule.vitality = vitalitySettings;
+		}
+
+		// Create export object with metadata
+		const exportData = {
+			version: 1,
+			exportedAt: new Date().toISOString(),
+			rule,
+			settings: {
+				boundaryMode: simState.boundaryMode,
+				gridType
+			}
+		};
+
+		const json = JSON.stringify(exportData, null, 2);
+		const blob = new Blob([json], { type: 'application/json' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		// Create filename from rule name
+		const safeName = rule.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '');
+		a.download = `rule-${safeName}.json`;
+		a.click();
+		URL.revokeObjectURL(url);
+	}
+
+	// Upload rule from JSON file
+	function triggerUpload() {
+		fileInput?.click();
+	}
+
+	function handleFileUpload(event: Event) {
+		const target = event.target as HTMLInputElement;
+		const file = target.files?.[0];
+		if (!file) return;
+
+		const reader = new FileReader();
+		reader.onload = (e) => {
+			try {
+				const content = e.target?.result as string;
+				const data = JSON.parse(content);
+				
+				// Validate the data structure
+				if (!data.rule || typeof data.rule !== 'object') {
+					alert('Invalid rule file: missing rule data');
+					return;
+				}
+
+				const rule = data.rule as CARule;
+
+				// Validate required fields
+				if (typeof rule.birthMask !== 'number' || 
+				    typeof rule.surviveMask !== 'number' ||
+				    typeof rule.numStates !== 'number') {
+					alert('Invalid rule file: missing required fields (birthMask, surviveMask, numStates)');
+					return;
+				}
+
+				// Apply the rule
+				ensureRuleSnapshot();
+				markRuleEditorEdited();
+
+				// Update grid type based on neighborhood
+				const ruleNeighborhood = rule.neighborhood ?? 'moore';
+				if (ruleNeighborhood === 'hexagonal' || ruleNeighborhood === 'extendedHexagonal') {
+					gridType = 'hexagonal';
+				} else {
+					gridType = 'square';
+				}
+
+				// Update all rule settings
+				birthToggles = Array.from({ length: 25 }, (_, i) => !!(rule.birthMask & (1 << i)));
+				surviveToggles = Array.from({ length: 25 }, (_, i) => !!(rule.surviveMask & (1 << i)));
+				numStates = rule.numStates;
+				neighborhood = ruleNeighborhood;
+				ruleString = rule.ruleString || `B${maskToNeighborList(rule.birthMask)}/S${maskToNeighborList(rule.surviveMask)}${rule.numStates > 2 ? `/C${rule.numStates}` : ''}`;
+
+				// Apply vitality settings
+				if (rule.vitality) {
+					simState.setVitalitySettings(rule.vitality);
+				} else {
+					simState.setVitalitySettings(undefined); // Reset to defaults
+				}
+
+				// Apply boundary mode if present
+				if (data.settings?.boundaryMode) {
+					const validModes = BOUNDARY_MODES.map(m => m.id);
+					if (validModes.includes(data.settings.boundaryMode)) {
+						simState.boundaryMode = data.settings.boundaryMode;
+					}
+				}
+
+				// Try to find matching preset
+				selectedPreset = RULE_PRESETS.findIndex(r => r.ruleString === ruleString);
+				selectedFilter = 'all';
+				persistedFilter = 'all';
+
+				// Apply changes to simulation
+				applyToCanvas();
+
+				// Re-randomize preview with new settings
+				const density = rule.density ?? 0.25;
+				const gridSize = PREVIEW_SIZE_X * previewSizeY;
+				previewGrid = Array.from({ length: gridSize }, () => {
+					if (Math.random() < density) {
+						if (numStates > 2) {
+							if (Math.random() < 0.6) {
+								return 1;
+							} else {
+								const dyingStates = numStates - 2;
+								const weightedRand = Math.pow(Math.random(), 1.5);
+								const dyingState = 2 + Math.floor(weightedRand * dyingStates);
+								return Math.min(dyingState, numStates - 1);
+							}
+						} else {
+							return 1;
+						}
+					}
+					return 0;
+				});
+				previewNextGrid = [...previewGrid];
+
+			} catch (err) {
+				alert('Failed to parse rule file: ' + (err instanceof Error ? err.message : 'Unknown error'));
+			}
+		};
+		reader.readAsText(file);
+		
+		// Reset file input so same file can be loaded again
+		target.value = '';
+	}
+
+	// Helper to convert mask to neighbor list string
+	function maskToNeighborList(mask: number): string {
+		const neighbors: number[] = [];
+		for (let i = 0; i <= 24; i++) {
+			if (mask & (1 << i)) {
+				neighbors.push(i);
+			}
+		}
+		// If all numbers are single digits and consecutive, use compact format
+		if (neighbors.every(n => n < 10)) {
+			return neighbors.join('');
+		}
+		return neighbors.join(',');
+	}
+
 	// Tour functionality
 	let tourStyleEl: HTMLStyleElement | null = null;
 	let tourActive = $state(false);
@@ -1255,9 +1415,9 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 	
 	// Reactive effect to update tour styles when theme/color changes
 	$effect(() => {
-		// Track dependencies
-		simState.aliveColor;
-		simState.isLightTheme;
+		// Track dependencies (void to avoid unused-expression warnings)
+		void simState.aliveColor;
+		void simState.isLightTheme;
 		// Update styles if tour is active
 		updateTourStyles();
 	});
@@ -1311,7 +1471,8 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 	});
 
 	// Calculate grid columns based on max neighbors
-	const gridCols = $derived(neighborhood === 'extendedMoore' ? 5 : 3);
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	const _gridCols = $derived(neighborhood === 'extendedMoore' ? 5 : 3); // Reserved for grid layout
 	const neighborNumbers = $derived(Array.from({ length: maxNeighbors + 1 }, (_, i) => i));
 </script>
 
@@ -1344,7 +1505,16 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 			onDragEnd: handleDragEnd
 		}}
 	>
-		<!-- Row 1: Title + Tour + Apply + Close -->
+		<!-- Hidden file input for upload -->
+		<input 
+			type="file" 
+			accept=".json,application/json" 
+			bind:this={fileInput}
+			onchange={handleFileUpload}
+			style="display: none;"
+		/>
+
+		<!-- Row 1: Title + Tour + Upload + Download + Apply + Close -->
 		<div class="header">
 			<span class="title">
 				<svg class="header-icon" viewBox="0 0 24 24" fill="currentColor">
@@ -1358,6 +1528,18 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 					<path d="M3 6l7-2 7 2 4-1v13l-4 1-7-2-7 2V5z" />
 					<path d="M10 4v13" />
 					<path d="M17 6v13" />
+				</svg>
+			</button>
+			<button class="header-btn" onclick={triggerUpload} title="Load rule from file">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+					<path d="M12 16V4M12 4l-4 4M12 4l4 4" />
+					<path d="M4 18h16v2H4z" />
+				</svg>
+			</button>
+			<button class="header-btn" onclick={downloadRule} title="Save rule to file">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+					<path d="M12 4v12M12 16l-4-4M12 16l4-4" />
+					<path d="M4 18h16v2H4z" />
 				</svg>
 			</button>
 			<button class="apply-btn" onclick={applyRule} title="Apply rule">
@@ -1416,7 +1598,7 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 						
 						<div class="dropdown-divider"></div>
 						<div class="dropdown-section">By Category</div>
-						{#each RULE_CATEGORIES as cat}
+						{#each RULE_CATEGORIES as cat (cat.id)}
 							<button class="dropdown-item" class:selected={selectedFilter === cat.id} onclick={() => selectFilter(cat.id)}>
 								<span class="item-name">{cat.name} <span class="filter-count">[{filterCounts[cat.id]}]</span></span>
 								<span class="item-desc">{cat.description}</span>
@@ -1520,7 +1702,7 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 						</div>
 						
 						<div class="preset-list" bind:this={presetListRef}>
-							{#each filteredPresets as preset}
+							{#each filteredPresets as preset (preset.ruleString)}
 								{@const presetIndex = RULE_PRESETS.indexOf(preset)}
 								<button class="dropdown-item" class:selected={selectedPreset === presetIndex} onclick={() => selectPreset(presetIndex)}>
 									<span class="item-name">{preset.name}</span>
@@ -1548,7 +1730,7 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div class="dropdown-backdrop" onclick={() => (neighborhoodDropdownOpen = false)} onkeydown={() => {}}></div>
 					<div class="dropdown-menu neighborhood-menu">
-						{#each filteredNeighborhoods as nh}
+						{#each filteredNeighborhoods as nh (nh.type)}
 							<button class="dropdown-item" class:selected={neighborhood === nh.type} onclick={() => selectNeighborhood(nh.type)}>
 								<span class="item-name">{nh.name} ({nh.maxNeighbors})</span>
 								<span class="item-desc">{nh.description}</span>
@@ -1565,7 +1747,7 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 				<span class="label birth">Birth</span>
 				<span class="hint">Dead → Alive</span>
 				<div class="grid grid-{neighborhood}">
-					{#each neighborNumbers as i}
+					{#each neighborNumbers as i (i)}
 						<label 
 							class="cell" 
 							class:on={birthToggles[i]}
@@ -1582,7 +1764,7 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 				<span class="label survive">Survive</span>
 				<span class="hint">Alive → Alive</span>
 				<div class="grid grid-{neighborhood}">
-					{#each neighborNumbers as i}
+					{#each neighborNumbers as i (i)}
 						<label 
 							class="cell" 
 							class:on={surviveToggles[i]}
@@ -1650,7 +1832,7 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 				<span class="boundary-name">{currentBoundaryName}</span>
 			</div>
 			<div class="boundary-grid">
-				{#each BOUNDARY_MODES as mode}
+				{#each BOUNDARY_MODES as mode (mode.id)}
 					<button 
 						class="boundary-btn" 
 						class:active={simState.boundaryMode === mode.id}
@@ -1708,7 +1890,7 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 	.header {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
+		gap: 0.3rem;
 	}
 
 	.title {
@@ -1718,6 +1900,7 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 		display: flex;
 		align-items: center;
 		gap: 0.4rem;
+		margin-right: auto;
 	}
 
 	.header-icon {
@@ -1727,7 +1910,8 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 		flex-shrink: 0;
 	}
 
-	.tour-btn {
+	.tour-btn,
+	.header-btn {
 		width: 28px;
 		height: 28px;
 		display: flex;
@@ -1738,11 +1922,16 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 		color: var(--ui-text, #888);
 		cursor: pointer;
 		border-radius: 6px;
-		margin-left: auto;
 		transition: all 0.15s;
 	}
 
-	.tour-btn:hover {
+	.header-btn svg {
+		width: 14px;
+		height: 14px;
+	}
+
+	.tour-btn:hover,
+	.header-btn:hover {
 		background: var(--ui-border-hover, rgba(255, 255, 255, 0.08));
 		border-color: var(--ui-border-hover, rgba(255, 255, 255, 0.2));
 		color: var(--ui-accent, #2dd4bf);
@@ -1764,7 +1953,6 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 		color: var(--ui-accent, #2dd4bf);
 		cursor: pointer;
 		border-radius: 6px;
-		margin-left: 0.3rem;
 		transition: all 0.15s;
 	}
 
@@ -1791,7 +1979,6 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 		font-size: 0.9rem;
 		cursor: pointer;
 		border-radius: 4px;
-		margin-left: 0.3rem;
 	}
 
 	.close-btn:hover { 
