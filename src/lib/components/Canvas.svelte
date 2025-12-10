@@ -99,8 +99,8 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 	let lastTouchX = 0;
 	let lastTouchY = 0;
 	let lastPinchDistance = 0;
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	let _touchStartTime = 0; // Reserved for potential long-press detection
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for long-press detection
+	let touchStartTime = 0;
 
 	// Animation
 	let animationId: number | null = null;
@@ -989,8 +989,8 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 	let mediaRecorder: MediaRecorder | null = null;
 	let recordedChunks: Blob[] = [];
 	let recordingCanvas: HTMLCanvasElement | null = null;
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	let _preRecordingAxisProgress = 0; // Store axis progress before recording (reserved)
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for recording feature
+	let preRecordingAxisProgress = 0;
 
 	export function getIsRecording() {
 		return isRecording;
