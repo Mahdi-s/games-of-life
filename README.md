@@ -14,16 +14,17 @@ A WebGPU-powered cellular automaton simulator. Runs entirely on the GPU for smoo
 
 ## Features
 
-- **Multiple Grid Types** — Square and hexagonal grids with different neighborhood sizes
-- **5 Neighborhood Types** — Moore (8), Von Neumann (4), Extended Moore (24), Hexagonal (6), Extended Hexagonal (18)
-- **9 Boundary Conditions** — Plane, Cylinder, Torus, Möbius Strip, Klein Bottle, Projective Plane
-- **Multi-State Rules** — Up to 1024 states with colorful decay trails
-- **18 Color Spectrum Modes** — From thermal gradients to neon bands
-- **50+ Rule Presets** — From classic Conway's Life to artistic hexagonal patterns
-- **Live Rule Editor** — Real-time preview as you tweak birth/survive conditions
-- **Vitality Influence** — Dying cells can affect neighbor counting for complex dynamics
-- **Continuous Seeding** — Auto-spawn patterns to keep simulations alive
-- **Touch Support** — Pinch to zoom, pan mode for navigation on mobile
+- **100+ Rule Presets** — Classic Conway's Life, Star Wars, Brian's Brain, artistic hexagonal patterns, and more
+- **Visual Rule Editor** — Live preview, searchable presets, import/export rules as JSON
+- **Multiple Grid Types** — Square and hexagonal grids with 5 neighborhood types
+- **9 Boundary Topologies** — Plane, Cylinder, Torus, Möbius Strip, Klein Bottle, Projective Plane
+- **Multi-State Rules** — Up to 1024 decay states with colorful trails
+- **18 Color Spectrums** — From thermal gradients to neon bands, all reactive to your chosen color
+- **Vitality Curves** — Shape how dying cells influence neighbors with an interactive curve editor
+- **Drawing Tools** — Multiple brush shapes, text stamps, fill patterns, and adjustable sizes
+- **Pattern Library** — Initialize with oscillators, spaceships, or tiled structures
+- **Undo/Redo History** — Visual timeline to navigate your changes
+- **Touch Friendly** — Pinch to zoom, pan mode, responsive controls
 
 ## How It Works
 
@@ -60,6 +61,21 @@ B3/S23 (Conway's Life)
 
 The compute shader checks neighbors and uses bitwise AND to determine the next state—no branching required.
 
+### Neighborhood Memory
+
+Standard cellular automata count neighbors as binary—alive cells contribute 1, dead cells contribute 0. This simulator extends the model by allowing *dying* cells (those in decay states) to contribute based on their **vitality**:
+
+```
+Standard:    N = Σ (alive neighbors)
+With memory: N = Σ (alive) + Σ f(vitality)
+```
+
+- **Alive cells** always contribute 1
+- **Dead cells** always contribute 0
+- **Dying cells** contribute `f(v)` where vitality `v = (S - state) / (S - 1)` fades from 1 → 0 as the cell decays through S states
+
+The curve `f(v)` is user-defined and can output values from −2 to +2. Positive values count toward neighbor totals, negative values *inhibit* neighbors, and zero makes the cell invisible to counting. This creates **memory effects**—a cell's influence persists and fades over time rather than vanishing instantly, enabling smoother dynamics and emergent patterns not possible in standard rules.
+
 ## Tech Stack
 
 - **WebGPU** — Compute shaders for simulation, render shaders for visualization
@@ -87,15 +103,21 @@ Requires a browser with WebGPU support (Chrome 113+, Edge 113+, Safari 18+, or F
 | `Click` / `Right-click` | Draw / Erase |
 | `Scroll` | Zoom |
 | `Space` (hold) | Pan |
-| `E` | Edit rules |
-| `I` | Initialize grid |
-| `R` | Reinitialize |
-| `[ ]` | Brush size |
-| `, .` | Speed up/down |
-| `F` | Fit to screen |
-| `T` | Toggle theme |
+| `[ ]` | Decrease/Increase brush size |
+| `, .` | Slower/Faster simulation |
+| `E` | Rule editor |
+| `I` | Initialize modal |
+| `R` | Reinitialize grid |
+| `D` | Clear grid |
+| `F` / `Home` | Fit to screen |
+| `G` | Toggle grid lines |
+| `A` | Toggle axes |
+| `T` | Toggle light/dark theme |
 | `C` | Cycle colors |
-| `?` | Help |
+| `Shift+C` | Cycle spectrum modes |
+| `V` | Start/Stop video recording |
+| `?` | Help overlay |
+| `Esc` | Close modals |
 
 ## License
 
