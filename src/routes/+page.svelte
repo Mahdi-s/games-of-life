@@ -13,7 +13,8 @@
 	import BrushEditorModal from '$lib/components/BrushEditorModal.svelte';
 	import { getSimulationState, getUIState, DARK_THEME_COLORS, LIGHT_THEME_COLORS, SPECTRUM_MODES, type GridScale } from '$lib/stores/simulation.svelte.js';
 	import { closeModal, toggleModal, getModalStates } from '$lib/stores/modalManager.svelte.js';
-	import { hasTourBeenCompleted, startTour, getTourStyles } from '$lib/utils/tour.js';
+	import { hasTourBeenCompleted, startTour, getTourStyles, getSelectedGalleryRule } from '$lib/utils/tour.js';
+	import { getRuleByName } from '$lib/utils/rules.js';
 	import 'driver.js/dist/driver.css';
 
 	const simState = getSimulationState();
@@ -144,7 +145,26 @@
 		updateTourStyles();
 		startTour({
 			accentColor,
-			isLightTheme: simState.isLightTheme
+			isLightTheme: simState.isLightTheme,
+			// Pass getter functions so the gallery responds to live color/theme/spectrum changes
+			getAccentColor: () => accentColor,
+			getIsLightTheme: () => simState.isLightTheme,
+			getSpectrumMode: () => simState.spectrumMode,
+			onComplete: () => {
+				// Apply selected gallery rule if user clicked one
+				const selectedRule = getSelectedGalleryRule();
+				if (selectedRule) {
+					const rule = getRuleByName(selectedRule);
+					if (rule) {
+						// Apply the rule to the simulation (canvas stays blank)
+						simState.currentRule = rule;
+						// Always set vitality - either from rule or reset to defaults
+						simState.setVitalitySettings(rule.vitality);
+						// Sync rule to the WebGPU simulation
+						canvas?.updateRule();
+					}
+				}
+			}
 		});
 	}
 

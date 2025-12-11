@@ -39,7 +39,8 @@
 		{ id: 'step', name: 'Step', description: 'Hard threshold at 50%', category: 'basic' },
 		{ id: 'midlife-crisis', name: 'Midlife Crisis', description: 'Oscillating inhibition pattern', category: 'advanced' },
 		{ id: 'inhibit', name: 'Inhibit', description: 'Negative influence suppresses growth', category: 'advanced' },
-		{ id: 'mixed', name: 'Mixed', description: 'Wave pattern with positive and negative', category: 'advanced' }
+		{ id: 'mixed', name: 'Mixed', description: 'Wave pattern with positive and negative', category: 'advanced' },
+		{ id: 'mandala', name: 'Mandala', description: 'Amplified dying influence for mandala patterns', category: 'advanced' }
 	];
 	
 	// Filter profiles based on search query
@@ -71,6 +72,11 @@
 			{ x: 0.531, y: 0.321 },
 			{ x: 0.695, y: -0.669 },
 			{ x: 1, y: -1 }
+		],
+		'mandala': [
+			{ x: 0, y: 0 },
+			{ x: 0.148, y: 1.01 },
+			{ x: 1, y: 0.19 }
 		]
 	};
 	
@@ -1168,6 +1174,14 @@
 					{ x: 0.531, y: 0.321 },
 					{ x: 0.695, y: -0.669 },
 					{ x: 1, y: -1 }
+				];
+				break;
+			case 'mandala':
+				// Amplified dying influence - peaks early then tapers for mandala patterns
+				curvePoints = [
+					{ x: 0, y: 0 },
+					{ x: 0.148, y: 1.01 },
+					{ x: 1, y: 0.19 }
 				];
 				break;
 		}

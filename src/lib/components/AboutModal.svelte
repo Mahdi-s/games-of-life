@@ -176,7 +176,7 @@
 									<li><span class="rule-birth">Birth</span> — Dead + exactly 3 alive neighbors → alive</li>
 									<li><span class="rule-survive">Survive</span> — Alive + 2-3 alive neighbors → stays</li>
 									<li><span class="rule-death">Death</span> — Otherwise → dies</li>
-								</ul>
+						</ul>
 							</div>
 							<div class="tutorial-grids">
 								<div class="grid-container">

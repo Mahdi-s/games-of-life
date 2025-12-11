@@ -163,9 +163,9 @@ fn get_neighbor_contribution(state: u32) -> f32 {
     // Alive cells contribute 1.0
     // Dying cells contribute vitality^power * ghost_factor
     if (mode == 4u) {
-        if (state == 1u) { return 1.0; }
-        if (state == 0u) { return 0.0; }
-        return pow(vitality, params.vitality_decay) * params.vitality_ghost;
+    if (state == 1u) { return 1.0; }
+    if (state == 0u) { return 0.0; }
+    return pow(vitality, params.vitality_decay) * params.vitality_ghost;
     }
     
     // Mode 5: Custom curve - lookup from vitality_curve array

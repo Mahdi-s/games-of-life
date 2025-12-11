@@ -5,6 +5,7 @@ const TOUR_COMPLETED_KEY = 'games-of-life-tour-completed';
 
 // Track if tour is currently active
 let tourActive = false;
+let tourCompletedProperly = false; // True only when user finishes the entire tour
 
 // Callbacks for tour completion notifications
 let tourCompletionCallbacks: (() => void)[] = [];
@@ -26,102 +27,585 @@ function notifyTourCompleted() {
 	tourCompletionCallbacks.forEach(cb => cb());
 }
 
-// Mini simulation state for welcome preview
-let miniSimInterval: number | null = null;
-let miniSimCanvas: HTMLCanvasElement | null = null;
-let miniSimCtx: CanvasRenderingContext2D | null = null;
-let miniSimGrid: Uint8Array | null = null;
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-let _miniSimGeneration = 0; // Tracks generation count (used internally for debugging)
-const MINI_SIM_SIZE = 40;
-const MINI_SIM_CELL_SIZE = 3;
+// ============================================================================
+// Mini Simulation Gallery - 3x3 grid of simultaneous simulations
+// ============================================================================
 
-// Star Wars rule: B2/S345/C4 with continuous seeding to keep it alive
-const TOUR_RULE = {
-	birthMask: 0b000000100,   // B2
-	surviveMask: 0b000111000, // S345
-	numStates: 4
-};
+const MINI_SIM_SIZE = 56; // Grid size for each mini sim (56x56 cells)
+const MINI_SIM_CELL_SIZE = 2; // Pixel size per cell (112px canvas)
 
-// Seeding rate: probability per cell per frame of spawning a new cell
-const SEED_RATE = 0.002; // ~0.2% chance per dead cell per frame
+// Initialization types for different visual effects
+type InitType = 'random' | 'centeredDisk' | 'symmetricCross' | 'randomLow' | 'centeredRing' | 'text';
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function initMiniSim(_accentColor: string): void {
-	miniSimGrid = new Uint8Array(MINI_SIM_SIZE * MINI_SIM_SIZE);
-	_miniSimGeneration = 0;
-	
-	// Star Wars needs ~35% density and continuous activity
-	// Seed with random cells at optimal density
-	for (let i = 0; i < miniSimGrid.length; i++) {
-		miniSimGrid[i] = Math.random() < 0.35 ? 1 : 0;
-	}
+// Neighborhood types for simulation
+type SimNeighborhood = 'moore' | 'hexagonal' | 'extendedMoore' | 'extendedHexagonal';
+
+// Vitality mode for gallery simulations
+type VitalityMode = 'none' | 'ghost' | 'curve';
+
+// Gallery rule definition
+interface GalleryRule {
+	name: string;
+	birthMask: number;
+	surviveMask: number;
+	numStates: number;
+	neighborhood: SimNeighborhood;
+	initType: InitType;
+	density: number;
+	seedRate: number; // Continuous seeding rate
+	stimPeriod?: number; // Frames between disk stimulation (0 = never)
+	initText?: string; // For text init type
+	diskRadius?: number; // Custom disk radius (default: MINI_SIM_SIZE * 0.18)
+	// Vitality settings (how dying cells contribute to neighbor counts)
+	vitalityMode?: VitalityMode;
+	ghostFactor?: number; // For ghost mode: dying cell contribution multiplier
+	curvePoints?: { x: number; y: number }[]; // For curve mode
 }
 
-// Continuous seeding - each dead cell has a small chance to become alive each frame
-function continuousSeed(): void {
-	if (!miniSimGrid) return;
+// 6 showcase rules for the gallery (2 rows of 3)
+// Names MUST match exactly with RULE_PRESETS in rules.ts for getRuleByName to work
+const GALLERY_RULES: GalleryRule[] = [
+	// Row 1: Classics
+	{
+		name: "Conway's Life",
+		birthMask: 0b000001000, // B3
+		surviveMask: 0b000001100, // S23
+		numStates: 2,
+		neighborhood: 'moore',
+		initType: 'random',
+		density: 0.25,
+		seedRate: 0.001,
+		vitalityMode: 'none'
+	},
+	{
+		name: 'Star Wars',
+		birthMask: 0b000000100, // B2
+		surviveMask: 0b000111000, // S345
+		numStates: 4,
+		neighborhood: 'moore',
+		initType: 'random',
+		density: 0.35,
+		seedRate: 0.002,
+		vitalityMode: 'none'
+	},
+	{
+		name: "Brian's Brain",
+		birthMask: 0b000000100, // B2
+		surviveMask: 0b000000000, // S (none)
+		numStates: 3,
+		neighborhood: 'moore',
+		initType: 'random',
+		density: 0.15,
+		seedRate: 0.003,
+		vitalityMode: 'none'
+	},
+	// Row 2: NEO discoveries with vitality
+	{
+		name: 'Hex2 Neo Diagonal Growth',
+		birthMask: 2148, // B2,5,6,11
+		surviveMask: 2592, // S5,9,11
+		numStates: 48,
+		neighborhood: 'extendedHexagonal',
+		initType: 'centeredDisk',
+		density: 0.5,
+		seedRate: 0,
+		stimPeriod: 80,
+		diskRadius: 7, // radius for hex grid
+		vitalityMode: 'curve',
+		curvePoints: [
+			{ x: 0, y: 0 },
+			{ x: 0.372, y: -0.746 },
+			{ x: 0.531, y: 0.321 },
+			{ x: 0.695, y: -0.669 },
+			{ x: 1, y: -1 }
+		]
+	},
+	{
+		name: 'Hex Neo Mandala 1',
+		birthMask: 4, // B2
+		surviveMask: 56, // S345
+		numStates: 88,
+		neighborhood: 'hexagonal',
+		initType: 'centeredDisk',
+		density: 1.0,
+		seedRate: 0,
+		stimPeriod: 100,
+		diskRadius: 9, // radius for hex grid
+		vitalityMode: 'curve',
+		curvePoints: [
+			{ x: 0, y: 0 },
+			{ x: 0.148, y: 1.01 },
+			{ x: 1, y: 0.19 }
+		]
+	},
+	{
+		name: 'Hex Neo Slime Mold',
+		birthMask: 0b0000100, // B2
+		surviveMask: 0b0001100, // S23
+		numStates: 32,
+		neighborhood: 'hexagonal',
+		initType: 'random',
+		density: 0.2,
+		seedRate: 0.001,
+		vitalityMode: 'none'
+	}
+];
+
+// State for each mini simulation
+interface MiniSimState {
+	grid: Uint8Array;
+	canvas: HTMLCanvasElement | null;
+	ctx: CanvasRenderingContext2D | null;
+	imageData: ImageData | null; // Pre-allocated buffer for fast rendering
+	rule: GalleryRule;
+	frameCount: number; // For periodic stimulation
+}
+
+let gallerySimStates: MiniSimState[] = [];
+let galleryInterval: number | null = null;
+let selectedGalleryIndex: number | null = null;
+let userActivelySelectedRule = false; // True only when user clicks to select a rule
+
+// Get neighbor offsets for different neighborhoods
+// For hexagonal grids, offsets depend on whether the row is odd or even
+function getNeighborOffsets(neighborhood: SimNeighborhood, y?: number): [number, number][] {
+	const isOdd = y !== undefined && (y & 1) === 1;
 	
-	// Each dead cell has SEED_RATE probability of becoming alive
-	// This creates natural, distributed seeding without discrete bursts
-	for (let i = 0; i < miniSimGrid.length; i++) {
-		if (miniSimGrid[i] === 0 && Math.random() < SEED_RATE) {
-			miniSimGrid[i] = 1;
+	switch (neighborhood) {
+		case 'moore':
+			return [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
+		case 'hexagonal':
+			// 6-neighbor hexagonal - offsets depend on odd/even row
+			if (isOdd) {
+				return [[0,-1],[1,-1],[-1,0],[1,0],[0,1],[1,1]];
+			} else {
+				return [[-1,-1],[0,-1],[-1,0],[1,0],[-1,1],[0,1]];
+			}
+		case 'extendedMoore': {
+			const ext: [number, number][] = [];
+			for (let dy = -2; dy <= 2; dy++) {
+				for (let dx = -2; dx <= 2; dx++) {
+					if (dx !== 0 || dy !== 0) ext.push([dx, dy]);
+				}
+			}
+			return ext;
 		}
+		case 'extendedHexagonal': {
+			// 18-neighbor hexagonal - matches shader's complex per-row calculations
+			const offsets: [number, number][] = [];
+			
+			// Ring 1: 6 immediate neighbors
+			if (isOdd) {
+				offsets.push([0,-1],[1,-1],[-1,0],[1,0],[0,1],[1,1]);
+			} else {
+				offsets.push([-1,-1],[0,-1],[-1,0],[1,0],[-1,1],[0,1]);
+			}
+			
+			// Ring 2: 12 outer neighbors
+			// Row y-2 (depends on whether row y-1 is odd)
+			const isOddRowM1 = y !== undefined && ((y - 1) & 1) === 1;
+			if (isOddRowM1) {
+				offsets.push([0,-2],[1,-2]); // y-2 is even when y-1 is odd
+			} else {
+				offsets.push([-1,-2],[0,-2]); // y-2 is odd when y-1 is even
+			}
+			
+			// Row y-1 outer (far corners)
+			if (isOdd) {
+				offsets.push([-1,-1],[2,-1]); // Note: [-1,-1] already in ring 1 for even, this is for odd row's outer
+			} else {
+				offsets.push([-2,-1],[1,-1]);
+			}
+			
+			// Row y outer (distance 2 horizontally)
+			offsets.push([-2,0],[2,0]);
+			
+			// Row y+1 outer (far corners)
+			if (isOdd) {
+				offsets.push([-1,1],[2,1]);
+			} else {
+				offsets.push([-2,1],[1,1]);
+			}
+			
+			// Row y+2 (depends on whether row y+1 is odd)
+			const isOddRowP1 = y !== undefined && ((y + 1) & 1) === 1;
+			if (isOddRowP1) {
+				offsets.push([0,2],[1,2]); // y+2 is even when y+1 is odd
+			} else {
+				offsets.push([-1,2],[0,2]); // y+2 is odd when y+1 is even
+			}
+			
+			return offsets;
+		}
+		default:
+			return [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
 	}
 }
 
-function stepMiniSim(): void {
-	if (!miniSimGrid) return;
+// Initialize a single mini simulation grid
+function initMiniSimGrid(rule: GalleryRule): Uint8Array {
+	const grid = new Uint8Array(MINI_SIM_SIZE * MINI_SIM_SIZE);
+	// Integer center creates odd-diameter disk with true center cell
+	const center = Math.floor(MINI_SIM_SIZE / 2);
+	const isHex = rule.neighborhood === 'hexagonal' || rule.neighborhood === 'extendedHexagonal';
 	
-	_miniSimGeneration++;
-	
-	// Continuous seeding - natural, distributed new cells each frame
-	continuousSeed();
-	
-	const newGrid = new Uint8Array(MINI_SIM_SIZE * MINI_SIM_SIZE);
-	const { birthMask, surviveMask, numStates } = TOUR_RULE;
-	
-	for (let y = 0; y < MINI_SIM_SIZE; y++) {
-		for (let x = 0; x < MINI_SIM_SIZE; x++) {
-			let neighbors = 0;
+	switch (rule.initType) {
+		case 'centeredDisk': {
+			// Solid disk at center
+			// Use custom radius if provided, otherwise ~18% of grid
+			const radius = rule.diskRadius ?? Math.round(MINI_SIM_SIZE * 0.18);
 			
-			// Count alive neighbors (state === 1)
-			for (let dy = -1; dy <= 1; dy++) {
-				for (let dx = -1; dx <= 1; dx++) {
-					if (dx === 0 && dy === 0) continue;
-					const nx = (x + dx + MINI_SIM_SIZE) % MINI_SIM_SIZE;
-					const ny = (y + dy + MINI_SIM_SIZE) % MINI_SIM_SIZE;
-					if (miniSimGrid[ny * MINI_SIM_SIZE + nx] === 1) {
-						neighbors++;
+			if (isHex) {
+				// For hex grids on square pixel display:
+				// Apply X offset for odd rows (hex stagger) but NOT Y-scaling
+				// since mini-sim renders to square pixels, not visual hex layout
+				const isOddCenter = (center & 1) === 1;
+				const centerX = center + (isOddCenter ? 0.5 : 0);
+				const centerY = center;
+				
+				for (let y = 0; y < MINI_SIM_SIZE; y++) {
+					for (let x = 0; x < MINI_SIM_SIZE; x++) {
+						// Apply hex row offset for proper alignment
+						const isOdd = (y & 1) === 1;
+						const cellX = x + (isOdd ? 0.5 : 0);
+						const cellY = y;
+						
+						// Calculate distance from center
+						const dx = cellX - centerX;
+						const dy = cellY - centerY;
+						const distSq = dx * dx + dy * dy;
+						
+						if (distSq <= radius * radius) {
+							grid[y * MINI_SIM_SIZE + x] = 1;
+						}
+					}
+				}
+			} else {
+				// For square grids, use simple Euclidean distance
+				for (let y = 0; y < MINI_SIM_SIZE; y++) {
+					for (let x = 0; x < MINI_SIM_SIZE; x++) {
+						const dx = x - center;
+						const dy = y - center;
+						if (dx * dx + dy * dy <= radius * radius) {
+							grid[y * MINI_SIM_SIZE + x] = 1;
+						}
 					}
 				}
 			}
+			break;
+		}
+		case 'centeredRing': {
+			// Ring pattern
+			const outerRadius = 7;
+			const innerRadius = 3;
+			for (let y = 0; y < MINI_SIM_SIZE; y++) {
+				for (let x = 0; x < MINI_SIM_SIZE; x++) {
+					const dx = x - center;
+					const dy = y - center;
+					const distSq = dx * dx + dy * dy;
+					if (distSq >= innerRadius * innerRadius && distSq <= outerRadius * outerRadius) {
+						grid[y * MINI_SIM_SIZE + x] = 1;
+					}
+				}
+			}
+			break;
+		}
+		case 'symmetricCross': {
+			for (let y = 0; y < MINI_SIM_SIZE; y++) {
+				for (let x = 0; x < MINI_SIM_SIZE; x++) {
+					const dx = Math.abs(x - center);
+					const dy = Math.abs(y - center);
+					if (dx < 3 || dy < 3) {
+						grid[y * MINI_SIM_SIZE + x] = Math.random() < rule.density ? 1 : 0;
+					}
+				}
+			}
+			break;
+		}
+		case 'randomLow':
+			for (let i = 0; i < grid.length; i++) {
+				grid[i] = Math.random() < rule.density * 0.5 ? 1 : 0;
+			}
+			break;
+		case 'text': {
+			// Render text to grid using canvas
+			const text = rule.initText || 'Hi';
+			renderTextToGrid(grid, text);
+			break;
+		}
+		case 'random':
+		default:
+			for (let i = 0; i < grid.length; i++) {
+				grid[i] = Math.random() < rule.density ? 1 : 0;
+			}
+	}
+	
+	return grid;
+}
+
+// Render text to a mini-sim grid using canvas
+function renderTextToGrid(grid: Uint8Array, text: string): void {
+	// Create offscreen canvas
+	const canvas = document.createElement('canvas');
+	canvas.width = MINI_SIM_SIZE;
+	canvas.height = MINI_SIM_SIZE;
+	const ctx = canvas.getContext('2d');
+	if (!ctx) return;
+	
+	// Clear canvas
+	ctx.fillStyle = 'black';
+	ctx.fillRect(0, 0, MINI_SIM_SIZE, MINI_SIM_SIZE);
+	
+	// Calculate font size to fill about 60% of width
+	// Start with a reasonable size and measure
+	let fontSize = 14;
+	ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+	const textWidth = ctx.measureText(text).width;
+	
+	// Adjust font size to fit ~60% of canvas width
+	const targetWidth = MINI_SIM_SIZE * 0.60;
+	fontSize = Math.floor(fontSize * (targetWidth / textWidth));
+	fontSize = Math.max(8, Math.min(20, fontSize)); // Clamp between 8-20
+	
+	ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+	ctx.textAlign = 'center';
+	ctx.textBaseline = 'middle';
+	ctx.fillStyle = 'white';
+	ctx.fillText(text, MINI_SIM_SIZE / 2, MINI_SIM_SIZE / 2);
+	
+	// Read pixels and convert to grid
+	const imageData = ctx.getImageData(0, 0, MINI_SIM_SIZE, MINI_SIM_SIZE);
+	for (let y = 0; y < MINI_SIM_SIZE; y++) {
+		for (let x = 0; x < MINI_SIM_SIZE; x++) {
+			const i = (y * MINI_SIM_SIZE + x) * 4;
+			// If pixel is bright (text), set cell to alive
+			if (imageData.data[i] > 128) {
+				grid[y * MINI_SIM_SIZE + x] = 1;
+			}
+		}
+	}
+}
+
+// Step a single simulation forward
+// Monotonic cubic interpolation for curve mode (simplified Fritsch-Carlson)
+function sampleCurve(curvePoints: { x: number; y: number }[], vitality: number): number {
+	if (!curvePoints || curvePoints.length < 2) return 0;
+	
+	// Find the segment containing vitality
+	let i = 0;
+	for (i = 0; i < curvePoints.length - 1; i++) {
+		if (vitality <= curvePoints[i + 1].x) break;
+	}
+	
+	if (i >= curvePoints.length - 1) {
+		return curvePoints[curvePoints.length - 1].y;
+	}
+	
+	const p0 = curvePoints[i];
+	const p1 = curvePoints[i + 1];
+	const t = (vitality - p0.x) / (p1.x - p0.x);
+	
+	// Simple linear interpolation (fast enough for mini-sims)
+	return p0.y + t * (p1.y - p0.y);
+}
+
+// Calculate vitality contribution for a cell
+function getVitalityContribution(cellState: number, rule: GalleryRule): number {
+	if (cellState === 0) return 0; // Dead cells don't contribute
+	if (cellState === 1) return 1; // Alive cells contribute 1
+	
+	// Dying cells - calculate vitality (0 = about to die, 1 = just started dying)
+	const vitality = (rule.numStates - cellState) / (rule.numStates - 1);
+	
+	const mode = rule.vitalityMode || 'none';
+	
+	if (mode === 'none') {
+		return 0; // Dying cells don't count as neighbors
+	} else if (mode === 'ghost') {
+		// Ghost mode: dying cells contribute vitality * ghostFactor
+		const ghostFactor = rule.ghostFactor ?? 0;
+		return vitality * ghostFactor;
+	} else if (mode === 'curve') {
+		// Curve mode: sample the curve at this vitality
+		if (rule.curvePoints) {
+			return sampleCurve(rule.curvePoints, vitality);
+		}
+		return 0;
+	}
+	
+	return 0;
+}
+
+// Apply stimulation based on rule's init type (additive - only revives dead cells)
+function applyStimulation(grid: Uint8Array, rule: GalleryRule): void {
+	if (rule.initType === 'text' && rule.initText) {
+		// Re-apply text pattern additively
+		addTextToGrid(grid, rule.initText);
+	} else {
+		// Default: apply a solid disk at center additively
+		// Use the same hex-aware coordinate system as initMiniSimGrid
+		const center = Math.floor(MINI_SIM_SIZE / 2);
+		const radius = rule.diskRadius ?? Math.round(MINI_SIM_SIZE * 0.18);
+		const isHex = rule.neighborhood === 'hexagonal' || rule.neighborhood === 'extendedHexagonal';
+		
+		if (isHex) {
+			// For hex grids on square pixel display:
+			// Apply X offset for odd rows but NOT Y-scaling
+			const isOddCenter = (center & 1) === 1;
+			const centerX = center + (isOddCenter ? 0.5 : 0);
+			const centerY = center;
 			
+			for (let y = 0; y < MINI_SIM_SIZE; y++) {
+				for (let x = 0; x < MINI_SIM_SIZE; x++) {
+					// Apply hex row offset for proper alignment
+					const isOdd = (y & 1) === 1;
+					const cellX = x + (isOdd ? 0.5 : 0);
+					const cellY = y;
+					
+					// Calculate distance from center
+					const dx = cellX - centerX;
+					const dy = cellY - centerY;
+					const distSq = dx * dx + dy * dy;
+					
+					if (distSq <= radius * radius) {
+						// Only revive dead cells - don't disturb alive or dying cells
+						if (grid[y * MINI_SIM_SIZE + x] === 0) {
+							grid[y * MINI_SIM_SIZE + x] = 1;
+						}
+					}
+				}
+			}
+		} else {
+			// For square grids, use simple Euclidean distance
+			for (let y = 0; y < MINI_SIM_SIZE; y++) {
+				for (let x = 0; x < MINI_SIM_SIZE; x++) {
+					const dx = x - center;
+					const dy = y - center;
+					if (dx * dx + dy * dy <= radius * radius) {
+						// Only revive dead cells - don't disturb alive or dying cells
+						if (grid[y * MINI_SIM_SIZE + x] === 0) {
+							grid[y * MINI_SIM_SIZE + x] = 1;
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// Add text to grid additively (only revives dead cells)
+function addTextToGrid(grid: Uint8Array, text: string): void {
+	// Create offscreen canvas
+	const canvas = document.createElement('canvas');
+	canvas.width = MINI_SIM_SIZE;
+	canvas.height = MINI_SIM_SIZE;
+	const ctx = canvas.getContext('2d');
+	if (!ctx) return;
+	
+	// Clear canvas
+	ctx.fillStyle = 'black';
+	ctx.fillRect(0, 0, MINI_SIM_SIZE, MINI_SIM_SIZE);
+	
+	// Calculate font size to fill about 60% of width
+	let fontSize = 14;
+	ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+	const textWidth = ctx.measureText(text).width;
+	
+	const targetWidth = MINI_SIM_SIZE * 0.60;
+	fontSize = Math.floor(fontSize * (targetWidth / textWidth));
+	fontSize = Math.max(8, Math.min(20, fontSize));
+	
+	ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+	ctx.textAlign = 'center';
+	ctx.textBaseline = 'middle';
+	ctx.fillStyle = 'white';
+	ctx.fillText(text, MINI_SIM_SIZE / 2, MINI_SIM_SIZE / 2);
+	
+	// Read pixels and add to grid (only where cells are dead)
+	const imageData = ctx.getImageData(0, 0, MINI_SIM_SIZE, MINI_SIM_SIZE);
+	for (let y = 0; y < MINI_SIM_SIZE; y++) {
+		for (let x = 0; x < MINI_SIM_SIZE; x++) {
+			const i = (y * MINI_SIM_SIZE + x) * 4;
 			const idx = y * MINI_SIM_SIZE + x;
-			const state = miniSimGrid[idx];
-			
-			// Generations rule logic
-			if (state === 0) {
-				// Dead cell - check birth
-				if ((birthMask & (1 << neighbors)) !== 0) {
-					newGrid[idx] = 1; // Born
-				}
-			} else if (state === 1) {
-				// Alive cell - check survival
-				if ((surviveMask & (1 << neighbors)) !== 0) {
-					newGrid[idx] = 1; // Survives
-				} else {
-					newGrid[idx] = numStates > 2 ? 2 : 0; // Start dying or die
-				}
-			} else {
-				// Dying cell - continue decay
-				newGrid[idx] = state < numStates - 1 ? state + 1 : 0;
+			// If pixel is bright (text) AND cell is dead, revive it
+			if (imageData.data[i] > 128 && grid[idx] === 0) {
+				grid[idx] = 1;
+			}
+		}
+	}
+}
+
+function stepGallerySim(state: MiniSimState): void {
+	const { grid, rule } = state;
+	const { birthMask, surviveMask, numStates, neighborhood, seedRate, stimPeriod } = rule;
+	const newGrid = new Uint8Array(MINI_SIM_SIZE * MINI_SIM_SIZE);
+	
+	// Increment frame count
+	state.frameCount++;
+	
+	// Periodic stimulation (disk or text based on init type)
+	if (stimPeriod && stimPeriod > 0 && state.frameCount % stimPeriod === 0) {
+		applyStimulation(grid, rule);
+	}
+	
+	// Continuous random seeding
+	if (seedRate > 0) {
+		for (let i = 0; i < grid.length; i++) {
+			if (grid[i] === 0 && Math.random() < seedRate) {
+				grid[i] = 1;
 			}
 		}
 	}
 	
-	miniSimGrid = newGrid;
+	for (let y = 0; y < MINI_SIM_SIZE; y++) {
+		// Get offsets for this row (important for hexagonal grids)
+		const offsets = getNeighborOffsets(neighborhood, y);
+		
+		for (let x = 0; x < MINI_SIM_SIZE; x++) {
+			// Count alive neighbors plus vitality contributions from dying cells
+			let neighborCount = 0;
+			
+			for (const [dx, dy] of offsets) {
+				const nx = (x + dx + MINI_SIM_SIZE) % MINI_SIM_SIZE;
+				const ny = (y + dy + MINI_SIM_SIZE) % MINI_SIM_SIZE;
+				const neighborState = grid[ny * MINI_SIM_SIZE + nx];
+				
+				if (neighborState === 1) {
+					neighborCount += 1; // Alive neighbors count as 1
+				} else if (neighborState > 1) {
+					// Dying neighbors contribute based on vitality mode
+					neighborCount += getVitalityContribution(neighborState, rule);
+				}
+			}
+			
+			// Clamp and round to nearest integer for birth/survive mask lookup
+			// Matches shader: u32(clamp(total, 0, max) + 0.5)
+			const maxNeighbors = neighborhood === 'extendedHexagonal' ? 18 : 
+			                     neighborhood === 'hexagonal' ? 6 :
+			                     neighborhood === 'extendedMoore' ? 24 : 8;
+			const clamped = Math.max(0, Math.min(neighborCount, maxNeighbors));
+			const neighbors = Math.floor(clamped + 0.5); // u32(x + 0.5) behavior
+			
+			const idx = y * MINI_SIM_SIZE + x;
+			const cellState = grid[idx];
+			
+			if (cellState === 0) {
+				if ((birthMask & (1 << neighbors)) !== 0) {
+					newGrid[idx] = 1;
+				}
+			} else if (cellState === 1) {
+				if ((surviveMask & (1 << neighbors)) !== 0) {
+					newGrid[idx] = 1;
+				} else {
+					newGrid[idx] = numStates > 2 ? 2 : 0;
+				}
+			} else {
+				newGrid[idx] = cellState < numStates - 1 ? cellState + 1 : 0;
+			}
+		}
+	}
+	
+	state.grid = newGrid;
 }
 
 // Parse accent color to RGB
@@ -173,84 +657,527 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
 	return [hue2rgb(h + 1/3), hue2rgb(h), hue2rgb(h - 1/3)];
 }
 
-function getStateColor(state: number, numStates: number, accentRgb: [number, number, number], isLight: boolean): string {
-	if (state === 0) return 'transparent';
-	if (state === 1) {
-		return `rgb(${Math.round(accentRgb[0] * 255)}, ${Math.round(accentRgb[1] * 255)}, ${Math.round(accentRgb[2] * 255)})`;
+// Calculate neighbor vitality sum for shading (matches shader sum_neighbor_vitality_normalized)
+function sumNeighborVitality(grid: Uint8Array, x: number, y: number, neighborhood: SimNeighborhood, numStates: number): number {
+	const offsets = getNeighborOffsets(neighborhood, y);
+	let total = 0;
+	const maxNeighbors = offsets.length;
+	
+	for (const [dx, dy] of offsets) {
+		const nx = (x + dx + MINI_SIM_SIZE) % MINI_SIM_SIZE;
+		const ny = (y + dy + MINI_SIM_SIZE) % MINI_SIM_SIZE;
+		const neighborState = grid[ny * MINI_SIM_SIZE + nx];
+		
+		if (neighborState > 0 && numStates > 1) {
+			// Vitality = (numStates - state) / (numStates - 1), but state 0 = dead
+			// State 1 = alive (vitality 1), State numStates-1 = almost dead (vitality ~0)
+			const vitality = (numStates - neighborState) / (numStates - 1);
+			total += vitality;
+		}
 	}
 	
-	// Dying states - shift hue and fade
-	const progress = (state - 1) / (numStates - 1);
-	const [h, s, l] = rgbToHsl(accentRgb[0], accentRgb[1], accentRgb[2]);
-	
-	const hueShift = progress * 0.25;
-	const newHue = (h + hueShift) % 1;
-	const newSat = s * (1 - progress * 0.5);
-	const targetL = isLight ? 0.85 : 0.15;
-	const newLight = l + (targetL - l) * progress * 0.7;
-	
-	const [r, g, b] = hslToRgb(newHue, newSat, newLight);
-	return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
+	return total / maxNeighbors;
 }
 
-function renderMiniSim(accentColor: string, isLight: boolean): void {
-	if (!miniSimCanvas || !miniSimCtx || !miniSimGrid) return;
+// Helper to wrap hue to 0-1 range
+function wrapHue(h: number): number {
+	if (h < 0) return h + 1;
+	if (h > 1) return h - 1;
+	return h;
+}
+
+// Helper to mix two values
+function mix(a: number, b: number, t: number): number {
+	return a + (b - a) * t;
+}
+
+// Spectrum color that matches shader's state_to_color function
+// Returns [r, g, b] as 0-255 integers for direct pixel writing
+function getStateColorRgb(
+	state: number, 
+	numStates: number, 
+	accentRgb: [number, number, number], 
+	isLight: boolean, 
+	bgRgb: [number, number, number],
+	spectrumMode: number,
+	neighborFactor: number = 1.0 // 0-1 based on neighbor vitality (for shading)
+): [number, number, number] {
+	if (state === 0) return bgRgb;
 	
-	const ctx = miniSimCtx;
+	const [h, s, l] = rgbToHsl(accentRgb[0], accentRgb[1], accentRgb[2]);
+	
+	// Very subtle shading: 90% to 100% brightness based on neighbors
+	const shadingMix = 0.90 + neighborFactor * 0.10;
+	
+	if (state === 1) {
+		// Alive state - use accent color, with subtle neighbor shading
+		return [
+			Math.round(accentRgb[0] * 255 * shadingMix), 
+			Math.round(accentRgb[1] * 255 * shadingMix), 
+			Math.round(accentRgb[2] * 255 * shadingMix)
+		];
+	}
+	
+	// Dying states - apply spectrum mode
+	const dyingProgress = (state - 1) / (numStates - 1);
+	const spectrumProgress = dyingProgress; // frequency = 1.0 for mini-sims
+	
+	let dyingHue: number;
+	let dyingSat: number;
+	let dyingLight: number;
+	
+	const mode = spectrumMode;
+	
+	// Mode 0: Hue Shift (subtle 25% rotation)
+	if (mode === 0) {
+		dyingHue = wrapHue(h + 0.25 * spectrumProgress);
+		if (isLight) {
+			dyingSat = Math.max(s, 0.6) * Math.max(1.0 - spectrumProgress * 0.25, 0.65);
+			dyingLight = mix(Math.min(l, 0.55), 0.72, dyingProgress * dyingProgress);
+		} else {
+			const boostedSat = Math.max(s, 0.4);
+			const satCurve = 1.0 - spectrumProgress * spectrumProgress;
+			dyingSat = boostedSat * Math.max(satCurve, 0.25);
+			dyingLight = mix(l, 0.12, dyingProgress * dyingProgress);
+		}
+	}
+	// Mode 1: Rainbow (full spectrum rotation)
+	else if (mode === 1) {
+		dyingHue = wrapHue(h + spectrumProgress);
+		if (isLight) {
+			dyingSat = Math.max(0.75, s);
+			dyingLight = mix(Math.min(l, 0.5), 0.68, dyingProgress * dyingProgress);
+		} else {
+			const boostedSat = Math.max(s, 0.5);
+			dyingSat = boostedSat * Math.max(1.0 - spectrumProgress * 0.3, 0.45);
+			dyingLight = mix(l, 0.15, dyingProgress * dyingProgress);
+		}
+	}
+	// Mode 2: Warm (shift toward red/orange)
+	else if (mode === 2) {
+		const targetHue = 0.05;
+		let hueDiff = targetHue - h;
+		if (hueDiff > 0.5) hueDiff -= 1.0;
+		if (hueDiff < -0.5) hueDiff += 1.0;
+		dyingHue = wrapHue(h + hueDiff * spectrumProgress);
+		if (isLight) {
+			dyingSat = Math.max(s, 0.65) * Math.max(1.0 - spectrumProgress * 0.2, 0.6);
+			dyingLight = mix(Math.min(l, 0.55), 0.7, dyingProgress * dyingProgress);
+		} else {
+			const boostedSat = Math.max(s, 0.45);
+			dyingSat = boostedSat * Math.max(1.0 - spectrumProgress * 0.3, 0.4);
+			dyingLight = mix(l, 0.1, dyingProgress * dyingProgress);
+		}
+	}
+	// Mode 3: Cool (shift toward blue/purple)
+	else if (mode === 3) {
+		const targetHue = 0.7;
+		let hueDiff = targetHue - h;
+		if (hueDiff > 0.5) hueDiff -= 1.0;
+		if (hueDiff < -0.5) hueDiff += 1.0;
+		dyingHue = wrapHue(h + hueDiff * spectrumProgress);
+		if (isLight) {
+			dyingSat = Math.max(s, 0.65) * Math.max(1.0 - spectrumProgress * 0.2, 0.6);
+			dyingLight = mix(Math.min(l, 0.55), 0.7, dyingProgress * dyingProgress);
+		} else {
+			const boostedSat = Math.max(s, 0.45);
+			dyingSat = boostedSat * Math.max(1.0 - spectrumProgress * 0.3, 0.4);
+			dyingLight = mix(l, 0.1, dyingProgress * dyingProgress);
+		}
+	}
+	// Mode 4: Monochrome (fade without hue change)
+	else if (mode === 4) {
+		dyingHue = h;
+		if (isLight) {
+			dyingSat = Math.max(s, 0.5) * Math.max(1.0 - spectrumProgress * 0.35, 0.55);
+			dyingLight = mix(Math.min(l, 0.5), 0.75, dyingProgress);
+		} else {
+			const boostedSat = Math.max(s, 0.35);
+			dyingSat = boostedSat * (1.0 - spectrumProgress * 0.7);
+			dyingLight = mix(l, 0.1, dyingProgress);
+		}
+	}
+	// Mode 5: Fire (alive -> yellow -> orange -> red)
+	else if (mode === 5) {
+		if (spectrumProgress < 0.33) {
+			dyingHue = mix(h, 0.12, spectrumProgress * 3.0);
+		} else if (spectrumProgress < 0.66) {
+			dyingHue = mix(0.12, 0.06, (spectrumProgress - 0.33) * 3.0);
+		} else {
+			dyingHue = mix(0.06, 0.0, (spectrumProgress - 0.66) * 3.0);
+		}
+		dyingHue = wrapHue(dyingHue);
+		const fireProgress = spectrumProgress * spectrumProgress;
+		if (isLight) {
+			dyingSat = Math.max(0.9 - fireProgress * 0.15, 0.7);
+			dyingLight = mix(0.5, 0.68, dyingProgress * dyingProgress);
+		} else {
+			dyingSat = Math.max(1.0 - fireProgress * 0.2, 0.75);
+			dyingLight = mix(0.65, 0.04, dyingProgress * dyingProgress);
+		}
+	}
+	// Mode 6: Complement (transition to opposite hue)
+	else if (mode === 6) {
+		const complementHue = (h + 0.5) % 1;
+		dyingHue = mix(h, complementHue, spectrumProgress);
+		const satCurve = 1.0 - Math.abs(spectrumProgress - 0.5) * 1.5;
+		if (isLight) {
+			dyingSat = Math.max(s, 0.7) * Math.max(satCurve, 0.6);
+			dyingLight = mix(Math.min(l, 0.55), 0.68, dyingProgress * dyingProgress);
+		} else {
+			dyingSat = Math.max(s, 0.5) * Math.max(satCurve, 0.4);
+			dyingLight = mix(l, 0.12, dyingProgress * dyingProgress);
+		}
+	}
+	// Mode 7: Triadic (three-way color harmony)
+	else if (mode === 7) {
+		const triadic1 = (h + 0.333) % 1;
+		const triadic2 = (h + 0.666) % 1;
+		if (spectrumProgress < 0.5) {
+			dyingHue = mix(h, triadic1, spectrumProgress * 2.0);
+		} else {
+			dyingHue = mix(triadic1, triadic2, (spectrumProgress - 0.5) * 2.0);
+		}
+		if (isLight) {
+			dyingSat = Math.max(s, 0.7) * Math.max(1.0 - spectrumProgress * 0.2, 0.65);
+			dyingLight = mix(Math.min(l, 0.5), 0.65, dyingProgress * dyingProgress);
+		} else {
+			dyingSat = Math.max(s, 0.55) * Math.max(1.0 - spectrumProgress * 0.25, 0.5);
+			dyingLight = mix(l, 0.12, dyingProgress * dyingProgress);
+		}
+	}
+	// Mode 8: Split (split-complementary)
+	else if (mode === 8) {
+		const split1 = (h + 0.417) % 1;
+		const split2 = (h + 0.583) % 1;
+		const phase = Math.sin(spectrumProgress * Math.PI * 2.0) * 0.5 + 0.5;
+		dyingHue = mix(split1, split2, phase);
+		if (isLight) {
+			dyingSat = Math.max(s, 0.7) * Math.max(1.0 - spectrumProgress * 0.25, 0.6);
+			dyingLight = mix(Math.min(l, 0.52), 0.68, dyingProgress * dyingProgress);
+		} else {
+			dyingSat = Math.max(s, 0.5) * Math.max(1.0 - spectrumProgress * 0.3, 0.45);
+			dyingLight = mix(l, 0.12, dyingProgress * dyingProgress);
+		}
+	}
+	// Mode 9: Analogous (neighboring hues)
+	else if (mode === 9) {
+		const wave = Math.sin(spectrumProgress * Math.PI * 3.0);
+		dyingHue = wrapHue(h + wave * 0.083);
+		if (isLight) {
+			dyingSat = Math.max(s, 0.65) * Math.max(1.0 - spectrumProgress * 0.25, 0.6);
+			dyingLight = mix(Math.min(l, 0.55), 0.7, dyingProgress * dyingProgress);
+		} else {
+			dyingSat = Math.max(s, 0.45) * Math.max(1.0 - spectrumProgress * 0.35, 0.4);
+			dyingLight = mix(l, 0.12, dyingProgress * dyingProgress);
+		}
+	}
+	// Mode 10: Pastel (soft desaturated tones)
+	else if (mode === 10) {
+		dyingHue = wrapHue(h + spectrumProgress * 0.15);
+		if (isLight) {
+			dyingSat = Math.max(s * 0.6, 0.35) * (1.0 - spectrumProgress * 0.3);
+			dyingLight = mix(Math.min(l, 0.55), 0.72, dyingProgress);
+		} else {
+			dyingSat = Math.max(s * 0.6, 0.25) * (1.0 - spectrumProgress * 0.4);
+			dyingLight = mix(Math.max(l, 0.5), 0.2, dyingProgress);
+		}
+	}
+	// Mode 11: Vivid (high saturation punch)
+	else if (mode === 11) {
+		const numBands = 8.0;
+		const band = Math.floor(spectrumProgress * numBands);
+		dyingHue = wrapHue(h + (band / numBands) * 0.4);
+		const bandVar = (band * 0.37) % 1;
+		if (isLight) {
+			dyingSat = Math.min(1.0, Math.max(s, 0.8) + 0.15 * bandVar);
+			dyingLight = mix(0.45, 0.65, dyingProgress * dyingProgress);
+		} else {
+			dyingSat = Math.min(1.0, Math.max(s, 0.75) + 0.15 * bandVar);
+			dyingLight = mix(0.55, 0.1, dyingProgress * dyingProgress);
+		}
+	}
+	// Mode 12: Thermal
+	else if (mode === 12) {
+		const numBands = 12.0;
+		const band = Math.floor(spectrumProgress * numBands);
+		const bandT = band / (numBands - 1.0);
+		const isWarmStart = h < 0.17 || h > 0.83;
+		dyingHue = isWarmStart ? mix(h, 0.75, bandT) : mix(h, 0.0, bandT);
+		dyingHue = wrapHue(dyingHue);
+		dyingSat = (band % 2) < 1 ? 0.9 : 0.7;
+		const fade = dyingProgress * dyingProgress;
+		dyingLight = isLight ? mix(0.48, 0.7, fade) : mix(0.55, 0.12, fade);
+	}
+	// Mode 13: Bands
+	else if (mode === 13) {
+		const numBands = 10.0;
+		const band = Math.floor(spectrumProgress * numBands);
+		dyingHue = wrapHue(h + (band / numBands) * 0.6);
+		dyingSat = (band % 2) < 1 ? Math.max(s, 0.75) : Math.max(s, 0.55);
+		const stripe = (band % 2) < 1;
+		if (isLight) {
+			dyingLight = stripe ? 0.45 : 0.55;
+			dyingLight = mix(dyingLight, 0.7, dyingProgress * dyingProgress);
+		} else {
+			dyingLight = stripe ? 0.52 : 0.4;
+			dyingLight = mix(dyingLight, 0.1, dyingProgress * dyingProgress);
+		}
+	}
+	// Mode 14: Neon
+	else if (mode === 14) {
+		const numBands = 9.0;
+		const band = Math.floor(spectrumProgress * numBands);
+		const colorIdx = band % 3;
+		if (colorIdx < 1) dyingHue = h;
+		else if (colorIdx < 2) dyingHue = (h + 0.333) % 1;
+		else dyingHue = (h + 0.666) % 1;
+		dyingSat = 1.0;
+		if (isLight) {
+			dyingLight = 0.42 + (band % 3) * 0.04;
+			dyingLight = mix(dyingLight, 0.65, dyingProgress * dyingProgress);
+		} else {
+			dyingLight = 0.52 + (band % 3) * 0.05;
+			dyingLight = mix(dyingLight, 0.08, dyingProgress * dyingProgress);
+		}
+	}
+	// Mode 15: Sunset
+	else if (mode === 15) {
+		const numBands = 12.0;
+		const band = Math.floor(spectrumProgress * numBands);
+		const bandT = band / (numBands - 1.0);
+		const warmHue = mix(h, 0.08, 0.5);
+		dyingHue = mix(warmHue, 0.6, bandT);
+		dyingHue = wrapHue(dyingHue);
+		dyingSat = (band % 2) < 1 ? 0.85 : 0.65;
+		dyingLight = isLight ? mix(0.48, 0.68, dyingProgress * dyingProgress) : mix(0.55, 0.1, dyingProgress * dyingProgress);
+	}
+	// Mode 16: Ocean
+	else if (mode === 16) {
+		const numBands = 10.0;
+		const band = Math.floor(spectrumProgress * numBands);
+		const bandT = band / (numBands - 1.0);
+		const baseOcean = mix(0.5, 0.66, bandT);
+		dyingHue = mix(h, baseOcean, 0.3 + spectrumProgress * 0.7);
+		const wave = Math.sin(bandT * Math.PI * 2.0) * 0.15;
+		if (isLight) {
+			dyingSat = Math.max(0.65, s * 0.9) + wave;
+			dyingLight = mix(0.45, 0.65, dyingProgress * dyingProgress);
+		} else {
+			dyingSat = Math.max(0.6, s * 0.9) + wave;
+			dyingLight = mix(0.5, 0.08, dyingProgress * dyingProgress);
+		}
+	}
+	// Mode 17: Forest
+	else {
+		const numBands = 10.0;
+		const band = Math.floor(spectrumProgress * numBands);
+		const bandT = band / (numBands - 1.0);
+		const forestHue = mix(0.33, 0.08, bandT);
+		dyingHue = mix(h, forestHue, 0.4 + spectrumProgress * 0.6);
+		dyingHue = wrapHue(dyingHue);
+		if (isLight) {
+			dyingSat = mix(Math.max(s, 0.6), 0.45, bandT);
+			dyingLight = mix(0.42, 0.62, dyingProgress * dyingProgress);
+		} else {
+			dyingSat = mix(Math.max(s, 0.6), 0.4, bandT);
+			dyingLight = mix(0.45, 0.1, dyingProgress * dyingProgress);
+		}
+	}
+	
+	// Apply subtle neighbor shading via lightness adjustment
+	const [r, g, b] = hslToRgb(dyingHue, dyingSat, dyingLight * shadingMix);
+	
+	// Blend with background at the very end (cubic for late blend)
+	const bgBlend = dyingProgress * dyingProgress * dyingProgress * 0.6;
+	return [
+		Math.round((r * (1 - bgBlend) + bgRgb[0] / 255 * bgBlend) * 255),
+		Math.round((g * (1 - bgBlend) + bgRgb[1] / 255 * bgBlend) * 255),
+		Math.round((b * (1 - bgBlend) + bgRgb[2] / 255 * bgBlend) * 255)
+	];
+}
+
+// Render a single gallery simulation using ImageData for performance
+function renderGallerySim(state: MiniSimState, accentColor: string, isLight: boolean, spectrumMode: number): void {
+	const { canvas, ctx, imageData, grid, rule } = state;
+	if (!canvas || !ctx || !imageData) return;
+	
 	const cellSize = MINI_SIM_CELL_SIZE;
 	const accentRgb = parseColor(accentColor);
-	const { numStates } = TOUR_RULE;
+	const bgRgb: [number, number, number] = isLight ? [232, 232, 236] : [10, 10, 15];
+	const { numStates, neighborhood } = rule;
+	const data = imageData.data;
+	const canvasWidth = canvas.width;
 	
-	// Disable image smoothing for crisp pixels
-	ctx.imageSmoothingEnabled = false;
-	
-	// Clear with background
-	ctx.fillStyle = isLight ? '#e8e8ec' : '#0a0a0f';
-	ctx.fillRect(0, 0, miniSimCanvas.width, miniSimCanvas.height);
-	
-	// Draw cells with state-based coloring - use integer coordinates for sharpness
+	// Write pixels directly to ImageData buffer
 	for (let y = 0; y < MINI_SIM_SIZE; y++) {
 		for (let x = 0; x < MINI_SIM_SIZE; x++) {
-			const state = miniSimGrid[y * MINI_SIM_SIZE + x];
-			if (state > 0) {
-				ctx.fillStyle = getStateColor(state, numStates, accentRgb, isLight);
-				// Use Math.floor and integer sizes for pixel-perfect rendering
-				ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+			const cellState = grid[y * MINI_SIM_SIZE + x];
+			
+			// Calculate neighbor vitality for shading (only for non-dead cells)
+			let neighborFactor = 1.0;
+			if (cellState > 0) {
+				neighborFactor = sumNeighborVitality(grid, x, y, neighborhood, numStates);
+			}
+			
+			const [r, g, b] = getStateColorRgb(cellState, numStates, accentRgb, isLight, bgRgb, spectrumMode, neighborFactor);
+			
+			// Fill cellSize x cellSize block of pixels
+			for (let py = 0; py < cellSize; py++) {
+				for (let px = 0; px < cellSize; px++) {
+					const pixelX = x * cellSize + px;
+					const pixelY = y * cellSize + py;
+					const idx = (pixelY * canvasWidth + pixelX) * 4;
+					data[idx] = r;
+					data[idx + 1] = g;
+					data[idx + 2] = b;
+					data[idx + 3] = 255;
+				}
 			}
 		}
 	}
+	
+	// Single putImageData call instead of thousands of fillRect calls
+	ctx.putImageData(imageData, 0, 0);
 }
 
-function startMiniSim(accentColor: string, isLight: boolean): void {
-	stopMiniSim();
+// Getters for current theme state - these read fresh values each call
+let getAccentColor: () => string = () => getCSSVariable('--ui-accent');
+let getIsLightTheme: () => boolean = () => false;
+let getSpectrumMode: () => number = () => 1; // Default to rainbow (mode 1)
+
+// Spectrum mode name to index mapping (matches shader)
+const SPECTRUM_MODE_MAP: Record<string, number> = {
+	'hueShift': 0, 'rainbow': 1, 'warm': 2, 'cool': 3, 'monochrome': 4, 'fire': 5,
+	'complement': 6, 'triadic': 7, 'split': 8, 'analogous': 9, 'pastel': 10, 'vivid': 11,
+	'thermal': 12, 'bands': 13, 'neon': 14, 'sunset': 15, 'ocean': 16, 'forest': 17
+};
+
+// Start the gallery of simulations with smooth loading
+function startGallery(accentColor: string, isLight: boolean): void {
+	stopGallery();
+	// Default to Hex2 Neo Diagonal Growth (index 3)
+	const defaultSelectedIndex = GALLERY_RULES.findIndex(r => r.name === 'Hex2 Neo Diagonal Growth');
+	selectedGalleryIndex = defaultSelectedIndex >= 0 ? defaultSelectedIndex : 0;
+	userActivelySelectedRule = false; // Reset - user hasn't clicked anything yet
 	
-	// Find the canvas in the popover
-	setTimeout(() => {
-		miniSimCanvas = document.getElementById('tour-mini-sim') as HTMLCanvasElement;
-		if (!miniSimCanvas) return;
+	// Store initial values for later comparison and initial fill
+	const initialIsLight = isLight;
+	
+	// Use requestAnimationFrame for smoother initialization after DOM is ready
+	requestAnimationFrame(() => {
+		const bgRgb: [number, number, number] = initialIsLight ? [232, 232, 236] : [10, 10, 15];
 		
-		miniSimCtx = miniSimCanvas.getContext('2d');
-		if (!miniSimCtx) return;
+		gallerySimStates = GALLERY_RULES.map((rule, i) => {
+			const canvas = document.getElementById(`tour-gallery-${i}`) as HTMLCanvasElement;
+			const ctx = canvas?.getContext('2d') || null;
+			// Pre-allocate ImageData buffer for fast rendering
+			const imageData = ctx ? ctx.createImageData(canvas.width, canvas.height) : null;
+			
+			// Fill with background color immediately so canvas isn't blank
+			if (imageData) {
+				const data = imageData.data;
+				for (let j = 0; j < data.length; j += 4) {
+					data[j] = bgRgb[0];
+					data[j + 1] = bgRgb[1];
+					data[j + 2] = bgRgb[2];
+					data[j + 3] = 255;
+				}
+				ctx?.putImageData(imageData, 0, 0);
+			}
+			
+			return {
+				grid: initMiniSimGrid(rule),
+				canvas,
+				ctx,
+				imageData,
+				rule,
+				frameCount: 0
+			};
+		});
 		
-		initMiniSim(accentColor);
-		renderMiniSim(accentColor, isLight);
+		// Create randomized reveal order for cute pop-in effect
+		const indices = gallerySimStates.map((_, i) => i);
+		for (let i = indices.length - 1; i > 0; i--) {
+			const j = Math.floor(Math.random() * (i + 1));
+			[indices[i], indices[j]] = [indices[j], indices[i]];
+		}
 		
-		// Run simulation at ~20fps for smooth animation
-		miniSimInterval = window.setInterval(() => {
-			stepMiniSim();
-			renderMiniSim(accentColor, isLight);
-		}, 50);
-	}, 100);
+		// Reveal canvases in random order - each starts animating immediately when revealed
+		indices.forEach((stateIndex, revealOrder) => {
+			const state = gallerySimStates[stateIndex];
+			setTimeout(() => {
+				// Read fresh color values for initial render
+				const currentAccent = getAccentColor();
+				const currentIsLight = getIsLightTheme();
+				const currentSpectrum = getSpectrumMode();
+				renderGallerySim(state, currentAccent, currentIsLight, currentSpectrum);
+				state.canvas?.classList.add('loaded');
+				// Apply default selection visual
+				if (stateIndex === selectedGalleryIndex) {
+					state.canvas?.classList.add('selected');
+				}
+			}, revealOrder * 60 + 10); // Quick start, 60ms between each
+		});
+		
+		// Start simulation loop immediately - canvases animate as soon as they're revealed
+		// Read fresh color values each frame so changes are reflected immediately
+		galleryInterval = window.setInterval(() => {
+			const currentAccent = getAccentColor();
+			const currentIsLight = getIsLightTheme();
+			const currentSpectrum = getSpectrumMode();
+			gallerySimStates.forEach(state => {
+				// Only animate canvases that have been revealed
+				if (state.canvas?.classList.contains('loaded')) {
+					stepGallerySim(state);
+					renderGallerySim(state, currentAccent, currentIsLight, currentSpectrum);
+				}
+			});
+		}, 33);
+		
+		// Set up click handlers for selection
+		gallerySimStates.forEach((state, i) => {
+			if (state.canvas) {
+				state.canvas.onclick = () => selectGalleryRule(i);
+			}
+		});
+	});
+}
+
+function stopGallery(): void {
+	if (galleryInterval !== null) {
+		clearInterval(galleryInterval);
+		galleryInterval = null;
+	}
+	gallerySimStates = [];
+}
+
+function selectGalleryRule(index: number): void {
+	selectedGalleryIndex = index;
+	userActivelySelectedRule = true; // User clicked to select
+	// Update visual selection
+	gallerySimStates.forEach((state, i) => {
+		if (state.canvas) {
+			state.canvas.classList.toggle('selected', i === index);
+		}
+	});
+}
+
+// Get the selected rule name (for applying to main canvas)
+export function getSelectedGalleryRule(): string | null {
+	if (selectedGalleryIndex !== null && selectedGalleryIndex < GALLERY_RULES.length) {
+		return GALLERY_RULES[selectedGalleryIndex].name;
+	}
+	return null;
+}
+
+// Wrapper functions for backward compatibility
+function startMiniSim(accentColor: string, isLight: boolean): void {
+	startGallery(accentColor, isLight);
 }
 
 function stopMiniSim(): void {
-	if (miniSimInterval !== null) {
-		clearInterval(miniSimInterval);
-		miniSimInterval = null;
-	}
-	miniSimCanvas = null;
-	miniSimCtx = null;
-	miniSimGrid = null;
+	stopGallery();
 }
 
 export function hasTourBeenCompleted(): boolean {
@@ -442,13 +1369,24 @@ function titleWithIcon(icon: string, text: string): string {
 	return `<span class="tour-title-wrapper">${icon}<span>${text}</span></span>`;
 }
 
-// Create welcome content with mini simulation
+// Create welcome content with 3x3 gallery of simulations
 function getWelcomeContent(): string {
 	const canvasSize = MINI_SIM_SIZE * MINI_SIM_CELL_SIZE;
+	
+	// Generate 9 canvases in a 3x3 grid
+	const canvasesHtml = GALLERY_RULES.map((rule, i) => `
+		<div class="gallery-item" data-index="${i}">
+			<canvas id="tour-gallery-${i}" width="${canvasSize}" height="${canvasSize}" class="gallery-canvas"></canvas>
+			<span class="gallery-label">${rule.name}</span>
+		</div>
+	`).join('');
+	
 	return `
 		<div class="tour-welcome-content">
-			<canvas id="tour-mini-sim" width="${canvasSize}" height="${canvasSize}" class="tour-mini-canvas"></canvas>
-			<p>A cellular automaton simulator powered by WebGPU. Let me show you around.</p>
+			<div class="tour-gallery">
+				${canvasesHtml}
+			</div>
+			<p class="gallery-hint">Click a pattern to start with it, or continue the tour.</p>
 		</div>
 	`;
 }
@@ -596,9 +1534,30 @@ export function createTour(options?: {
 	onSkip?: () => void;
 	accentColor?: string;
 	isLightTheme?: boolean;
+	// Getter functions for live updates during the tour
+	getAccentColor?: () => string;
+	getIsLightTheme?: () => boolean;
+	getSpectrumMode?: () => string;
 }): ReturnType<typeof driver> {
 	const accentColor = options?.accentColor || getCSSVariable('--ui-accent');
 	const isLight = options?.isLightTheme ?? false;
+	
+	// Set up getter functions for live color updates in the gallery
+	if (options?.getAccentColor) {
+		getAccentColor = options.getAccentColor;
+	} else {
+		getAccentColor = () => getCSSVariable('--ui-accent');
+	}
+	if (options?.getIsLightTheme) {
+		getIsLightTheme = options.getIsLightTheme;
+	} else {
+		getIsLightTheme = () => isLight;
+	}
+	if (options?.getSpectrumMode) {
+		getSpectrumMode = () => SPECTRUM_MODE_MAP[options.getSpectrumMode!()] ?? 1;
+	} else {
+		getSpectrumMode = () => 1; // Default to rainbow
+	}
 	
 	// Create driver instance first so we can reference it in callbacks
 	// eslint-disable-next-line prefer-const
@@ -625,18 +1584,31 @@ export function createTour(options?: {
 				stopMiniSim();
 			}
 		},
+		onNextClick: (element, step, opts) => {
+			// Check if this is the last step - user clicked "Done"
+			const steps = opts.config.steps || [];
+			if (opts.state.activeIndex === steps.length - 1) {
+				tourCompletedProperly = true;
+			}
+			// Continue to next step (or finish)
+			driverObj.moveNext();
+		},
 		onDestroyed: () => {
 			tourActive = false;
 			stopMiniSim();
 			markTourCompleted();
-			options?.onComplete?.();
+			// Apply selected rule if user actively clicked one OR completed the tour
+			if (tourCompletedProperly || userActivelySelectedRule) {
+				options?.onComplete?.();
+			} else {
+				options?.onSkip?.();
+			}
 		},
 		onCloseClick: () => {
 			// Close the tour when X is clicked
 			tourActive = false;
 			stopMiniSim();
 			markTourCompleted();
-			options?.onSkip?.();
 			driverObj.destroy();
 		}
 	};
@@ -648,6 +1620,7 @@ export function createTour(options?: {
 // Start the tour
 export function startTour(options?: Parameters<typeof createTour>[0]): void {
 	tourActive = true;
+	tourCompletedProperly = false; // Reset - only set true when user clicks Done on last step
 	const driverObj = createTour(options);
 	driverObj.drive();
 }
@@ -666,7 +1639,7 @@ export function getTourStyles(accentColor: string, isLightTheme: boolean): strin
 			border: 1px solid ${borderColor} !important;
 			border-radius: 12px !important;
 			box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
-			max-width: 320px !important;
+			max-width: 380px !important;
 		}
 		
 		.driver-popover.gol-tour-popover .driver-popover-title {
@@ -814,28 +1787,81 @@ export function getTourStyles(accentColor: string, isLightTheme: boolean): strin
 			color: ${mutedColor} !important;
 		}
 		
-		/* Welcome mini canvas */
+		/* Welcome gallery */
 		.tour-welcome-content {
 			display: flex !important;
 			flex-direction: column !important;
 			align-items: center !important;
-			gap: 0.75rem !important;
+			gap: 0.6rem !important;
 		}
 		
-		.tour-welcome-content p {
+		.tour-gallery {
+			display: grid !important;
+			grid-template-columns: repeat(3, 1fr) !important;
+			gap: 8px !important;
+		}
+		
+		.gallery-item {
+			display: flex !important;
+			flex-direction: column !important;
+			align-items: center !important;
+			gap: 3px !important;
+			cursor: pointer !important;
+			padding: 2px !important;
+		}
+		
+		.gallery-item:hover .gallery-canvas {
+			opacity: 0.9 !important;
+		}
+		
+		.gallery-canvas {
+			border-radius: 4px !important;
+			image-rendering: pixelated !important;
+			image-rendering: crisp-edges !important;
+			border: 2px solid transparent !important;
+			transition: border-color 0.15s ease, opacity 0.15s ease !important;
+			opacity: 0 !important;
+			transform: scale(0.5) !important;
+		}
+		
+		.gallery-canvas.loaded {
+			opacity: 1 !important;
+			transform: scale(1) !important;
+			animation: gallery-bubble-up 0.4s cubic-bezier(0.34, 1.2, 0.64, 1) !important;
+		}
+		
+		@keyframes gallery-bubble-up {
+			from {
+				opacity: 0;
+				transform: scale(0.5);
+			}
+			to {
+				opacity: 1;
+				transform: scale(1);
+			}
+		}
+		
+		.gallery-canvas.selected {
+			border-color: ${accentColor} !important;
+		}
+		
+		.gallery-label {
+			font-size: 0.6rem !important;
+			color: ${mutedColor} !important;
+			text-align: center !important;
+			max-width: 70px !important;
+			overflow: hidden !important;
+			text-overflow: ellipsis !important;
+			white-space: nowrap !important;
+		}
+		
+		.gallery-hint {
 			margin: 0 !important;
 			text-align: center !important;
 			color: ${mutedColor} !important;
-			font-size: 0.85rem !important;
-			line-height: 1.5 !important;
-		}
-		
-		.tour-mini-canvas {
-			border-radius: 6px !important;
-			border: 1px solid ${borderColor} !important;
-			box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
-			image-rendering: pixelated !important;
-			image-rendering: crisp-edges !important;
+			font-size: 0.75rem !important;
+			line-height: 1.4 !important;
+			opacity: 0.8 !important;
 		}
 		
 		/* Final tour shortcuts */
@@ -876,7 +1902,7 @@ export function getTourStyles(accentColor: string, isLightTheme: boolean): strin
 		/* Mobile adjustments */
 		@media (max-width: 768px) {
 			.driver-popover.gol-tour-popover {
-				max-width: 280px !important;
+				max-width: 340px !important;
 			}
 			
 			.driver-popover.gol-tour-popover .driver-popover-title {

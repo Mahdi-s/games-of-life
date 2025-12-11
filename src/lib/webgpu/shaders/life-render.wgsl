@@ -337,31 +337,20 @@ fn apply_neighbor_shading(color: vec3<f32>, cell_x: i32, cell_y: i32) -> vec3<f3
     // Convert to HSL to adjust saturation and lightness
     let hsl = rgb_to_hsl(color);
     
-    // Apply stronger effect for vitality mode (mode 2)
-    let is_vitality_mode = mode == 2;
-    let strength_mult = select(1.0, 1.4, is_vitality_mode);
-    
-    // Boost factor: cells with more vital neighbors get boosted
-    // Range from 0.5 (isolated) to 1.0 (fully surrounded)
-    let boost = 0.5 + neighbor_ratio * 0.5;
-    
-    // Adjust saturation: more neighbors = more saturated
-    // Vitality mode: stronger desaturation for isolated cells (0.4 to 1.2 vs 0.6 to 1.2)
-    let sat_min = select(0.6, 0.35, is_vitality_mode);
-    var new_sat = hsl.y * (sat_min + neighbor_ratio * (1.2 - sat_min));
+    // Subtle effect - just a hint of depth, not dramatic desaturation
+    // Saturation: 0.92 to 1.0 (isolated cells slightly less saturated)
+    var new_sat = hsl.y * (0.92 + neighbor_ratio * 0.08);
     new_sat = clamp(new_sat, 0.0, 1.0);
     
-    // Adjust lightness based on theme
+    // Subtle lightness adjustment based on theme
     var new_light = hsl.z;
     if (params.is_light_theme > 0.5) {
-        // Light mode: isolated cells get lighter (fade toward white bg)
-        // Vitality mode: stronger fade (0.45 vs 0.3)
-        let fade_amount = (1.0 - neighbor_ratio) * select(0.3, 0.45, is_vitality_mode);
+        // Light mode: isolated cells get very slightly lighter
+        let fade_amount = (1.0 - neighbor_ratio) * 0.12;
         new_light = mix(hsl.z, 0.92, fade_amount);
     } else {
-        // Dark mode: isolated cells get darker (fade toward black bg)
-        // Vitality mode: stronger fade (0.55 vs 0.4)
-        let fade_amount = (1.0 - neighbor_ratio) * select(0.4, 0.55, is_vitality_mode);
+        // Dark mode: isolated cells get very slightly darker
+        let fade_amount = (1.0 - neighbor_ratio) * 0.12;
         new_light = mix(hsl.z, 0.08, fade_amount);
     }
     

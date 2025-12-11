@@ -67,10 +67,6 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 	const PREVIEW_SIZE_Y_SQUARE = 20;
 	const PREVIEW_SIZE_Y_HEX = Math.round(20 / HEX_HEIGHT_RATIO); // ~23 rows for hex
 	
-	// Derived preview height based on neighborhood
-	const isHexNeighborhood = $derived(neighborhood === 'hexagonal' || neighborhood === 'extendedHexagonal');
-	let previewSizeY = $derived(isHexNeighborhood ? PREVIEW_SIZE_Y_HEX : PREVIEW_SIZE_Y_SQUARE);
-	
 	let previewCanvas: HTMLCanvasElement;
 	let previewCtx: CanvasRenderingContext2D | null = null;
 	let previewGrid: number[] = [];
@@ -90,6 +86,10 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 	let ruleString = $state(simState.currentRule.ruleString);
 	let numStates = $state(simState.currentRule.numStates);
 	let neighborhood = $state<NeighborhoodType>(simState.currentRule.neighborhood ?? 'moore');
+	
+	// Derived preview height based on neighborhood (must be after neighborhood declaration)
+	const isHexNeighborhood = $derived(neighborhood === 'hexagonal' || neighborhood === 'extendedHexagonal');
+	let previewSizeY = $derived(isHexNeighborhood ? PREVIEW_SIZE_Y_HEX : PREVIEW_SIZE_Y_SQUARE);
 	
 	// Grid type toggle - determines which neighborhoods/rules are shown
 	type GridType = 'square' | 'hexagonal';
@@ -240,24 +240,23 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 	const filterCounts = $derived.by(() => {
 		const presets = gridFilteredPresets;
 		const getCount = (f: string) => getFilteredRulesForGridType(f, presets).length;
-		return {
+		// Always include all possible keys with their counts (or 0 if not applicable for current grid type)
+		const counts: Record<string, number> = {
 			all: presets.length,
 			// Categories
 			...Object.fromEntries(RULE_CATEGORIES.map(c => [c.id, getCount(c.id)])),
-			// Neighborhoods - only show counts for current grid type
-			...(gridType === 'square' ? {
-				'nh:moore': getCount('nh:moore'),
-				'nh:vonNeumann': getCount('nh:vonNeumann'),
-				'nh:extendedMoore': getCount('nh:extendedMoore'),
-			} : {
-				'nh:hexagonal': getCount('nh:hexagonal'),
-			}),
+			// Neighborhoods - include all, but only calculate for current grid type
+			'nh:moore': gridType === 'square' ? getCount('nh:moore') : 0,
+			'nh:vonNeumann': gridType === 'square' ? getCount('nh:vonNeumann') : 0,
+			'nh:extendedMoore': gridType === 'square' ? getCount('nh:extendedMoore') : 0,
+			'nh:hexagonal': gridType === 'hexagonal' ? getCount('nh:hexagonal') : 0,
 			// States
 			'states:2': getCount('states:2'),
 			'states:3-4': getCount('states:3-4'),
 			'states:5-8': getCount('states:5-8'),
 			'states:9+': getCount('states:9+'),
 		};
+		return counts;
 	});
 
 	function getBirthMask(): number {
@@ -710,10 +709,10 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 		if (mode === 0) {
 			dyingHue = aliveHsl[0] + 0.25 * spectrumProgress;
 			if (dyingHue > 1) dyingHue -= 1;
-			if (isLight) {
+		if (isLight) {
 				dyingSat = Math.max(aliveHsl[1], 0.6) * Math.max(1.0 - spectrumProgress * 0.25, 0.65);
 				dyingLight = mix(Math.min(aliveHsl[2], 0.55), 0.72, dyingProgress * dyingProgress);
-			} else {
+		} else {
 				const boostedSat = Math.max(aliveHsl[1], 0.4);
 				const satCurve = 1.0 - spectrumProgress * spectrumProgress;
 				dyingSat = boostedSat * Math.max(satCurve, 0.25);
@@ -1175,7 +1174,8 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 			neighborhood,
 			category: preset?.category,
 			description: preset?.description,
-			density: preset?.density
+			density: preset?.density,
+			vitality: preset?.vitality // Include vitality settings from the preset!
 		};
 		
 		simState.currentRule = rule;

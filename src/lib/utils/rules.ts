@@ -1113,23 +1113,28 @@ export const RULE_PRESETS: CARule[] = [
 			decayPower: 1.0
 		}
 	},
-	// Hex Neo Mandala series - artistic patterns with vitality influence
+	// Hex Neo Mandala 1 - beautiful mandala patterns with unique vitality curve
 	{
 		name: 'Hex Neo Mandala 1',
-		birthMask: 0b100, // 2
-		surviveMask: 0b111000, // 3, 4, 5
-		numStates: 512,
-		ruleString: 'B2/S345/C512',
+		birthMask: 0b100, // B2
+		surviveMask: 0b111000, // S345
+		numStates: 88,
+		ruleString: 'B2/S345/C88',
 		neighborhood: 'hexagonal',
 		category: 'artistic',
-		description: 'Mandala-like symmetric patterns with ghost vitality',
+		description: 'Beautiful mandala patterns with amplified dying cell influence',
 		density: 0.25,
 		vitality: {
-			mode: 'ghost',
+			mode: 'curve',
 			threshold: 1.0,
 			ghostFactor: 0.59,
 			sigmoidSharpness: 10.0,
-			decayPower: 1.0
+			decayPower: 1.0,
+			curvePoints: [
+				{ x: 0, y: 0 },
+				{ x: 0.148, y: 1.01 },
+				{ x: 1, y: 0.19 }
+			]
 		}
 	},
 	{
