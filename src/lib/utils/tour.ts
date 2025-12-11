@@ -1842,8 +1842,8 @@ export function getTourStyles(accentColor: string, isLightTheme: boolean): strin
 			border-radius: 4px !important;
 			image-rendering: pixelated !important;
 			image-rendering: crisp-edges !important;
-			border: 2px solid transparent !important;
-			transition: border-color 0.15s ease, opacity 0.15s ease !important;
+			border: 1px solid rgba(128, 128, 128, 0.25) !important;
+			transition: border-color 0.15s ease, border-width 0.15s ease, opacity 0.15s ease !important;
 			opacity: 0 !important;
 			transform: scale(0.5) !important;
 			box-sizing: border-box !important;
@@ -1867,7 +1867,7 @@ export function getTourStyles(accentColor: string, isLightTheme: boolean): strin
 		}
 		
 		.gallery-canvas.selected {
-			border-color: ${accentColor} !important;
+			border: 2px solid ${accentColor} !important;
 		}
 		
 		.gallery-label {
