@@ -130,7 +130,7 @@ const GALLERY_RULES: GalleryRule[] = [
 		density: 1.0,
 		seedRate: 0,
 		stimPeriod: 100,
-		diskRadius: 9, // radius for hex grid
+		diskRadius: 5, // smaller seed for better symmetry
 		vitalityMode: 'curve',
 		curvePoints: [
 			{ x: 0, y: 0 },
@@ -257,23 +257,19 @@ function initMiniSimGrid(rule: GalleryRule): Uint8Array {
 			const radius = rule.diskRadius ?? Math.round(MINI_SIM_SIZE * 0.18);
 			
 			if (isHex) {
-				// For hex grids on square pixel display:
-				// Apply X offset for odd rows (hex stagger) but NOT Y-scaling
-				// since mini-sim renders to square pixels, not visual hex layout
+				// For hex grids: apply X-offset for odd rows, no Y scaling
 				const isOddCenter = (center & 1) === 1;
 				const centerX = center + (isOddCenter ? 0.5 : 0);
-				const centerY = center;
 				
 				for (let y = 0; y < MINI_SIM_SIZE; y++) {
 					for (let x = 0; x < MINI_SIM_SIZE; x++) {
 						// Apply hex row offset for proper alignment
 						const isOdd = (y & 1) === 1;
 						const cellX = x + (isOdd ? 0.5 : 0);
-						const cellY = y;
 						
-						// Calculate distance from center
+						// Simple circular disk - no Y scaling
 						const dx = cellX - centerX;
-						const dy = cellY - centerY;
+						const dy = y - center;
 						const distSq = dx * dx + dy * dy;
 						
 						if (distSq <= radius * radius) {
@@ -450,22 +446,19 @@ function applyStimulation(grid: Uint8Array, rule: GalleryRule): void {
 		const isHex = rule.neighborhood === 'hexagonal' || rule.neighborhood === 'extendedHexagonal';
 		
 		if (isHex) {
-			// For hex grids on square pixel display:
-			// Apply X offset for odd rows but NOT Y-scaling
+			// For hex grids: apply X-offset for odd rows, no Y scaling
 			const isOddCenter = (center & 1) === 1;
 			const centerX = center + (isOddCenter ? 0.5 : 0);
-			const centerY = center;
 			
 			for (let y = 0; y < MINI_SIM_SIZE; y++) {
 				for (let x = 0; x < MINI_SIM_SIZE; x++) {
 					// Apply hex row offset for proper alignment
 					const isOdd = (y & 1) === 1;
 					const cellX = x + (isOdd ? 0.5 : 0);
-					const cellY = y;
 					
-					// Calculate distance from center
+					// Simple circular disk - no Y scaling
 					const dx = cellX - centerX;
-					const dy = cellY - centerY;
+					const dy = y - center;
 					const distSq = dx * dx + dy * dy;
 					
 					if (distSq <= radius * radius) {
