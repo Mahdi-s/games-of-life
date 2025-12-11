@@ -154,6 +154,7 @@ const GALLERY_RULES: GalleryRule[] = [
 // State for each mini simulation
 interface MiniSimState {
 	grid: Uint8Array;
+	nextGrid: Uint8Array; // Pre-allocated buffer for double-buffering (avoids allocations per frame)
 	canvas: HTMLCanvasElement | null;
 	ctx: CanvasRenderingContext2D | null;
 	imageData: ImageData | null; // Pre-allocated buffer for fast rendering
@@ -536,9 +537,8 @@ function addTextToGrid(grid: Uint8Array, text: string): void {
 }
 
 function stepGallerySim(state: MiniSimState): void {
-	const { grid, rule } = state;
+	const { grid, nextGrid, rule } = state;
 	const { birthMask, surviveMask, numStates, neighborhood, seedRate, stimPeriod } = rule;
-	const newGrid = new Uint8Array(MINI_SIM_SIZE * MINI_SIM_SIZE);
 	
 	// Increment frame count
 	state.frameCount++;
@@ -556,6 +556,9 @@ function stepGallerySim(state: MiniSimState): void {
 			}
 		}
 	}
+	
+	// Clear the next grid buffer (reuse pre-allocated buffer)
+	nextGrid.fill(0);
 	
 	for (let y = 0; y < MINI_SIM_SIZE; y++) {
 		// Get offsets for this row (important for hexagonal grids)
@@ -591,21 +594,22 @@ function stepGallerySim(state: MiniSimState): void {
 			
 			if (cellState === 0) {
 				if ((birthMask & (1 << neighbors)) !== 0) {
-					newGrid[idx] = 1;
+					nextGrid[idx] = 1;
 				}
 			} else if (cellState === 1) {
 				if ((surviveMask & (1 << neighbors)) !== 0) {
-					newGrid[idx] = 1;
+					nextGrid[idx] = 1;
 				} else {
-					newGrid[idx] = numStates > 2 ? 2 : 0;
+					nextGrid[idx] = numStates > 2 ? 2 : 0;
 				}
 			} else {
-				newGrid[idx] = cellState < numStates - 1 ? cellState + 1 : 0;
+				nextGrid[idx] = cellState < numStates - 1 ? cellState + 1 : 0;
 			}
 		}
 	}
 	
-	state.grid = newGrid;
+	// Swap buffers - copy next to current (both pre-allocated)
+	grid.set(nextGrid);
 }
 
 // Parse accent color to RGB
@@ -1088,6 +1092,7 @@ function startGallery(accentColor: string, isLight: boolean): void {
 			
 			return {
 				grid: initMiniSimGrid(rule),
+				nextGrid: new Uint8Array(MINI_SIM_SIZE * MINI_SIM_SIZE), // Pre-allocate second buffer
 				canvas,
 				ctx,
 				imageData,
@@ -1795,10 +1800,17 @@ export function getTourStyles(accentColor: string, isLightTheme: boolean): strin
 			gap: 0.6rem !important;
 		}
 		
+		.tour-welcome-content {
+			width: 100% !important;
+			box-sizing: border-box !important;
+		}
+		
 		.tour-gallery {
 			display: grid !important;
 			grid-template-columns: repeat(3, 1fr) !important;
 			gap: 8px !important;
+			width: 100% !important;
+			box-sizing: border-box !important;
 		}
 		
 		.gallery-item {
@@ -1808,6 +1820,7 @@ export function getTourStyles(accentColor: string, isLightTheme: boolean): strin
 			gap: 3px !important;
 			cursor: pointer !important;
 			padding: 2px !important;
+			min-width: 0 !important; /* Allow shrinking */
 		}
 		
 		.gallery-item:hover .gallery-canvas {
@@ -1815,6 +1828,10 @@ export function getTourStyles(accentColor: string, isLightTheme: boolean): strin
 		}
 		
 		.gallery-canvas {
+			width: 100% !important;
+			height: auto !important;
+			aspect-ratio: 1 / 1 !important;
+			max-width: 112px !important; /* Original size cap */
 			border-radius: 4px !important;
 			image-rendering: pixelated !important;
 			image-rendering: crisp-edges !important;
@@ -1822,6 +1839,7 @@ export function getTourStyles(accentColor: string, isLightTheme: boolean): strin
 			transition: border-color 0.15s ease, opacity 0.15s ease !important;
 			opacity: 0 !important;
 			transform: scale(0.5) !important;
+			box-sizing: border-box !important;
 		}
 		
 		.gallery-canvas.loaded {
@@ -1849,7 +1867,7 @@ export function getTourStyles(accentColor: string, isLightTheme: boolean): strin
 			font-size: 0.6rem !important;
 			color: ${mutedColor} !important;
 			text-align: center !important;
-			max-width: 70px !important;
+			max-width: 100% !important;
 			overflow: hidden !important;
 			text-overflow: ellipsis !important;
 			white-space: nowrap !important;
@@ -1902,7 +1920,8 @@ export function getTourStyles(accentColor: string, isLightTheme: boolean): strin
 		/* Mobile adjustments */
 		@media (max-width: 768px) {
 			.driver-popover.gol-tour-popover {
-				max-width: 340px !important;
+				max-width: calc(100vw - 32px) !important;
+				margin: 0 16px !important;
 			}
 			
 			.driver-popover.gol-tour-popover .driver-popover-title {
@@ -1911,6 +1930,22 @@ export function getTourStyles(accentColor: string, isLightTheme: boolean): strin
 			
 			.driver-popover.gol-tour-popover .driver-popover-description {
 				font-size: 0.8rem !important;
+			}
+			
+			.tour-gallery {
+				gap: 6px !important;
+			}
+			
+			.gallery-canvas {
+				max-width: none !important; /* Remove cap on mobile - let grid control size */
+			}
+			
+			.gallery-label {
+				font-size: 0.5rem !important;
+			}
+			
+			.gallery-hint {
+				font-size: 0.7rem !important;
 			}
 			
 			.tour-icon {
@@ -1934,6 +1969,22 @@ export function getTourStyles(accentColor: string, isLightTheme: boolean): strin
 			
 			.tour-group-intro {
 				font-size: 0.8rem !important;
+			}
+		}
+		
+		/* Extra small phones */
+		@media (max-width: 380px) {
+			.driver-popover.gol-tour-popover {
+				max-width: calc(100vw - 24px) !important;
+				margin: 0 12px !important;
+			}
+			
+			.tour-gallery {
+				gap: 4px !important;
+			}
+			
+			.gallery-label {
+				font-size: 0.45rem !important;
 			}
 		}
 	`;
