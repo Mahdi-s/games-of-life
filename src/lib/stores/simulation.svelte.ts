@@ -727,6 +727,11 @@ export function getSimulationState() {
 
 		incrementGeneration() {
 			generation++;
+		},
+
+		incrementGenerationBy(delta: number) {
+			if (!Number.isFinite(delta)) return;
+			generation += Math.max(0, Math.floor(delta));
 		}
 	};
 }

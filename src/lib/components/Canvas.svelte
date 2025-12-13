@@ -277,17 +277,35 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 
 		// Run simulation steps if playing
 		if (simState.isPlaying) {
-			const stepInterval = 1000 / simState.speed;
-			if (timestamp - lastStepTime >= stepInterval) {
-				// Apply continuous seeding if enabled
-				if (simState.seedingEnabled && simState.seedingRate > 0) {
-					simulation.continuousSeed(simState.seedingRate, simState.seedPattern, simState.seedAlive);
+			const stepMs = 1000 / Math.max(1, simState.speed);
+
+			// Initialize timing baseline on first frame (or after pause/resume).
+			if (lastStepTime === 0) lastStepTime = timestamp;
+
+			// How much time has accumulated since last sim step.
+			let elapsedMs = timestamp - lastStepTime;
+
+			// Avoid huge catch-up bursts (e.g. tab was backgrounded).
+			// We’d rather “drop” simulation time than freeze the UI.
+			elapsedMs = Math.min(elapsedMs, 250);
+
+			const maxStepsPerFrame = 64;
+			const stepsToRun = Math.min(maxStepsPerFrame, Math.floor(elapsedMs / stepMs));
+
+			if (stepsToRun > 0) {
+				for (let i = 0; i < stepsToRun; i++) {
+					// Apply continuous seeding per step if enabled
+					if (simState.seedingEnabled && simState.seedingRate > 0) {
+						simulation.continuousSeed(simState.seedingRate, simState.seedPattern, simState.seedAlive);
+					}
+					simulation.step();
 				}
-				
-				simulation.step();
-				simState.incrementGeneration();
-				lastStepTime = timestamp;
+				simState.incrementGenerationBy(stepsToRun);
+				lastStepTime += stepsToRun * stepMs;
 			}
+		} else {
+			// Prevent a giant catch-up when resuming play.
+			lastStepTime = 0;
 		}
 
 		// Sync view state including brush preview
