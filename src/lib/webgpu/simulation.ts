@@ -3,7 +3,7 @@
  * Manages WebGPU compute and render pipelines with double-buffering
  */
 
-import type { WebGPUContext } from './context.js';
+import type { WebGPUContext } from '@games-of-life/webgpu';
 import type { CARule, VitalityMode } from '../utils/rules.js';
 import { getDefaultRule } from '../utils/rules.js';
 import { SEED_PATTERNS, SEED_PATTERNS_HEX, type SeedPatternId, type BoundaryMode } from '../stores/simulation.svelte.js';
@@ -60,6 +60,11 @@ export class Simulation {
 
 	// View state
 	private view: ViewState;
+
+	/** Read-only access to the current view state (for UI + recording helpers). */
+	public getViewState(): Readonly<ViewState> {
+		return this.view;
+	}
 
 	// Compute pipeline
 	private computePipeline!: GPUComputePipeline;

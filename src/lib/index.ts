@@ -1,9 +1,9 @@
 // Cellular Automaton Library Exports
 
 // WebGPU
-export { initWebGPU, isWebGPUSupported, createBuffer, createEmptyBuffer } from './webgpu/context.js';
+export { initWebGPU, isWebGPUSupported, createBuffer, createEmptyBuffer } from '@games-of-life/webgpu';
 export { Simulation, createSimulation } from './webgpu/simulation.js';
-export type { WebGPUContext, WebGPUError } from './webgpu/context.js';
+export type { WebGPUContext, WebGPUError } from '@games-of-life/webgpu';
 export type { SimulationConfig, ViewState } from './webgpu/simulation.js';
 
 // Rules

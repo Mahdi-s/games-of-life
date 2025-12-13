@@ -692,8 +692,9 @@
 
 	// Svelte action to draw seed pattern preview on a canvas
 	function drawSeedPatternPreview(canvas: HTMLCanvasElement, params: SeedPreviewParams) {
-		const ctx = canvas.getContext('2d');
-		if (!ctx) return;
+		const ctx2d = canvas.getContext('2d');
+		if (!ctx2d) return;
+		const ctx = ctx2d;
 		
 		let currentPatternId = params.patternId;
 

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { initWebGPU, type WebGPUContext, type WebGPUError } from '../webgpu/context.js';
+	import { initWebGPU, type WebGPUContext, type WebGPUError } from '@games-of-life/webgpu';
 import { Simulation } from '../webgpu/simulation.js';
 import { getSimulationState, getUIState, GRID_SCALES, type GridScale, type SpectrumMode, type BrushShape, setSimulationRef, wasBrushEditorSnapshotTaken, markBrushEditorSnapshotTaken, markBrushEditorEdited } from '../stores/simulation.svelte.js';
 import { addSnapshotWithBefore, resetHistory } from '../stores/history.js';
@@ -1030,7 +1030,7 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 			}
 
 			// Store current axis progress (axes are hidden in recording canvas anyway)
-			preRecordingAxisProgress = simulation.view.axisProgress;
+			preRecordingAxisProgress = simulation.getViewState().axisProgress;
 
 			recordedChunks = [];
 			mediaRecorder = new MediaRecorder(stream, {

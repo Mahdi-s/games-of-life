@@ -23,13 +23,12 @@ export function isWebGPUSupported(): boolean {
 }
 
 /**
- * Initialize WebGPU context for a canvas element
- * Returns either the context or an error
+ * Initialize WebGPU context for a canvas element.
+ * Returns either the context or an error.
  */
 export async function initWebGPU(
 	canvas: HTMLCanvasElement
 ): Promise<{ ok: true; value: WebGPUContext } | { ok: false; error: WebGPUError }> {
-	// Check WebGPU support
 	if (!isWebGPUSupported()) {
 		return {
 			ok: false,
@@ -41,7 +40,6 @@ export async function initWebGPU(
 		};
 	}
 
-	// Request adapter
 	const adapter = await navigator.gpu.requestAdapter({
 		powerPreference: 'high-performance'
 	});
@@ -56,7 +54,6 @@ export async function initWebGPU(
 		};
 	}
 
-	// Request device
 	let device: GPUDevice;
 	try {
 		device = await adapter.requestDevice({
@@ -85,7 +82,6 @@ export async function initWebGPU(
 		}
 	});
 
-	// Configure canvas context
 	const context = canvas.getContext('webgpu');
 	if (!context) {
 		return {
@@ -106,12 +102,7 @@ export async function initWebGPU(
 
 	return {
 		ok: true,
-		value: {
-			device,
-			context,
-			format,
-			canvas
-		}
+		value: { device, context, format, canvas }
 	};
 }
 
@@ -144,18 +135,7 @@ export function createEmptyBuffer(
 	size: number,
 	usage: GPUBufferUsageFlags
 ): GPUBuffer {
-	return device.createBuffer({
-		size,
-		usage
-	});
+	return device.createBuffer({ size, usage });
 }
-
-
-
-
-
-
-
-
 
 
