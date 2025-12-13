@@ -19,6 +19,7 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 	import { bringToFront, setModalPosition, getModalState } from '../stores/modalManager.svelte.js';
 	import BoundaryIcon from './BoundaryIcon.svelte';
 	import InfluenceCurveEditor from './InfluenceCurveEditor.svelte';
+	import { LifeCanvas } from '@games-of-life/svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import { addSnapshotWithBefore, getHeadId } from '../stores/history.js';
 	import { startRuleEditorTour, getRuleEditorTourStyles } from '../utils/ruleEditorTour.js';
@@ -67,13 +68,9 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 	const PREVIEW_SIZE_Y_SQUARE = 20;
 	const PREVIEW_SIZE_Y_HEX = Math.round(20 / HEX_HEIGHT_RATIO); // ~23 rows for hex
 	
-	let previewCanvas: HTMLCanvasElement;
-	let previewCtx: CanvasRenderingContext2D | null = null;
-	let previewGrid: number[] = [];
-	let previewNextGrid: number[] = [];
 	let previewPlaying = $state(false);
-	let previewAnimationId: number | null = null;
-	let lastPreviewStep = 0;
+	type PreviewApi = { stepOnce: () => void; reset: () => void };
+	let previewApi: PreviewApi | null = $state(null);
 
 	let dropdownOpen = $state(false);
 	let categoryDropdownOpen = $state(false);
@@ -282,39 +279,13 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 	if (sim) {
 		sim.getCellDataAsync().then(setRuleEditorPreSnapshot).catch(() => {});
 	}
-		if (previewCanvas) {
-			previewCtx = previewCanvas.getContext('2d');
-			randomizePreview();
-		}
 	});
 
 	onDestroy(() => {
-		if (previewAnimationId) cancelAnimationFrame(previewAnimationId);
 	resetRuleEditorSession();
 	});
 
-	// Re-render preview when theme or color changes
-	$effect(() => {
-		// Track theme and color changes (void to avoid unused-expression warnings)
-		void simState.isLightTheme;
-		void simState.aliveColor;
-		// Re-render if we have a context
-		if (previewCtx) {
-			renderPreview();
-		}
-	});
-
-	// Reinitialize preview grid when neighborhood changes (grid size changes for hex)
-	let lastNeighborhood: NeighborhoodType | null = null;
-	$effect(() => {
-		// Track neighborhood changes
-		const currentNeighborhood = neighborhood;
-		if (lastNeighborhood !== null && lastNeighborhood !== currentNeighborhood) {
-			// Neighborhood changed, reinitialize preview grid
-			randomizePreview();
-		}
-		lastNeighborhood = currentNeighborhood;
-	});
+	// Preview is now rendered via @games-of-life/svelte `LifeCanvas`.
 
 	// Scroll to selected preset when dropdown opens
 	$effect(() => {
@@ -329,686 +300,20 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 		}
 	});
 
-	// Re-randomize preview when numStates changes between 2-state and multi-state
-	// This ensures the preview shows the spectrum correctly
-	let lastNumStatesWasMulti: boolean | null = null;
-	$effect(() => {
-		const isMultiState = numStates > 2;
-		if (lastNumStatesWasMulti !== null && lastNumStatesWasMulti !== isMultiState) {
-			// Switched between 2-state and multi-state, re-randomize
-			randomizePreview();
-		}
-		lastNumStatesWasMulti = isMultiState;
-	});
+	// Preview seeding is handled inside LifeCanvas (seed prop changes reset deterministically).
 
 	function randomizePreview() {
-		const gridSize = PREVIEW_SIZE_X * previewSizeY;
-		const density = 0.3; // 30% density like the main simulation
-		
-		previewGrid = Array.from({ length: gridSize }, () => {
-			if (Math.random() < density) {
-				if (numStates > 2) {
-					// For multi-state rules, distribute across all states
-					// Same logic as the main simulation
-					const rand = Math.random();
-					if (rand < 0.5) {
-						// 50% chance of being fully alive
-						return 1;
-					} else {
-						// 50% chance of being in a dying state (2 to numStates-1)
-						// Weighted towards earlier dying states (more colorful)
-						const dyingStates = numStates - 2;
-						const weightedRand = Math.pow(Math.random(), 1.5);
-						const dyingState = 2 + Math.floor(weightedRand * dyingStates);
-						return Math.min(dyingState, numStates - 1);
-					}
-				} else {
-					// Simple alive for 2-state rules
-					return 1;
-				}
-			}
-			return 0;
-		});
-		previewNextGrid = new Array(gridSize).fill(0);
-		renderPreview();
-	}
-
-	// Count neighbors based on neighborhood type
-	function countNeighbors(x: number, y: number): number {
-		let count = 0;
-		const sizeX = PREVIEW_SIZE_X;
-		const sizeY = previewSizeY;
-		
-		if (neighborhood === 'vonNeumann') {
-			// 4 orthogonal neighbors
-			const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
-			for (const [dx, dy] of dirs) {
-				const nx = (x + dx + sizeX) % sizeX;
-				const ny = (y + dy + sizeY) % sizeY;
-				if (previewGrid[ny * sizeX + nx] === 1) count++;
-			}
-		} else if (neighborhood === 'extendedMoore') {
-			// 24 neighbors (5x5 minus center)
-			for (let dy = -2; dy <= 2; dy++) {
-				for (let dx = -2; dx <= 2; dx++) {
-					if (dx === 0 && dy === 0) continue;
-					const nx = (x + dx + sizeX) % sizeX;
-					const ny = (y + dy + sizeY) % sizeY;
-					if (previewGrid[ny * sizeX + nx] === 1) count++;
-				}
-			}
-		} else if (neighborhood === 'hexagonal' || neighborhood === 'extendedHexagonal') {
-			// Hexagonal grid (odd-r offset coordinates)
-			const isOddRow = (y & 1) === 1;
-			
-			// Ring 1: 6 immediate neighbors
-			const ring1 = isOddRow
-				? [[0, -1], [1, -1], [-1, 0], [1, 0], [0, 1], [1, 1]]  // odd row
-				: [[-1, -1], [0, -1], [-1, 0], [1, 0], [-1, 1], [0, 1]]; // even row
-			
-			for (const [dx, dy] of ring1) {
-				const nx = (x + dx + sizeX) % sizeX;
-				const ny = (y + dy + sizeY) % sizeY;
-				if (previewGrid[ny * sizeX + nx] === 1) count++;
-			}
-			
-			// Ring 2: 12 outer neighbors (only for extended hexagonal)
-			if (neighborhood === 'extendedHexagonal') {
-				// Row y-2 (2 cells)
-				const isOddRowM1 = ((y - 1) & 1) === 1;
-				if (isOddRowM1) {
-					// y-2 is even row
-					const offsets = [[0, -2], [1, -2]];
-					for (const [dx, dy] of offsets) {
-						const nx = (x + dx + sizeX) % sizeX;
-						const ny = (y + dy + sizeY) % sizeY;
-						if (previewGrid[ny * sizeX + nx] === 1) count++;
-					}
-				} else {
-					// y-2 is odd row
-					const offsets = [[-1, -2], [0, -2]];
-					for (const [dx, dy] of offsets) {
-						const nx = (x + dx + sizeX) % sizeX;
-						const ny = (y + dy + sizeY) % sizeY;
-						if (previewGrid[ny * sizeX + nx] === 1) count++;
-					}
-				}
-				
-				// Row y-1 outer cells (2 cells)
-				if (isOddRow) {
-					const offsets = [[-1, -1], [2, -1]];
-					for (const [dx, dy] of offsets) {
-						const nx = (x + dx + sizeX) % sizeX;
-						const ny = (y + dy + sizeY) % sizeY;
-						if (previewGrid[ny * sizeX + nx] === 1) count++;
-					}
-				} else {
-					const offsets = [[-2, -1], [1, -1]];
-					for (const [dx, dy] of offsets) {
-						const nx = (x + dx + sizeX) % sizeX;
-						const ny = (y + dy + sizeY) % sizeY;
-						if (previewGrid[ny * sizeX + nx] === 1) count++;
-					}
-				}
-				
-				// Row y far left/right (2 cells)
-				const rowYOffsets = [[-2, 0], [2, 0]];
-				for (const [dx, dy] of rowYOffsets) {
-					const nx = (x + dx + sizeX) % sizeX;
-					const ny = (y + dy + sizeY) % sizeY;
-					if (previewGrid[ny * sizeX + nx] === 1) count++;
-				}
-				
-				// Row y+1 outer cells (2 cells)
-				if (isOddRow) {
-					const offsets = [[-1, 1], [2, 1]];
-					for (const [dx, dy] of offsets) {
-						const nx = (x + dx + sizeX) % sizeX;
-						const ny = (y + dy + sizeY) % sizeY;
-						if (previewGrid[ny * sizeX + nx] === 1) count++;
-					}
-				} else {
-					const offsets = [[-2, 1], [1, 1]];
-					for (const [dx, dy] of offsets) {
-						const nx = (x + dx + sizeX) % sizeX;
-						const ny = (y + dy + sizeY) % sizeY;
-						if (previewGrid[ny * sizeX + nx] === 1) count++;
-					}
-				}
-				
-				// Row y+2 (2 cells)
-				const isOddRowP1 = ((y + 1) & 1) === 1;
-				if (isOddRowP1) {
-					// y+2 is even row
-					const offsets = [[0, 2], [1, 2]];
-					for (const [dx, dy] of offsets) {
-						const nx = (x + dx + sizeX) % sizeX;
-						const ny = (y + dy + sizeY) % sizeY;
-						if (previewGrid[ny * sizeX + nx] === 1) count++;
-					}
-				} else {
-					// y+2 is odd row
-					const offsets = [[-1, 2], [0, 2]];
-					for (const [dx, dy] of offsets) {
-						const nx = (x + dx + sizeX) % sizeX;
-						const ny = (y + dy + sizeY) % sizeY;
-						if (previewGrid[ny * sizeX + nx] === 1) count++;
-					}
-				}
-			}
-		} else {
-			// Moore: 8 neighbors
-			for (let dy = -1; dy <= 1; dy++) {
-				for (let dx = -1; dx <= 1; dx++) {
-					if (dx === 0 && dy === 0) continue;
-					const nx = (x + dx + sizeX) % sizeX;
-					const ny = (y + dy + sizeY) % sizeY;
-					if (previewGrid[ny * sizeX + nx] === 1) count++;
-				}
-			}
-		}
-		
-		return count;
+		// Reset the WebGPU-backed preview canvas
+		previewApi?.reset();
 	}
 
 	function stepPreview() {
-		const birthMask = getBirthMask();
-		const surviveMask = getSurviveMask();
-		const sizeX = PREVIEW_SIZE_X;
-		const sizeY = previewSizeY;
-
-		for (let y = 0; y < sizeY; y++) {
-			for (let x = 0; x < sizeX; x++) {
-				const idx = y * sizeX + x;
-				const state = previewGrid[idx];
-				const neighbors = countNeighbors(x, y);
-
-				if (state === 0) {
-					previewNextGrid[idx] = (birthMask & (1 << neighbors)) !== 0 ? 1 : 0;
-				} else if (state === 1) {
-					if ((surviveMask & (1 << neighbors)) !== 0) {
-						previewNextGrid[idx] = 1;
-					} else {
-						previewNextGrid[idx] = numStates > 2 ? 2 : 0;
-					}
-				} else {
-					previewNextGrid[idx] = state + 1 >= numStates ? 0 : state + 1;
-				}
-			}
-		}
-
-		[previewGrid, previewNextGrid] = [previewNextGrid, previewGrid];
-		renderPreview();
-	}
-
-	function renderPreview() {
-		if (!previewCtx) return;
-		
-		// Clear canvas
-		previewCtx.fillStyle = simState.isLightTheme ? '#f0f0f3' : '#0a0a0f';
-		previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
-
-		if (isHexNeighborhood) {
-			renderHexPreview();
-		} else {
-			renderSquarePreview();
-		}
-	}
-
-	function renderSquarePreview() {
-		if (!previewCtx) return;
-		const sizeX = PREVIEW_SIZE_X;
-		const sizeY = previewSizeY;
-		const cellSizeX = previewCanvas.width / sizeX;
-		const cellSizeY = previewCanvas.height / sizeY;
-
-		for (let y = 0; y < sizeY; y++) {
-			for (let x = 0; x < sizeX; x++) {
-				const state = previewGrid[y * sizeX + x];
-				if (state > 0) {
-					previewCtx.fillStyle = getStateColor(state);
-					previewCtx.fillRect(x * cellSizeX, y * cellSizeY, cellSizeX - 0.5, cellSizeY - 0.5);
-				}
-			}
-		}
-	}
-
-	function renderHexPreview() {
-		if (!previewCtx) return;
-		
-		const sizeX = PREVIEW_SIZE_X;
-		const sizeY = previewSizeY;
-		
-		// Calculate hex size to fit in canvas
-		// For hexagonal grids, we have more rows (previewSizeY) to fill the visual space
-		// The hex width determines the horizontal spacing
-		// The hex height (width * sqrt(3)/2) determines vertical spacing
-		const hexWidth = previewCanvas.width / (sizeX + 0.5);
-		const hexHeight = hexWidth * HEX_HEIGHT_RATIO;
-		const hexRadius = hexWidth / 2;
-
-		for (let y = 0; y < sizeY; y++) {
-			for (let x = 0; x < sizeX; x++) {
-				const state = previewGrid[y * sizeX + x];
-				
-				// Calculate hex center position
-				const isOddRow = (y & 1) === 1;
-				const centerX = (x + 0.5) * hexWidth + (isOddRow ? hexWidth / 2 : 0);
-				const centerY = (y + 0.5) * hexHeight;
-				
-				// Draw hex
-				previewCtx.fillStyle = state > 0 ? getStateColor(state) : (simState.isLightTheme ? '#f0f0f3' : '#0a0a0f');
-				drawHexagon(previewCtx, centerX, centerY, hexRadius * 0.95);
-			}
-		}
-	}
-
-	function drawHexagon(ctx: CanvasRenderingContext2D, cx: number, cy: number, radius: number) {
-		ctx.beginPath();
-		for (let i = 0; i < 6; i++) {
-			// Pointy-top hexagon (rotate by 30 degrees)
-			const angle = (Math.PI / 3) * i - Math.PI / 6;
-			const px = cx + radius * Math.cos(angle);
-			const py = cy + radius * Math.sin(angle);
-			if (i === 0) {
-				ctx.moveTo(px, py);
-			} else {
-				ctx.lineTo(px, py);
-			}
-		}
-		ctx.closePath();
-		ctx.fill();
-	}
-
-	// RGB to HSL conversion (matches shader)
-	function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
-		const maxC = Math.max(r, g, b);
-		const minC = Math.min(r, g, b);
-		const l = (maxC + minC) / 2;
-		
-		if (maxC === minC) return [0, 0, l];
-		
-		const d = maxC - minC;
-		const s = l > 0.5 ? d / (2 - maxC - minC) : d / (maxC + minC);
-		
-		let h: number;
-		if (maxC === r) {
-			h = (g - b) / d + (g < b ? 6 : 0);
-		} else if (maxC === g) {
-			h = (b - r) / d + 2;
-		} else {
-			h = (r - g) / d + 4;
-		}
-		h /= 6;
-		
-		return [h, s, l];
-	}
-	
-	function hslToRgb(h: number, s: number, l: number): [number, number, number] {
-		if (s === 0) return [l, l, l];
-		
-		const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-		const p = 2 * l - q;
-		
-		const hueToRgb = (t: number): number => {
-			if (t < 0) t += 1;
-			if (t > 1) t -= 1;
-			if (t < 1/6) return p + (q - p) * 6 * t;
-			if (t < 1/2) return q;
-			if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-			return p;
-		};
-		
-		return [hueToRgb(h + 1/3), hueToRgb(h), hueToRgb(h - 1/3)];
-	}
-
-	// Helper functions for color calculation
-	function mix(a: number, b: number, t: number): number {
-		return a + (b - a) * t;
-	}
-	
-	function fract(x: number): number {
-		return x - Math.floor(x);
-	}
-	
-	function getSpectrumModeIndex(mode: string): number {
-		const modes = [
-			'hueShift', 'rainbow', 'warm', 'cool', 'monochrome', 'fire',
-			'complement', 'triadic', 'split', 'analogous', 'pastel', 'vivid',
-			'thermal', 'bands', 'neon', 'sunset', 'ocean', 'forest'
-		];
-		return modes.indexOf(mode);
-	}
-	
-	// Get color for a given state - matches the shader's state_to_color function exactly
-	function getStateColor(state: number): string {
-		const [r, g, b] = simState.aliveColor;
-		const isLight = simState.isLightTheme;
-		const bg: [number, number, number] = isLight ? [0.94, 0.94, 0.96] : [0.04, 0.04, 0.06];
-		const freq = simState.spectrumFrequency;
-		const mode = getSpectrumModeIndex(simState.spectrumMode);
-		
-		if (state === 0) {
-			return `rgb(${Math.round(bg[0] * 255)}, ${Math.round(bg[1] * 255)}, ${Math.round(bg[2] * 255)})`;
-		}
-		
-		if (state === 1 || numStates === 2) {
-			return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
-		}
-		
-		// Dying states
-		const dyingProgress = (state - 1) / (numStates - 1);
-		const spectrumProgress = fract(dyingProgress * freq);
-		const aliveHsl = rgbToHsl(r, g, b);
-		
-		let dyingHue: number;
-		let dyingSat: number;
-		let dyingLight: number;
-		
-		// Mode 0: Hue Shift
-		if (mode === 0) {
-			dyingHue = aliveHsl[0] + 0.25 * spectrumProgress;
-			if (dyingHue > 1) dyingHue -= 1;
-		if (isLight) {
-				dyingSat = Math.max(aliveHsl[1], 0.6) * Math.max(1.0 - spectrumProgress * 0.25, 0.65);
-				dyingLight = mix(Math.min(aliveHsl[2], 0.55), 0.72, dyingProgress * dyingProgress);
-		} else {
-				const boostedSat = Math.max(aliveHsl[1], 0.4);
-				const satCurve = 1.0 - spectrumProgress * spectrumProgress;
-				dyingSat = boostedSat * Math.max(satCurve, 0.25);
-				dyingLight = mix(aliveHsl[2], 0.12, dyingProgress * dyingProgress);
-			}
-		}
-		// Mode 1: Rainbow
-		else if (mode === 1) {
-			dyingHue = aliveHsl[0] + spectrumProgress;
-			if (dyingHue > 1) dyingHue -= 1;
-			if (isLight) {
-				dyingSat = Math.max(0.75, aliveHsl[1]);
-				dyingLight = mix(Math.min(aliveHsl[2], 0.5), 0.68, dyingProgress * dyingProgress);
-			} else {
-				const boostedSat = Math.max(aliveHsl[1], 0.5);
-				dyingSat = boostedSat * Math.max(1.0 - spectrumProgress * 0.3, 0.45);
-				dyingLight = mix(aliveHsl[2], 0.15, dyingProgress * dyingProgress);
-			}
-		}
-		// Mode 2: Warm
-		else if (mode === 2) {
-			const targetHue = 0.05;
-			let hueDiff = targetHue - aliveHsl[0];
-			if (hueDiff > 0.5) hueDiff -= 1.0;
-			if (hueDiff < -0.5) hueDiff += 1.0;
-			dyingHue = aliveHsl[0] + hueDiff * spectrumProgress;
-			if (dyingHue < 0) dyingHue += 1;
-			if (dyingHue > 1) dyingHue -= 1;
-			if (isLight) {
-				dyingSat = Math.max(aliveHsl[1], 0.65) * Math.max(1.0 - spectrumProgress * 0.2, 0.6);
-				dyingLight = mix(Math.min(aliveHsl[2], 0.55), 0.7, dyingProgress * dyingProgress);
-			} else {
-				const boostedSat = Math.max(aliveHsl[1], 0.45);
-				dyingSat = boostedSat * Math.max(1.0 - spectrumProgress * 0.3, 0.4);
-				dyingLight = mix(aliveHsl[2], 0.1, dyingProgress * dyingProgress);
-			}
-		}
-		// Mode 3: Cool
-		else if (mode === 3) {
-			const targetHue = 0.7;
-			let hueDiff = targetHue - aliveHsl[0];
-			if (hueDiff > 0.5) hueDiff -= 1.0;
-			if (hueDiff < -0.5) hueDiff += 1.0;
-			dyingHue = aliveHsl[0] + hueDiff * spectrumProgress;
-			if (dyingHue < 0) dyingHue += 1;
-			if (dyingHue > 1) dyingHue -= 1;
-			if (isLight) {
-				dyingSat = Math.max(aliveHsl[1], 0.65) * Math.max(1.0 - spectrumProgress * 0.2, 0.6);
-				dyingLight = mix(Math.min(aliveHsl[2], 0.55), 0.7, dyingProgress * dyingProgress);
-			} else {
-				const boostedSat = Math.max(aliveHsl[1], 0.45);
-				dyingSat = boostedSat * Math.max(1.0 - spectrumProgress * 0.3, 0.4);
-				dyingLight = mix(aliveHsl[2], 0.1, dyingProgress * dyingProgress);
-			}
-		}
-		// Mode 4: Monochrome
-		else if (mode === 4) {
-			dyingHue = aliveHsl[0];
-			if (isLight) {
-				dyingSat = Math.max(aliveHsl[1], 0.5) * Math.max(1.0 - spectrumProgress * 0.35, 0.55);
-				dyingLight = mix(Math.min(aliveHsl[2], 0.5), 0.75, dyingProgress);
-			} else {
-				const boostedSat = Math.max(aliveHsl[1], 0.35);
-				dyingSat = boostedSat * (1.0 - spectrumProgress * 0.7);
-				dyingLight = mix(aliveHsl[2], 0.1, dyingProgress);
-			}
-		}
-		// Mode 5: Fire
-		else if (mode === 5) {
-			if (spectrumProgress < 0.33) {
-				dyingHue = mix(aliveHsl[0], 0.12, spectrumProgress * 3.0);
-			} else if (spectrumProgress < 0.66) {
-				dyingHue = mix(0.12, 0.06, (spectrumProgress - 0.33) * 3.0);
-			} else {
-				dyingHue = mix(0.06, 0.0, (spectrumProgress - 0.66) * 3.0);
-			}
-			if (dyingHue < 0) dyingHue += 1;
-			const fireProgress = spectrumProgress * spectrumProgress;
-			if (isLight) {
-				dyingSat = Math.max(0.9 - fireProgress * 0.15, 0.7);
-				dyingLight = mix(0.5, 0.68, dyingProgress * dyingProgress);
-			} else {
-				dyingSat = Math.max(1.0 - fireProgress * 0.2, 0.75);
-				dyingLight = mix(0.65, 0.04, dyingProgress * dyingProgress);
-			}
-		}
-		// Mode 6: Complement
-		else if (mode === 6) {
-			const complementHue = fract(aliveHsl[0] + 0.5);
-			dyingHue = mix(aliveHsl[0], complementHue, spectrumProgress);
-			if (dyingHue > 1) dyingHue -= 1;
-			const satCurve = 1.0 - Math.abs(spectrumProgress - 0.5) * 1.5;
-			if (isLight) {
-				dyingSat = Math.max(aliveHsl[1], 0.7) * Math.max(satCurve, 0.6);
-				dyingLight = mix(Math.min(aliveHsl[2], 0.55), 0.68, dyingProgress * dyingProgress);
-			} else {
-				dyingSat = Math.max(aliveHsl[1], 0.5) * Math.max(satCurve, 0.4);
-				dyingLight = mix(aliveHsl[2], 0.12, dyingProgress * dyingProgress);
-			}
-		}
-		// Mode 7: Triadic
-		else if (mode === 7) {
-			const triadic1 = fract(aliveHsl[0] + 0.333);
-			const triadic2 = fract(aliveHsl[0] + 0.666);
-			if (spectrumProgress < 0.5) {
-				dyingHue = mix(aliveHsl[0], triadic1, spectrumProgress * 2.0);
-			} else {
-				dyingHue = mix(triadic1, triadic2, (spectrumProgress - 0.5) * 2.0);
-			}
-			if (dyingHue > 1) dyingHue -= 1;
-			if (isLight) {
-				dyingSat = Math.max(aliveHsl[1], 0.7) * Math.max(1.0 - spectrumProgress * 0.2, 0.65);
-				dyingLight = mix(Math.min(aliveHsl[2], 0.5), 0.65, dyingProgress * dyingProgress);
-			} else {
-				dyingSat = Math.max(aliveHsl[1], 0.55) * Math.max(1.0 - spectrumProgress * 0.25, 0.5);
-				dyingLight = mix(aliveHsl[2], 0.12, dyingProgress * dyingProgress);
-			}
-		}
-		// Mode 8: Split
-		else if (mode === 8) {
-			const split1 = fract(aliveHsl[0] + 0.417);
-			const split2 = fract(aliveHsl[0] + 0.583);
-			const phase = Math.sin(spectrumProgress * Math.PI * 2.0) * 0.5 + 0.5;
-			dyingHue = mix(split1, split2, phase);
-			if (isLight) {
-				dyingSat = Math.max(aliveHsl[1], 0.7) * Math.max(1.0 - spectrumProgress * 0.25, 0.6);
-				dyingLight = mix(Math.min(aliveHsl[2], 0.52), 0.68, dyingProgress * dyingProgress);
-			} else {
-				dyingSat = Math.max(aliveHsl[1], 0.5) * Math.max(1.0 - spectrumProgress * 0.3, 0.45);
-				dyingLight = mix(aliveHsl[2], 0.12, dyingProgress * dyingProgress);
-			}
-		}
-		// Mode 9: Analogous
-		else if (mode === 9) {
-			const wave = Math.sin(spectrumProgress * Math.PI * 3.0);
-			dyingHue = aliveHsl[0] + wave * 0.083;
-			if (dyingHue < 0) dyingHue += 1;
-			if (dyingHue > 1) dyingHue -= 1;
-			if (isLight) {
-				dyingSat = Math.max(aliveHsl[1], 0.65) * Math.max(1.0 - spectrumProgress * 0.25, 0.6);
-				dyingLight = mix(Math.min(aliveHsl[2], 0.55), 0.7, dyingProgress * dyingProgress);
-			} else {
-				dyingSat = Math.max(aliveHsl[1], 0.45) * Math.max(1.0 - spectrumProgress * 0.35, 0.4);
-				dyingLight = mix(aliveHsl[2], 0.12, dyingProgress * dyingProgress);
-			}
-		}
-		// Mode 10: Pastel
-		else if (mode === 10) {
-			dyingHue = aliveHsl[0] + spectrumProgress * 0.15;
-			if (dyingHue > 1) dyingHue -= 1;
-			if (isLight) {
-				dyingSat = Math.max(aliveHsl[1] * 0.6, 0.35) * (1.0 - spectrumProgress * 0.3);
-				dyingLight = mix(Math.min(aliveHsl[2], 0.55), 0.72, dyingProgress);
-			} else {
-				dyingSat = Math.max(aliveHsl[1] * 0.6, 0.25) * (1.0 - spectrumProgress * 0.4);
-				dyingLight = mix(Math.max(aliveHsl[2], 0.5), 0.2, dyingProgress);
-			}
-		}
-		// Mode 11: Vivid
-		else if (mode === 11) {
-			const numBands = 8.0;
-			const band = Math.floor(spectrumProgress * numBands);
-			dyingHue = aliveHsl[0] + (band / numBands) * 0.4;
-			if (dyingHue > 1) dyingHue -= 1;
-			const bandVar = fract(band * 0.37);
-			if (isLight) {
-				dyingSat = Math.min(1.0, Math.max(aliveHsl[1], 0.8) + 0.15 * bandVar);
-				dyingLight = mix(0.45, 0.65, dyingProgress * dyingProgress);
-			} else {
-				dyingSat = Math.min(1.0, Math.max(aliveHsl[1], 0.75) + 0.15 * bandVar);
-				dyingLight = mix(0.55, 0.1, dyingProgress * dyingProgress);
-			}
-		}
-		// Mode 12: Thermal
-		else if (mode === 12) {
-			const numBands = 12.0;
-			const band = Math.floor(spectrumProgress * numBands);
-			const bandT = band / (numBands - 1.0);
-			const isWarmStart = aliveHsl[0] < 0.17 || aliveHsl[0] > 0.83;
-			if (isWarmStart) {
-				dyingHue = mix(aliveHsl[0], 0.75, bandT);
-			} else {
-				dyingHue = mix(aliveHsl[0], 0.0, bandT);
-			}
-			if (dyingHue < 0) dyingHue += 1;
-			if (dyingHue > 1) dyingHue -= 1;
-			dyingSat = (band % 2 < 1) ? 0.7 : 0.9;
-			const fade = dyingProgress * dyingProgress;
-			dyingLight = isLight ? mix(0.48, 0.7, fade) : mix(0.55, 0.12, fade);
-		}
-		// Mode 13: Bands
-		else if (mode === 13) {
-			const numBands = 10.0;
-			const band = Math.floor(spectrumProgress * numBands);
-			dyingHue = aliveHsl[0] + (band / numBands) * 0.6;
-			if (dyingHue > 1) dyingHue -= 1;
-			dyingSat = (band % 2 < 1) ? Math.max(aliveHsl[1], 0.55) : Math.max(aliveHsl[1], 0.75);
-			const stripe = band % 2 < 1;
-			if (isLight) {
-				dyingLight = stripe ? 0.55 : 0.45;
-				dyingLight = mix(dyingLight, 0.7, dyingProgress * dyingProgress);
-			} else {
-				dyingLight = stripe ? 0.4 : 0.52;
-				dyingLight = mix(dyingLight, 0.1, dyingProgress * dyingProgress);
-			}
-		}
-		// Mode 14: Neon
-		else if (mode === 14) {
-			const numBands = 9.0;
-			const band = Math.floor(spectrumProgress * numBands);
-			const colorIdx = band % 3;
-			if (colorIdx < 1) {
-				dyingHue = aliveHsl[0];
-			} else if (colorIdx < 2) {
-				dyingHue = fract(aliveHsl[0] + 0.333);
-			} else {
-				dyingHue = fract(aliveHsl[0] + 0.666);
-			}
-			dyingSat = 1.0;
-			if (isLight) {
-				dyingLight = 0.42 + (band % 3) * 0.04;
-				dyingLight = mix(dyingLight, 0.65, dyingProgress * dyingProgress);
-			} else {
-				dyingLight = 0.52 + (band % 3) * 0.05;
-				dyingLight = mix(dyingLight, 0.08, dyingProgress * dyingProgress);
-			}
-		}
-		// Mode 15: Sunset
-		else if (mode === 15) {
-			const numBands = 12.0;
-			const band = Math.floor(spectrumProgress * numBands);
-			const bandT = band / (numBands - 1.0);
-			const warmHue = mix(aliveHsl[0], 0.08, 0.5);
-			const coolHue = 0.6;
-			dyingHue = mix(warmHue, coolHue, bandT);
-			if (dyingHue < 0) dyingHue += 1;
-			dyingSat = (band % 2 < 1) ? 0.65 : 0.85;
-			dyingLight = isLight ? mix(0.48, 0.68, dyingProgress * dyingProgress) : mix(0.55, 0.1, dyingProgress * dyingProgress);
-		}
-		// Mode 16: Ocean
-		else if (mode === 16) {
-			const numBands = 10.0;
-			const band = Math.floor(spectrumProgress * numBands);
-			const bandT = band / (numBands - 1.0);
-			const baseOcean = mix(0.5, 0.66, bandT);
-			dyingHue = mix(aliveHsl[0], baseOcean, 0.3 + spectrumProgress * 0.7);
-			const wave = Math.sin(bandT * Math.PI * 2.0) * 0.15;
-			if (isLight) {
-				dyingSat = Math.max(0.65, aliveHsl[1] * 0.9) + wave;
-				dyingLight = mix(0.45, 0.65, dyingProgress * dyingProgress);
-			} else {
-				dyingSat = Math.max(0.6, aliveHsl[1] * 0.9) + wave;
-				dyingLight = mix(0.5, 0.08, dyingProgress * dyingProgress);
-			}
-		}
-		// Mode 17: Forest (default)
-		else {
-			const numBands = 10.0;
-			const band = Math.floor(spectrumProgress * numBands);
-			const bandT = band / (numBands - 1.0);
-			const forestHue = mix(0.33, 0.08, bandT);
-			dyingHue = mix(aliveHsl[0], forestHue, 0.4 + spectrumProgress * 0.6);
-			if (dyingHue < 0) dyingHue += 1;
-			if (isLight) {
-				dyingSat = mix(Math.max(aliveHsl[1], 0.6), 0.45, bandT);
-				dyingLight = mix(0.42, 0.62, dyingProgress * dyingProgress);
-			} else {
-				dyingSat = mix(Math.max(aliveHsl[1], 0.6), 0.4, bandT);
-				dyingLight = mix(0.45, 0.1, dyingProgress * dyingProgress);
-			}
-		}
-		
-		const dyingRgb = hslToRgb(dyingHue, dyingSat, dyingLight);
-		
-		// Blend with background at the end
-		const bgBlend = dyingProgress * dyingProgress * dyingProgress * 0.6;
-		const finalR = Math.round((dyingRgb[0] * (1 - bgBlend) + bg[0] * bgBlend) * 255);
-		const finalG = Math.round((dyingRgb[1] * (1 - bgBlend) + bg[1] * bgBlend) * 255);
-		const finalB = Math.round((dyingRgb[2] * (1 - bgBlend) + bg[2] * bgBlend) * 255);
-		
-		return `rgb(${finalR}, ${finalG}, ${finalB})`;
+		previewPlaying = false;
+		previewApi?.stepOnce();
 	}
 
 	function togglePreviewPlay() {
 		previewPlaying = !previewPlaying;
-		if (previewPlaying) runPreviewLoop();
-	}
-
-	function runPreviewLoop() {
-		if (!previewPlaying) return;
-		const now = performance.now();
-		if (now - lastPreviewStep > 120) {
-			stepPreview();
-			lastPreviewStep = now;
-		}
-		previewAnimationId = requestAnimationFrame(runPreviewLoop);
 	}
 
 	function updateRuleString() {
@@ -1348,27 +653,8 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 				// Apply changes to simulation
 				applyToCanvas();
 
-				// Re-randomize preview with new settings
-				const density = rule.density ?? 0.25;
-				const gridSize = PREVIEW_SIZE_X * previewSizeY;
-				previewGrid = Array.from({ length: gridSize }, () => {
-					if (Math.random() < density) {
-						if (numStates > 2) {
-							if (Math.random() < 0.6) {
-								return 1;
-							} else {
-								const dyingStates = numStates - 2;
-								const weightedRand = Math.pow(Math.random(), 1.5);
-								const dyingState = 2 + Math.floor(weightedRand * dyingStates);
-								return Math.min(dyingState, numStates - 1);
-							}
-						} else {
-							return 1;
-						}
-					}
-					return 0;
-				});
-				previewNextGrid = [...previewGrid];
+				// Reset the preview with the new settings
+				randomizePreview();
 
 			} catch (err) {
 				alert('Failed to parse rule file: ' + (err instanceof Error ? err.message : 'Unknown error'));
@@ -1781,7 +1067,24 @@ import { getSimulationState, BOUNDARY_MODES, type BoundaryMode, getSimulationRef
 				<span class="label preview">Preview</span>
 				<span class="hint">Live test</span>
 				<div class="preview-area">
-					<canvas bind:this={previewCanvas} width={108} height={108} class="canvas"></canvas>
+					<LifeCanvas
+						bind:this={previewApi}
+						bind:playing={previewPlaying}
+						width={108}
+						height={108}
+						gridWidth={PREVIEW_SIZE_X}
+						gridHeight={previewSizeY}
+						rule={simState.currentRule}
+						speed={8}
+						seed={{ kind: 'random', density: 0.3, includeSpectrum: true }}
+						showGrid={false}
+						neighborShading={1}
+						spectrumMode={1}
+						spectrumFrequency={simState.spectrumFrequency}
+						isLightTheme={simState.isLightTheme}
+						aliveColor={simState.aliveColor}
+						className="canvas"
+					/>
 					<div class="preview-btns">
 						<button class="pbtn" class:active={previewPlaying} onclick={togglePreviewPlay} title="Play/Pause">
 							{#if previewPlaying}

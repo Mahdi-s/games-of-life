@@ -10,7 +10,8 @@
     "svelte": "^5.0.0"
   },
   "dependencies": {
-    "@games-of-life/core": "0.0.0"
+    "@games-of-life/core": "0.0.0",
+    "@games-of-life/webgpu": "0.0.0"
   }
 }
 
