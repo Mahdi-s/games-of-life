@@ -26,6 +26,34 @@
 	const uiState = getUIState();
 	const modalStates = $derived(getModalStates());
 	let showSpeedSlider = $state(false);
+	let isSpeedDragging = $state(false);
+
+	const MAX_SPEED = 1000;
+
+	function clampSpeed(value: number): number {
+		if (!Number.isFinite(value)) return 1;
+		return Math.max(1, Math.min(MAX_SPEED, Math.round(value)));
+	}
+
+	// Non-linear mapping so low SPS has finer control and the slider isn’t “twitchy”.
+	// knob: 0..1000  -> speed: 1..1000 (quadratic)
+	function speedFromKnob(knob: number): number {
+		const t = Math.max(0, Math.min(1, knob / MAX_SPEED));
+		return clampSpeed(1 + t * t * (MAX_SPEED - 1));
+	}
+
+	function knobFromSpeed(speed: number): number {
+		const t = Math.sqrt((clampSpeed(speed) - 1) / (MAX_SPEED - 1));
+		return Math.round(t * MAX_SPEED);
+	}
+
+	let speedKnob = $state(knobFromSpeed(simState.speed));
+
+	$effect(() => {
+		// Keep knob in sync with external changes (hotkeys, other UI), without fighting user drag.
+		if (isSpeedDragging) return;
+		speedKnob = knobFromSpeed(simState.speed);
+	});
 
 	// Use UI state for brush popup so Canvas can also track it
 	let showBrushSlider = $derived(uiState.showBrushPopup);
@@ -152,7 +180,38 @@
 			{#if showSpeedSlider}
 				<div class="slider-popup">
 					<span>{simState.speed} sps</span>
-					<input type="range" min="1" max="2000" bind:value={simState.speed} />
+					<input
+						type="range"
+						min="0"
+						max={MAX_SPEED}
+						step="1"
+						value={speedKnob}
+						onpointerdown={() => (isSpeedDragging = true)}
+						onpointerup={() => (isSpeedDragging = false)}
+						onchange={(e) => {
+							const knob = Number((e.currentTarget as HTMLInputElement).value);
+							speedKnob = knob;
+							simState.speed = speedFromKnob(knob);
+						}}
+						oninput={(e) => {
+							const knob = Number((e.currentTarget as HTMLInputElement).value);
+							speedKnob = knob;
+							simState.speed = speedFromKnob(knob);
+						}}
+					/>
+					<input
+						type="number"
+						min="1"
+						max={MAX_SPEED}
+						step="1"
+						value={simState.speed}
+						onchange={(e) => {
+							const v = clampSpeed(Number((e.currentTarget as HTMLInputElement).value));
+							simState.speed = v;
+						}}
+						class="speed-number"
+						aria-label="Speed (steps per second)"
+					/>
 				</div>
 			{/if}
 		</div>
@@ -659,6 +718,17 @@
 		outline: none;
 		margin: 0;
 		padding: 0;
+	}
+
+	.speed-number {
+		width: 100%;
+		padding: 6px 8px;
+		border-radius: 6px;
+		border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.12));
+		background: var(--ui-input-bg, rgba(0, 0, 0, 0.2));
+		color: var(--ui-text, #ddd);
+		font-size: 12px;
+		line-height: 1.2;
 	}
 
 	.slider-popup input[type='range']::-webkit-slider-runnable-track {

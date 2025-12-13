@@ -95,7 +95,8 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 
 	// Animation
 	let animationId: number | null = null;
-	let lastStepTime = 0;
+	let lastFrameTime = 0;
+	let simAccMs = 0;
 
 
 
@@ -279,33 +280,35 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 		if (simState.isPlaying) {
 			const stepMs = 1000 / Math.max(1, simState.speed);
 
-			// Initialize timing baseline on first frame (or after pause/resume).
-			if (lastStepTime === 0) lastStepTime = timestamp;
+			// Accumulate time since last frame (clamped to avoid massive catch-up).
+			if (lastFrameTime === 0) lastFrameTime = timestamp;
+			let frameDt = timestamp - lastFrameTime;
+			lastFrameTime = timestamp;
+			frameDt = Math.min(frameDt, 50);
+			simAccMs += frameDt;
 
-			// How much time has accumulated since last sim step.
-			let elapsedMs = timestamp - lastStepTime;
+			// Keep the UI smooth by giving stepping a time budget each frame.
+			const frameStart = performance.now();
+			const stepBudgetMs = 6;
+			const hardMaxStepsPerFrame = 64;
 
-			// Avoid huge catch-up bursts (e.g. tab was backgrounded).
-			// We’d rather “drop” simulation time than freeze the UI.
-			elapsedMs = Math.min(elapsedMs, 250);
-
-			const maxStepsPerFrame = 64;
-			const stepsToRun = Math.min(maxStepsPerFrame, Math.floor(elapsedMs / stepMs));
-
-			if (stepsToRun > 0) {
-				for (let i = 0; i < stepsToRun; i++) {
-					// Apply continuous seeding per step if enabled
-					if (simState.seedingEnabled && simState.seedingRate > 0) {
-						simulation.continuousSeed(simState.seedingRate, simState.seedPattern, simState.seedAlive);
-					}
-					simulation.step();
+			let stepsRan = 0;
+			while (simAccMs >= stepMs && stepsRan < hardMaxStepsPerFrame) {
+				if (simState.seedingEnabled && simState.seedingRate > 0) {
+					simulation.continuousSeed(simState.seedingRate, simState.seedPattern, simState.seedAlive);
 				}
-				simState.incrementGenerationBy(stepsToRun);
-				lastStepTime += stepsToRun * stepMs;
+				simulation.step();
+				simAccMs -= stepMs;
+				stepsRan++;
+
+				if (performance.now() - frameStart > stepBudgetMs) break;
 			}
+
+			if (stepsRan > 0) simState.incrementGenerationBy(stepsRan);
 		} else {
 			// Prevent a giant catch-up when resuming play.
-			lastStepTime = 0;
+			lastFrameTime = 0;
+			simAccMs = 0;
 		}
 
 		// Sync view state including brush preview
