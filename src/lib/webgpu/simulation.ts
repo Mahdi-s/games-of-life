@@ -8,10 +8,7 @@ import type { CARule, VitalityMode } from '../utils/rules.js';
 import { getDefaultRule } from '../utils/rules.js';
 import { SEED_PATTERNS, SEED_PATTERNS_HEX, type SeedPatternId, type BoundaryMode } from '../stores/simulation.svelte.js';
 import { boundaryToIndex, neighborhoodToIndex } from '@games-of-life/core';
-
-// Import shaders as raw text
-import computeShaderCode from './shaders/life-compute.wgsl?raw';
-import renderShaderCode from './shaders/life-render.wgsl?raw';
+import { lifeComputeWgsl, lifeRenderWgsl } from '@games-of-life/webgpu';
 
 export interface SimulationConfig {
 	width: number;
@@ -152,7 +149,7 @@ export class Simulation {
 		// Compute pipeline
 		const computeShaderModule = this.device.createShaderModule({
 			label: 'CA Compute Shader',
-			code: computeShaderCode
+			code: lifeComputeWgsl
 		});
 
 		this.computeBindGroupLayout = this.device.createBindGroupLayout({
@@ -195,7 +192,7 @@ export class Simulation {
 		// Render pipeline
 		const renderShaderModule = this.device.createShaderModule({
 			label: 'CA Render Shader',
-			code: renderShaderCode
+			code: lifeRenderWgsl
 		});
 
 		this.renderBindGroupLayout = this.device.createBindGroupLayout({
