@@ -6,7 +6,7 @@
 import type { CARule, VitalityMode, VitalitySettings, CurvePoint } from '../utils/rules.js';
 import { getDefaultRule, DEFAULT_VITALITY } from '../utils/rules.js';
 import { sampleVitalityCurve } from '@games-of-life/core';
-import type { Simulation } from '../webgpu/simulation.js';
+import type { Simulation } from '@games-of-life/webgpu';
 
 // Simulation state
 let isPlaying = $state(true); // Start playing by default

@@ -2,9 +2,9 @@
 
 // WebGPU
 export { initWebGPU, isWebGPUSupported, createBuffer, createEmptyBuffer } from '@games-of-life/webgpu';
-export { Simulation, createSimulation } from './webgpu/simulation.js';
+export { Simulation } from '@games-of-life/webgpu';
 export type { WebGPUContext, WebGPUError } from '@games-of-life/webgpu';
-export type { SimulationConfig, ViewState } from './webgpu/simulation.js';
+export type { SimulationConfig, ViewState } from '@games-of-life/webgpu';
 
 // Rules
 export {

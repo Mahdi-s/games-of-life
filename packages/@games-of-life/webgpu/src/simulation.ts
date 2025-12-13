@@ -3,12 +3,23 @@
  * Manages WebGPU compute and render pipelines with double-buffering
  */
 
-import type { WebGPUContext } from '@games-of-life/webgpu';
-import type { CARule, VitalityMode } from '../utils/rules.js';
-import { getDefaultRule } from '../utils/rules.js';
-import { SEED_PATTERNS, SEED_PATTERNS_HEX, type SeedPatternId, type BoundaryMode } from '@games-of-life/core';
-import { boundaryToIndex, neighborhoodToIndex } from '@games-of-life/core';
-import { lifeComputeWgsl, lifeRenderWgsl } from '@games-of-life/webgpu';
+import type { WebGPUContext } from './context.js';
+import type { BoundaryMode, NeighborhoodId, SeedPatternId, VitalityMode } from '@games-of-life/core';
+import { SEED_PATTERNS, SEED_PATTERNS_HEX, boundaryToIndex, neighborhoodToIndex } from '@games-of-life/core';
+import { lifeComputeWgsl, lifeRenderWgsl } from './shaders/index.js';
+
+/**
+ * Rule shape required by the WebGPU kernel.
+ *
+ * Note: `neighborhood` is optional for compatibility with app-side rule objects;
+ * we default it to `'moore'` internally anywhere an encoding is needed.
+ */
+export interface CARule {
+	birthMask: number;
+	surviveMask: number;
+	numStates: number;
+	neighborhood?: NeighborhoodId;
+}
 
 export interface SimulationConfig {
 	width: number;
@@ -1876,20 +1887,5 @@ export class Simulation {
 		this.renderParamsBuffer.destroy();
 		this.readbackBuffer.destroy();
 	}
-}
-
-/**
- * Create a new simulation with default settings
- */
-export function createSimulation(
-	ctx: WebGPUContext,
-	width = 512,
-	height = 512
-): Simulation {
-	return new Simulation(ctx, {
-		width,
-		height,
-		rule: getDefaultRule()
-	});
 }
 

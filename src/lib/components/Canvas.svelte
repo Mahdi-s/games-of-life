@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { initWebGPU, type WebGPUContext, type WebGPUError } from '@games-of-life/webgpu';
-import { Simulation } from '../webgpu/simulation.js';
+	import { Simulation } from '@games-of-life/webgpu';
 import { getSimulationState, getUIState, GRID_SCALES, type GridScale, type SpectrumMode, type BrushShape, setSimulationRef, wasBrushEditorSnapshotTaken, markBrushEditorSnapshotTaken, markBrushEditorEdited } from '../stores/simulation.svelte.js';
 import { addSnapshotWithBefore, resetHistory } from '../stores/history.js';
 	import { isTourActive } from '../utils/tour.js';

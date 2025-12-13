@@ -1,4 +1,4 @@
-import type { Simulation } from '../webgpu/simulation.js';
+import type { Simulation } from '@games-of-life/webgpu';
 import type { CARule } from '../utils/rules.js';
 import type { BoundaryMode } from './simulation.svelte.js';
 import { getSimulationState } from './simulation.svelte.js';
