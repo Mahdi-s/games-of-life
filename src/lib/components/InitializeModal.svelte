@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { getSimulationState, SEED_PATTERNS, SEED_PATTERNS_HEX, GRID_SCALES, type SeedPatternId, type GridScale } from '../stores/simulation.svelte.js';
+	import { SEED_PATTERNS, SEED_PATTERNS_HEX, type SeedPatternId } from '@games-of-life/core';
+	import { getSimulationState, GRID_SCALES, type GridScale } from '../stores/simulation.svelte.js';
 	import { draggable } from '../utils/draggable.js';
 	import { bringToFront, setModalPosition, getModalState } from '../stores/modalManager.svelte.js';
 	import { onMount, onDestroy } from 'svelte';
