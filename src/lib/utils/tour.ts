@@ -54,7 +54,8 @@ interface GalleryRule {
 	initType: InitType;
 	density: number;
 	seedRate: number; // Continuous seeding rate
-	stimPeriod?: number; // Frames between disk stimulation (0 = never)
+	stimPeriod?: number; // Frames between stimulation pulses (0 = never)
+	stimShape?: 'disk' | 'horizontalLine' | 'verticalLine';
 	initText?: string; // For text init type
 	diskRadius?: number; // Custom disk radius (default: MINI_SIM_SIZE * 0.18)
 	// Vitality settings (how dying cells contribute to neighbor counts)
@@ -157,9 +158,11 @@ const GALLERY_RULES: GalleryRule[] = [
 		surviveMask: 0b1111111110000001111100000, // 8-12, 16-24
 		numStates: 64,
 		neighborhood: 'extendedMoore',
-		initType: 'random',
-		density: 0.2,
-		seedRate: 0.0009,
+		initType: 'centeredDisk',
+		density: 1.0,
+		seedRate: 0.0,
+		stimPeriod: 0,
+		diskRadius: 4,
 		vitalityMode: 'none'
 	},
 	{
@@ -183,6 +186,7 @@ const GALLERY_RULES: GalleryRule[] = [
 		density: 1.0,
 		seedRate: 0.0,
 		stimPeriod: 90,
+		stimShape: 'horizontalLine',
 		diskRadius: 6,
 		vitalityMode: 'none'
 	}
@@ -427,11 +431,33 @@ function applyStimulation(grid: Uint32Array, rule: GalleryRule): void {
 		// Re-apply text pattern additively
 		addTextToGrid(grid, rule.initText);
 	} else {
+		const stimShape = rule.stimShape ?? 'disk';
+
 		// Default: apply a solid disk at center additively
 		// Use the same hex-aware coordinate system as initMiniSimGrid
 		const center = Math.floor(MINI_SIM_SIZE / 2);
 		const radius = rule.diskRadius ?? Math.round(MINI_SIM_SIZE * 0.18);
 		const isHex = rule.neighborhood === 'hexagonal' || rule.neighborhood === 'extendedHexagonal';
+
+		if (stimShape === 'horizontalLine' || stimShape === 'verticalLine') {
+			const halfLen = Math.max(2, Math.floor(radius));
+			if (stimShape === 'horizontalLine') {
+				const y = center;
+				for (let x = center - halfLen; x <= center + halfLen; x++) {
+					if (x < 0 || x >= MINI_SIM_SIZE) continue;
+					const idx = y * MINI_SIM_SIZE + x;
+					if (grid[idx] === 0) grid[idx] = 1;
+				}
+			} else {
+				const x = center;
+				for (let y = center - halfLen; y <= center + halfLen; y++) {
+					if (y < 0 || y >= MINI_SIM_SIZE) continue;
+					const idx = y * MINI_SIM_SIZE + x;
+					if (grid[idx] === 0) grid[idx] = 1;
+				}
+			}
+			return;
+		}
 		
 		if (isHex) {
 			// For hex grids: apply X-offset for odd rows, no Y scaling
