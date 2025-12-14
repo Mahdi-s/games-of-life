@@ -1268,6 +1268,10 @@ async function startGalleryWebGPU(accentColor: string, isLight: boolean): Promis
 			}
 		});
 
+		// Important for hex grids: center the grid within the square canvas.
+		// Otherwise Y will look offset because hex rows are vertically compressed (HEX_HEIGHT_RATIO).
+		sim.resetView(canvas.width, canvas.height, false);
+
 		sim.setView({
 			showGrid: false,
 			isLightTheme: initialIsLight,
