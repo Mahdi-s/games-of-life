@@ -1171,10 +1171,8 @@ function applyVitalityView(sim: Simulation, rule: GalleryRule): void {
 function seedWebGPUSim(sim: Simulation, rule: GalleryRule): void {
 	const isHex = rule.neighborhood === 'hexagonal' || rule.neighborhood === 'extendedHexagonal';
 	const { width, height } = sim.getSize();
-	// Must match axis/brush visual center conventions for hex.
-	// (See `life-render.wgsl` hex axes: center_y = (grid_height/2)*HEX_HEIGHT_RATIO)
-	const cx = width / 2;
-	const cy = isHex ? (height / 2) * HEX_HEIGHT_RATIO : height / 2;
+	// Center for seeding: use the same snapped center as disk stimuli (matches brush geometry).
+	const { cx, cy } = getDiskCenterForGrid(isHex, width, height);
 
 	if (rule.initType === 'random') {
 		sim.randomize(rule.density, true);
@@ -1190,19 +1188,13 @@ function seedWebGPUSim(sim: Simulation, rule: GalleryRule): void {
 
 	if (rule.initType === 'centeredDisk') {
 		const radius = rule.diskRadius ?? Math.round(width * 0.18);
-		const r2 = radius * radius;
-
-		for (let y = 0; y < height; y++) {
-			for (let x = 0; x < width; x++) {
-				const p = isHex ? getCellCenterHex(x, y) : getCellCenterSquare(x, y);
-				let dx = p.x - cx;
-				let dy = p.y - cy;
-				if (isHex) {
-					dx *= 2;
-					dy *= 2;
-				}
-				if (dx * dx + dy * dy <= r2) sim.setCell(x, y, 1);
-			}
+		// Use the engine’s brush circle implementation (the “known good” disk).
+		// For hex, paintBrush uses hex visual distance under the hood.
+		if (isHex) {
+			const cell = nearestHexCell(cx, cy, width, height);
+			sim.paintBrush(cell.x, cell.y, radius, 1, 'solid', { shape: 'circle' });
+		} else {
+			sim.paintBrush(Math.floor(cx), Math.floor(cy), radius, 1, 'solid', { shape: 'circle' });
 		}
 		return;
 	}
@@ -1268,18 +1260,14 @@ function applyStimulationWebGPU(sim: Simulation, rule: GalleryRule): void {
 	}
 
 	// Disk
-	const r2 = radius * radius;
-	for (let y = 0; y < height; y++) {
-		for (let x = 0; x < width; x++) {
-			const p = isHex ? getCellCenterHex(x, y) : getCellCenterSquare(x, y);
-			let dx = p.x - cx;
-			let dy = p.y - cy;
-			if (isHex) {
-				dx *= 2;
-				dy *= 2;
-			}
-			if (dx * dx + dy * dy <= r2) sim.setCell(x, y, 1);
-		}
+	// Use the engine’s brush circle implementation (same disk logic as user brush).
+	// Note: paintBrush expects grid coordinates (cell indices), not visual coords.
+	// We snap to the nearest cell using the same helper as getDiskCenterForGrid.
+	if (isHex) {
+		const cell = nearestHexCell(cx, cy, width, height);
+		sim.paintBrush(cell.x, cell.y, radius, 1, 'solid', { shape: 'circle' });
+	} else {
+		sim.paintBrush(Math.floor(cx), Math.floor(cy), radius, 1, 'solid', { shape: 'circle' });
 	}
 }
 
