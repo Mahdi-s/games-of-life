@@ -174,15 +174,15 @@ const GALLERY_RULES: GalleryRule[] = [
 		vitalityMode: 'none'
 	},
 	{
-		name: 'Hex2 Aurora',
-		birthMask: 0b0000011000000, // 5, 6
-		surviveMask: 0b0000111100000, // 4, 5, 6, 7
-		numStates: 24,
+		name: 'Hex2 Neo Brain 2',
+		birthMask: 0b0001101000, // 3, 5, 6
+		surviveMask: 0b0111100000, // 5, 6, 7, 8
+		numStates: 128,
 		neighborhood: 'extendedHexagonal',
 		initType: 'centeredDisk',
 		density: 1.0,
 		seedRate: 0.0,
-		stimPeriod: 0,
+		stimPeriod: 90,
 		diskRadius: 6,
 		vitalityMode: 'none'
 	}
