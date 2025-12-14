@@ -118,7 +118,7 @@ const GALLERY_RULES: GalleryRule[] = [
 		density: 0.5,
 		seedRate: 0,
 		stimPeriod: 80,
-		diskRadius: 7, // radius for hex grid
+		diskRadius: 9, // slightly larger seed
 		vitalityMode: 'curve',
 		curvePoints: [
 			{ x: 0, y: 0 },
@@ -138,7 +138,7 @@ const GALLERY_RULES: GalleryRule[] = [
 		density: 1.0,
 		seedRate: 0,
 		stimPeriod: 100,
-		diskRadius: 5, // smaller seed for better symmetry
+		diskRadius: 7, // larger seed (still symmetric)
 		vitalityMode: 'curve',
 		curvePoints: [
 			{ x: 0, y: 0 },
@@ -207,7 +207,7 @@ const GALLERY_RULES: GalleryRule[] = [
 		stimPeriod: 60,
 		stimShape: 'disk',
 		stimRevive: 'deadOrDying',
-		diskRadius: 8,
+		diskRadius: 10,
 		vitalityMode: 'none'
 	}
 ];
