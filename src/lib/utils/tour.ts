@@ -332,15 +332,15 @@ function getCellCenterHex(x: number, y: number): { x: number; y: number } {
 	return { x: centerX, y: centerY };
 }
 
-function getDiskCenter(isHex: boolean): { cx: number; cy: number } {
+function getDiskCenterForGrid(isHex: boolean, gridWidth: number, gridHeight: number): { cx: number; cy: number } {
 	if (!isHex) {
 		// Match square axis center: grid_width/2, grid_height/2
-		return { cx: MINI_SIM_SIZE / 2, cy: MINI_SIM_SIZE / 2 };
+		return { cx: gridWidth / 2, cy: gridHeight / 2 };
 	}
 	// Match hex axis center in shader:
 	// center_x = grid_width/2
 	// center_y = (grid_height/2) * HEX_HEIGHT_RATIO
-	return { cx: MINI_SIM_SIZE / 2, cy: (MINI_SIM_SIZE / 2) * HEX_HEIGHT_RATIO };
+	return { cx: gridWidth / 2, cy: (gridHeight / 2) * HEX_HEIGHT_RATIO };
 }
 
 // Initialize a single mini simulation grid
@@ -353,7 +353,7 @@ function initMiniSimGrid(rule: GalleryRule): Uint32Array {
 			// Solid disk at center
 			// Use custom radius if provided, otherwise ~18% of grid
 			const radius = rule.diskRadius ?? Math.round(MINI_SIM_SIZE * 0.18);
-			const { cx, cy } = getDiskCenter(isHex);
+			const { cx, cy } = getDiskCenterForGrid(isHex, MINI_SIM_SIZE, MINI_SIM_SIZE);
 			const r2 = radius * radius;
 			
 			if (isHex) {
@@ -389,7 +389,7 @@ function initMiniSimGrid(rule: GalleryRule): Uint32Array {
 			// Ring pattern
 			const outerRadius = 7;
 			const innerRadius = 3;
-			const { cx, cy } = getDiskCenter(false);
+			const { cx, cy } = getDiskCenterForGrid(false, MINI_SIM_SIZE, MINI_SIM_SIZE);
 			const outer2 = outerRadius * outerRadius;
 			const inner2 = innerRadius * innerRadius;
 			for (let y = 0; y < MINI_SIM_SIZE; y++) {
@@ -501,7 +501,7 @@ function applyStimulation(grid: Uint32Array, rule: GalleryRule): void {
 		// Use the same hex-aware coordinate system as initMiniSimGrid
 		const radius = rule.diskRadius ?? Math.round(MINI_SIM_SIZE * 0.18);
 		const isHex = rule.neighborhood === 'hexagonal' || rule.neighborhood === 'extendedHexagonal';
-		const { cx, cy } = getDiskCenter(isHex);
+		const { cx, cy } = getDiskCenterForGrid(isHex, MINI_SIM_SIZE, MINI_SIM_SIZE);
 		const r2 = radius * radius;
 
 		if (stimShape === 'horizontalLine' || stimShape === 'verticalLine') {
@@ -1197,7 +1197,7 @@ function applyStimulationWebGPU(sim: Simulation, rule: GalleryRule): void {
 	const stimShape = rule.stimShape ?? 'disk';
 	const { width, height } = sim.getSize();
 	const isHex = rule.neighborhood === 'hexagonal' || rule.neighborhood === 'extendedHexagonal';
-	const { cx, cy } = getDiskCenter(isHex);
+	const { cx, cy } = getDiskCenterForGrid(isHex, width, height);
 	const radius = rule.diskRadius ?? Math.round(width * 0.18);
 
 	if (stimShape === 'horizontalLine' || stimShape === 'verticalLine') {
