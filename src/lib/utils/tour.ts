@@ -1257,9 +1257,15 @@ async function startGalleryWebGPU(accentColor: string, isLight: boolean): Promis
 		const ctxRes = createWebGPUContext(canvas, dev.value.device, dev.value.format);
 		if (!ctxRes.ok) continue;
 
+		// Hex grids are vertically compressed by HEX_HEIGHT_RATIO in the renderer.
+		// To keep the *visual* sim square inside a square canvas, use more rows for hex sims.
+		const isHex = rule.neighborhood === 'hexagonal' || rule.neighborhood === 'extendedHexagonal';
+		const gridWidth = MINI_SIM_SIZE;
+		const gridHeight = isHex ? Math.round(MINI_SIM_SIZE / HEX_HEIGHT_RATIO) : MINI_SIM_SIZE;
+
 		const sim = new Simulation(ctxRes.value, {
-			width: MINI_SIM_SIZE,
-			height: MINI_SIM_SIZE,
+			width: gridWidth,
+			height: gridHeight,
 			rule: {
 				birthMask: rule.birthMask,
 				surviveMask: rule.surviveMask,
