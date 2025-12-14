@@ -37,6 +37,8 @@ function notifyTourCompleted() {
 // 112px canvas with 112x112 cells => 1px per cell (denser without changing spatial dimensions).
 const MINI_SIM_SIZE = 112; // Grid size for each mini sim (112x112 cells)
 const MINI_SIM_CELL_SIZE = 1; // Pixel size per cell (112px canvas)
+// Must match `HEX_HEIGHT_RATIO` in the render shader.
+const HEX_HEIGHT_RATIO = 0.866025404; // sqrt(3)/2
 
 // Initialization types for different visual effects
 type InitType = 'random' | 'centeredDisk' | 'symmetricCross' | 'randomLow' | 'centeredRing' | 'text';
@@ -323,21 +325,22 @@ function getCellCenterSquare(x: number, y: number): { x: number; y: number } {
 }
 
 function getCellCenterHex(x: number, y: number): { x: number; y: number } {
-	// Odd-r offset coordinates: odd rows are shifted right by +0.5
+	// Mirror `get_hex_center` in `packages/@games-of-life/webgpu/src/shaders/life-render.wgsl`
 	const rowOffset = (y & 1) === 1 ? 0.5 : 0;
-	return { x: x + 0.5 + rowOffset, y: y + 0.5 };
+	const centerX = x + 0.5 + rowOffset;
+	const centerY = (y + 0.5) * HEX_HEIGHT_RATIO;
+	return { x: centerX, y: centerY };
 }
 
 function getDiskCenter(isHex: boolean): { cx: number; cy: number } {
-	// Use pixel-aligned center between cells for even-sized grids (e.g. 112x112).
-	// This avoids the “off-by-one-cell” feeling when looking at perfectly symmetric seeds/stimuli.
-	const cy = MINI_SIM_SIZE / 2;
-	if (!isHex) return { cx: MINI_SIM_SIZE / 2, cy };
-
-	// Choose the center row parity deterministically from the row just above the midline.
-	const centerRow = Math.floor(cy - 0.5);
-	const rowOffset = (centerRow & 1) === 1 ? 0.5 : 0;
-	return { cx: MINI_SIM_SIZE / 2 + rowOffset, cy };
+	if (!isHex) {
+		// Match square axis center: grid_width/2, grid_height/2
+		return { cx: MINI_SIM_SIZE / 2, cy: MINI_SIM_SIZE / 2 };
+	}
+	// Match hex axis center in shader:
+	// center_x = grid_width/2
+	// center_y = (grid_height/2) * HEX_HEIGHT_RATIO
+	return { cx: MINI_SIM_SIZE / 2, cy: (MINI_SIM_SIZE / 2) * HEX_HEIGHT_RATIO };
 }
 
 // Initialize a single mini simulation grid
@@ -357,8 +360,11 @@ function initMiniSimGrid(rule: GalleryRule): Uint32Array {
 				for (let y = 0; y < MINI_SIM_SIZE; y++) {
 					for (let x = 0; x < MINI_SIM_SIZE; x++) {
 						const p = getCellCenterHex(x, y);
-						const dx = p.x - cx;
-						const dy = p.y - cy;
+						let dx = p.x - cx;
+						let dy = p.y - cy;
+						// Match shader’s “visual distance” scaling for hex
+						dx *= 2;
+						dy *= 2;
 						if (dx * dx + dy * dy <= r2) {
 							grid[y * MINI_SIM_SIZE + x] = 1;
 						}
@@ -525,8 +531,10 @@ function applyStimulation(grid: Uint32Array, rule: GalleryRule): void {
 			for (let y = 0; y < MINI_SIM_SIZE; y++) {
 				for (let x = 0; x < MINI_SIM_SIZE; x++) {
 					const p = getCellCenterHex(x, y);
-					const dx = p.x - cx;
-					const dy = p.y - cy;
+					let dx = p.x - cx;
+					let dy = p.y - cy;
+					dx *= 2;
+					dy *= 2;
 					if (dx * dx + dy * dy <= r2) {
 						const idx = y * MINI_SIM_SIZE + x;
 						if (shouldRevive(grid[idx])) grid[idx] = 1;
@@ -1138,8 +1146,12 @@ function seedWebGPUSim(sim: Simulation, rule: GalleryRule): void {
 		for (let y = 0; y < height; y++) {
 			for (let x = 0; x < width; x++) {
 				const p = isHex ? getCellCenterHex(x, y) : getCellCenterSquare(x, y);
-				const dx = p.x - cx;
-				const dy = p.y - cy;
+				let dx = p.x - cx;
+				let dy = p.y - cy;
+				if (isHex) {
+					dx *= 2;
+					dy *= 2;
+				}
 				if (dx * dx + dy * dy <= r2) sim.setCell(x, y, 1);
 			}
 		}
@@ -1182,8 +1194,8 @@ function seedWebGPUSim(sim: Simulation, rule: GalleryRule): void {
 function applyStimulationWebGPU(sim: Simulation, rule: GalleryRule): void {
 	const stimShape = rule.stimShape ?? 'disk';
 	const { width, height } = sim.getSize();
-	const cx = width / 2;
-	const cy = height / 2;
+	const isHex = rule.neighborhood === 'hexagonal' || rule.neighborhood === 'extendedHexagonal';
+	const { cx, cy } = getDiskCenter(isHex);
 	const radius = rule.diskRadius ?? Math.round(width * 0.18);
 
 	if (stimShape === 'horizontalLine' || stimShape === 'verticalLine') {
@@ -1207,13 +1219,16 @@ function applyStimulationWebGPU(sim: Simulation, rule: GalleryRule): void {
 	}
 
 	// Disk
-	const isHex = rule.neighborhood === 'hexagonal' || rule.neighborhood === 'extendedHexagonal';
 	const r2 = radius * radius;
 	for (let y = 0; y < height; y++) {
 		for (let x = 0; x < width; x++) {
 			const p = isHex ? getCellCenterHex(x, y) : getCellCenterSquare(x, y);
-			const dx = p.x - cx;
-			const dy = p.y - cy;
+			let dx = p.x - cx;
+			let dy = p.y - cy;
+			if (isHex) {
+				dx *= 2;
+				dy *= 2;
+			}
 			if (dx * dx + dy * dy <= r2) sim.setCell(x, y, 1);
 		}
 	}
