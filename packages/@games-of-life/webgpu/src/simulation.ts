@@ -1886,6 +1886,8 @@ export class Simulation {
 		this.computeParamsBuffer.destroy();
 		this.renderParamsBuffer.destroy();
 		this.readbackBuffer.destroy();
+		this.textBitmapBuffer.destroy();
+		this.vitalityCurveBuffer.destroy();
 	}
 }
 

@@ -1,5 +1,6 @@
 import { driver, type DriveStep, type Config } from 'driver.js';
 import { stepBsGenerationsCpu, type CpuStepConfig, sampleVitalityCurve, spectrumModeToIndex } from '@games-of-life/core';
+import { Simulation, createWebGPUContext, isWebGPUSupported, requestWebGPUDevice } from '@games-of-life/webgpu';
 
 // Tour state management
 const TOUR_COMPLETED_KEY = 'games-of-life-tour-completed';
@@ -225,6 +226,21 @@ let gallerySimStates: MiniSimState[] = [];
 let galleryInterval: number | null = null;
 let selectedGalleryIndex: number | null = null;
 let userActivelySelectedRule = false; // True only when user clicks to select a rule
+
+// WebGPU gallery (preferred) -------------------------------------------------
+type WebGPUGallerySim = {
+	canvas: HTMLCanvasElement;
+	sim: Simulation;
+	rule: GalleryRule;
+	ruleIndex: number;
+	frameCount: number;
+	lastFrameT: number;
+	accMs: number;
+};
+
+let galleryGpuSims: WebGPUGallerySim[] = [];
+let galleryGpuRaf: number | null = null;
+let galleryGpuDevice: GPUDevice | null = null;
 
 // Get neighbor offsets for different neighborhoods
 // For hexagonal grids, offsets depend on whether the row is odd or even
@@ -1067,6 +1083,234 @@ function buildCpuCfg(rule: GalleryRule): CpuStepConfig {
 	};
 }
 
+function applyVitalityView(sim: Simulation, rule: GalleryRule): void {
+	const curveSamples =
+		rule.vitalityMode === 'curve' && rule.curvePoints
+			? sampleVitalityCurve(rule.curvePoints)
+			: new Array(128).fill(0);
+
+	sim.setView({
+		vitalityMode: rule.vitalityMode ?? 'none',
+		vitalityThreshold: 1.0,
+		vitalityGhostFactor: rule.ghostFactor ?? 0.0,
+		vitalitySigmoidSharpness: 10.0,
+		vitalityDecayPower: 1.0,
+		vitalityCurveSamples: curveSamples,
+		neighborShading: 2
+	});
+}
+
+function seedWebGPUSim(sim: Simulation, rule: GalleryRule): void {
+	const isHex = rule.neighborhood === 'hexagonal' || rule.neighborhood === 'extendedHexagonal';
+	const { width, height } = sim.getSize();
+	const center = Math.floor(width / 2);
+
+	if (rule.initType === 'random') {
+		sim.randomize(rule.density, true);
+		return;
+	}
+
+	if (rule.initType === 'randomLow') {
+		sim.randomize(rule.density * 0.5, true);
+		return;
+	}
+
+	sim.clear();
+
+	if (rule.initType === 'centeredDisk') {
+		const radius = rule.diskRadius ?? Math.round(width * 0.18);
+		const r2 = radius * radius;
+		const centerX = isHex && (center & 1) === 1 ? center + 0.5 : center;
+
+		for (let y = 0; y < height; y++) {
+			for (let x = 0; x < width; x++) {
+				const cellX = isHex && (y & 1) === 1 ? x + 0.5 : x;
+				const dx = cellX - centerX;
+				const dy = y - center;
+				if (dx * dx + dy * dy <= r2) sim.setCell(x, y, 1);
+			}
+		}
+		return;
+	}
+
+	if (rule.initType === 'centeredRing') {
+		const outerRadius = 7;
+		const innerRadius = 3;
+		const outer2 = outerRadius * outerRadius;
+		const inner2 = innerRadius * innerRadius;
+		for (let y = 0; y < height; y++) {
+			for (let x = 0; x < width; x++) {
+				const dx = x - center;
+				const dy = y - center;
+				const d2 = dx * dx + dy * dy;
+				if (d2 >= inner2 && d2 <= outer2) sim.setCell(x, y, 1);
+			}
+		}
+		return;
+	}
+
+	if (rule.initType === 'symmetricCross') {
+		for (let y = 0; y < height; y++) {
+			for (let x = 0; x < width; x++) {
+				const dx = Math.abs(x - center);
+				const dy = Math.abs(y - center);
+				if (dx < 3 || dy < 3) {
+					if (Math.random() < rule.density) sim.setCell(x, y, 1);
+				}
+			}
+		}
+		return;
+	}
+}
+
+function applyStimulationWebGPU(sim: Simulation, rule: GalleryRule): void {
+	const stimShape = rule.stimShape ?? 'disk';
+	const { width, height } = sim.getSize();
+	const center = Math.floor(width / 2);
+	const radius = rule.diskRadius ?? Math.round(width * 0.18);
+
+	if (stimShape === 'horizontalLine' || stimShape === 'verticalLine') {
+		const halfLen = Math.max(2, Math.floor(radius * 1.4));
+		if (stimShape === 'horizontalLine') {
+			const y = center;
+			for (let x = center - halfLen; x <= center + halfLen; x++) {
+				if (x < 0 || x >= width) continue;
+				sim.setCell(x, y, 1);
+			}
+		} else {
+			const x = center;
+			for (let y = center - halfLen; y <= center + halfLen; y++) {
+				if (y < 0 || y >= height) continue;
+				sim.setCell(x, y, 1);
+			}
+		}
+		return;
+	}
+
+	// Disk
+	const isHex = rule.neighborhood === 'hexagonal' || rule.neighborhood === 'extendedHexagonal';
+	const r2 = radius * radius;
+	const centerX = isHex && (center & 1) === 1 ? center + 0.5 : center;
+	for (let y = 0; y < height; y++) {
+		for (let x = 0; x < width; x++) {
+			const cellX = isHex && (y & 1) === 1 ? x + 0.5 : x;
+			const dx = cellX - centerX;
+			const dy = y - center;
+			if (dx * dx + dy * dy <= r2) sim.setCell(x, y, 1);
+		}
+	}
+}
+
+async function startGalleryWebGPU(accentColor: string, isLight: boolean): Promise<boolean> {
+	const dev = await requestWebGPUDevice();
+	if (!dev.ok) return false;
+	galleryGpuDevice = dev.value.device;
+
+	const initialIsLight = isLight;
+	const indices = GALLERY_RULES.map((_, i) => i);
+	for (let i = indices.length - 1; i > 0; i--) {
+		const j = Math.floor(Math.random() * (i + 1));
+		[indices[i], indices[j]] = [indices[j], indices[i]];
+	}
+
+	const sims: WebGPUGallerySim[] = [];
+	for (let i = 0; i < GALLERY_RULES.length; i++) {
+		const rule = GALLERY_RULES[i];
+		const canvas = document.getElementById(`tour-gallery-${i}`) as HTMLCanvasElement | null;
+		if (!canvas) continue;
+
+		const ctxRes = createWebGPUContext(canvas, dev.value.device, dev.value.format);
+		if (!ctxRes.ok) continue;
+
+		const sim = new Simulation(ctxRes.value, {
+			width: MINI_SIM_SIZE,
+			height: MINI_SIM_SIZE,
+			rule: {
+				birthMask: rule.birthMask,
+				surviveMask: rule.surviveMask,
+				numStates: rule.numStates,
+				neighborhood: rule.neighborhood
+			}
+		});
+
+		sim.setView({
+			showGrid: false,
+			isLightTheme: initialIsLight,
+			aliveColor: parseColor(accentColor),
+			spectrumMode: getSpectrumMode(),
+			spectrumFrequency: 1.0,
+			brushRadius: -1
+		});
+
+		applyVitalityView(sim, rule);
+		seedWebGPUSim(sim, rule);
+		sim.render(canvas.width, canvas.height);
+
+		sims.push({ canvas, sim, rule, ruleIndex: i, frameCount: 0, lastFrameT: 0, accMs: 0 });
+	}
+
+	galleryGpuSims = sims;
+
+	// Reveal effect (CSS class only; simulation already running).
+	indices.forEach((stateIndex, revealOrder) => {
+		const entry = galleryGpuSims.find((s) => s.canvas.id === `tour-gallery-${stateIndex}`);
+		if (!entry) return;
+		setTimeout(() => {
+			entry.canvas.classList.add('loaded');
+			if (stateIndex === selectedGalleryIndex) entry.canvas.classList.add('selected');
+		}, revealOrder * 60 + 10);
+	});
+
+	// Click handlers
+	galleryGpuSims.forEach((state) => {
+		state.canvas.onclick = () => selectGalleryRule(state.ruleIndex);
+	});
+
+	const stepMs = 33; // ~30 sps
+	const loop = (t: number) => {
+		galleryGpuRaf = requestAnimationFrame(loop);
+		const currentAccent = getAccentColor();
+		const currentIsLight = getIsLightTheme();
+		const currentSpectrum = getSpectrumMode();
+
+		for (const state of galleryGpuSims) {
+			if (!state.canvas.classList.contains('loaded')) continue;
+
+			if (state.lastFrameT === 0) state.lastFrameT = t;
+			const dt = Math.min(50, t - state.lastFrameT);
+			state.lastFrameT = t;
+			state.accMs += dt;
+
+			// Update view colors live with theme.
+			state.sim.setView({
+				isLightTheme: currentIsLight,
+				aliveColor: parseColor(currentAccent),
+				spectrumMode: currentSpectrum
+			});
+
+			while (state.accMs >= stepMs) {
+				state.frameCount++;
+				if (state.rule.stimPeriod && state.rule.stimPeriod > 0 && state.frameCount % state.rule.stimPeriod === 0) {
+					applyStimulationWebGPU(state.sim, state.rule);
+				}
+
+				// Convert old per-cell probability seedRate -> per-1000-cells rate expected by Simulation.continuousSeed
+				if (state.rule.seedRate > 0) {
+					state.sim.continuousSeed(state.rule.seedRate * 1000, 'pixel', true);
+				}
+
+				state.sim.step();
+				state.accMs -= stepMs;
+			}
+
+			state.sim.render(state.canvas.width, state.canvas.height);
+		}
+	};
+
+	galleryGpuRaf = requestAnimationFrame(loop);
+	return galleryGpuSims.length > 0;
+}
+
 // Start the gallery of simulations with smooth loading
 function startGallery(accentColor: string, isLight: boolean): void {
 	stopGallery();
@@ -1080,6 +1324,7 @@ function startGallery(accentColor: string, isLight: boolean): void {
 	
 	// Use requestAnimationFrame for smoother initialization after DOM is ready
 	requestAnimationFrame(() => {
+		const startCpuGallery = () => {
 		const bgRgb: [number, number, number] = initialIsLight ? [232, 232, 236] : [10, 10, 15];
 		
 		gallerySimStates = GALLERY_RULES.map((rule, i) => {
@@ -1102,13 +1347,13 @@ function startGallery(accentColor: string, isLight: boolean): void {
 			
 			return {
 				grid: initMiniSimGrid(rule),
-				nextGrid: new Uint32Array(MINI_SIM_SIZE * MINI_SIM_SIZE), // Pre-allocate second buffer
+					nextGrid: new Uint32Array(MINI_SIM_SIZE * MINI_SIM_SIZE), // Pre-allocate second buffer
 				canvas,
 				ctx,
 				imageData,
 				rule,
-				frameCount: 0,
-				cpuCfg: buildCpuCfg(rule)
+					frameCount: 0,
+					cpuCfg: buildCpuCfg(rule)
 			};
 		});
 		
@@ -1157,6 +1402,19 @@ function startGallery(accentColor: string, isLight: boolean): void {
 				state.canvas.onclick = () => selectGalleryRule(i);
 			}
 		});
+		};
+
+		// Prefer WebGPU multi-canvas gallery when available.
+		if (isWebGPUSupported()) {
+			void (async () => {
+				const ok = await startGalleryWebGPU(accentColor, initialIsLight);
+				if (ok) return;
+				startCpuGallery();
+			})();
+			return;
+		}
+
+		startCpuGallery();
 	});
 }
 
@@ -1165,6 +1423,13 @@ function stopGallery(): void {
 		clearInterval(galleryInterval);
 		galleryInterval = null;
 	}
+	if (galleryGpuRaf !== null) {
+		cancelAnimationFrame(galleryGpuRaf);
+		galleryGpuRaf = null;
+	}
+	galleryGpuSims.forEach((s) => s.sim.destroy());
+	galleryGpuSims = [];
+	galleryGpuDevice = null;
 	gallerySimStates = [];
 }
 
@@ -1176,6 +1441,9 @@ function selectGalleryRule(index: number): void {
 		if (state.canvas) {
 			state.canvas.classList.toggle('selected', i === index);
 		}
+	});
+	galleryGpuSims.forEach((state) => {
+		state.canvas.classList.toggle('selected', state.ruleIndex === index);
 	});
 }
 

@@ -23,12 +23,14 @@ export function isWebGPUSupported(): boolean {
 }
 
 /**
- * Initialize WebGPU context for a canvas element.
- * Returns either the context or an error.
+ * Request a WebGPU device once, so multiple canvases can share it.
  */
-export async function initWebGPU(
-	canvas: HTMLCanvasElement
-): Promise<{ ok: true; value: WebGPUContext } | { ok: false; error: WebGPUError }> {
+export async function requestWebGPUDevice(options?: {
+	powerPreference?: GPUPowerPreference;
+}): Promise<
+	| { ok: true; value: { device: GPUDevice; format: GPUTextureFormat } }
+	| { ok: false; error: WebGPUError }
+> {
 	if (!isWebGPUSupported()) {
 		return {
 			ok: false,
@@ -41,7 +43,7 @@ export async function initWebGPU(
 	}
 
 	const adapter = await navigator.gpu.requestAdapter({
-		powerPreference: 'high-performance'
+		powerPreference: options?.powerPreference ?? 'high-performance'
 	});
 
 	if (!adapter) {
@@ -82,6 +84,19 @@ export async function initWebGPU(
 		}
 	});
 
+	const format = navigator.gpu.getPreferredCanvasFormat();
+
+	return { ok: true, value: { device, format } };
+}
+
+/**
+ * Create a configured WebGPU canvas context using a (possibly shared) device.
+ */
+export function createWebGPUContext(
+	canvas: HTMLCanvasElement,
+	device: GPUDevice,
+	format: GPUTextureFormat = navigator.gpu.getPreferredCanvasFormat()
+): { ok: true; value: WebGPUContext } | { ok: false; error: WebGPUError } {
 	const context = canvas.getContext('webgpu');
 	if (!context) {
 		return {
@@ -93,7 +108,6 @@ export async function initWebGPU(
 		};
 	}
 
-	const format = navigator.gpu.getPreferredCanvasFormat();
 	context.configure({
 		device,
 		format,
@@ -104,6 +118,18 @@ export async function initWebGPU(
 		ok: true,
 		value: { device, context, format, canvas }
 	};
+}
+
+/**
+ * Initialize WebGPU context for a single canvas element (device-per-canvas).
+ * Prefer `requestWebGPUDevice` + `createWebGPUContext` for multi-canvas apps.
+ */
+export async function initWebGPU(
+	canvas: HTMLCanvasElement
+): Promise<{ ok: true; value: WebGPUContext } | { ok: false; error: WebGPUError }> {
+	const dev = await requestWebGPUDevice();
+	if (!dev.ok) return dev;
+	return createWebGPUContext(canvas, dev.value.device, dev.value.format);
 }
 
 /**
