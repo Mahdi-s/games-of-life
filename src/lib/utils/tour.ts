@@ -62,6 +62,7 @@ interface GalleryRule {
 	stimPeriod?: number; // Frames between stimulation pulses (0 = never)
 	stimShape?: 'disk' | 'horizontalLine' | 'verticalLine';
 	stimRevive?: 'deadOnly' | 'deadOrDying';
+	stimRadius?: number; // Optional override for stimulation disk/line size (defaults to diskRadius)
 	initText?: string; // For text init type
 	diskRadius?: number; // Custom disk radius (default: MINI_SIM_SIZE * 0.18)
 	// Vitality settings (how dying cells contribute to neighbor counts)
@@ -139,6 +140,7 @@ const GALLERY_RULES: GalleryRule[] = [
 		seedRate: 0,
 		stimPeriod: 100,
 		diskRadius: 9, // larger seed (still symmetric)
+		stimRadius: 18, // 2x larger periodic disk stim
 		vitalityMode: 'curve',
 		curvePoints: [
 			{ x: 0, y: 0 },
@@ -209,6 +211,7 @@ const GALLERY_RULES: GalleryRule[] = [
 		stimShape: 'disk',
 		stimRevive: 'deadOrDying',
 		diskRadius: 10,
+		stimRadius: 20, // 2x larger periodic disk stim
 		vitalityMode: 'none'
 	}
 ];
@@ -500,7 +503,7 @@ function applyStimulation(grid: Uint32Array, rule: GalleryRule): void {
 
 		// Default: apply a solid disk at center additively
 		// Use the same hex-aware coordinate system as initMiniSimGrid
-		const radius = rule.diskRadius ?? Math.round(MINI_SIM_SIZE * 0.18);
+		const radius = rule.stimRadius ?? rule.diskRadius ?? Math.round(MINI_SIM_SIZE * 0.18);
 		const isHex = rule.neighborhood === 'hexagonal' || rule.neighborhood === 'extendedHexagonal';
 		const { cx, cy } = getDiskCenterForGrid(isHex, MINI_SIM_SIZE, MINI_SIM_SIZE);
 		const r2 = radius * radius;
@@ -1199,7 +1202,7 @@ function applyStimulationWebGPU(sim: Simulation, rule: GalleryRule): void {
 	const { width, height } = sim.getSize();
 	const isHex = rule.neighborhood === 'hexagonal' || rule.neighborhood === 'extendedHexagonal';
 	const { cx, cy } = getDiskCenterForGrid(isHex, width, height);
-	const radius = rule.diskRadius ?? Math.round(width * 0.18);
+	const radius = rule.stimRadius ?? rule.diskRadius ?? Math.round(width * 0.18);
 
 	if (stimShape === 'horizontalLine' || stimShape === 'verticalLine') {
 		const halfLen = Math.max(2, Math.floor(radius * 1.4));
