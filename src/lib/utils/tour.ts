@@ -168,7 +168,7 @@ const GALLERY_RULES: GalleryRule[] = [
 		// Imported from neo coral.json (Custom Rule)
 		birthMask: 992, // B56789
 		surviveMask: 8128, // S6-12
-		numStates: 602,
+		numStates: 256,
 		neighborhood: 'extendedMoore',
 		// Symmetric disk seed
 		initType: 'centeredDisk',
