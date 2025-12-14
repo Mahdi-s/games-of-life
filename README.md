@@ -28,6 +28,8 @@ This repo is a **monorepo**:
 
 ## Packages (the library)
 
+> Note: this is a **temporary monorepo stage** while we extract the library. The plan is to move the packages into a **standalone repository** with a dedicated **documentation website** (API docs + guides + examples). For now, the app and packages live together so changes can be validated quickly.
+
 | Package | What it is | When to use it |
 |---|---|---|
 | `@games-of-life/core` | UI/framework-free specs + rule parsing + vitality + seeds + CPU stepper | Shared “single source of truth”, CPU fallback |
