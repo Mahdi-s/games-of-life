@@ -176,7 +176,7 @@ const GALLERY_RULES: GalleryRule[] = [
 		seedRate: 0.0,
 		stimPeriod: 0,
 		stimShape: 'disk',
-		diskRadius: 6,
+		diskRadius: 8,
 		vitalityMode: 'curve',
 		ghostFactor: 0,
 		curvePoints: [
@@ -200,7 +200,7 @@ const GALLERY_RULES: GalleryRule[] = [
 		seedRate: 0.0,
 		stimPeriod: 90,
 		stimShape: 'horizontalLine',
-		diskRadius: 7,
+		diskRadius: 8,
 		vitalityMode: 'none'
 	}
 ];
@@ -453,7 +453,8 @@ function applyStimulation(grid: Uint32Array, rule: GalleryRule): void {
 		const isHex = rule.neighborhood === 'hexagonal' || rule.neighborhood === 'extendedHexagonal';
 
 		if (stimShape === 'horizontalLine' || stimShape === 'verticalLine') {
-			const halfLen = Math.max(2, Math.floor(radius));
+			// Make line stim a bit stronger than disk radius so it’s visible in the tiny gallery.
+			const halfLen = Math.max(2, Math.floor(radius * 1.4));
 			if (stimShape === 'horizontalLine') {
 				const y = center;
 				for (let x = center - halfLen; x <= center + halfLen; x++) {
