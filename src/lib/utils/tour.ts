@@ -138,7 +138,7 @@ const GALLERY_RULES: GalleryRule[] = [
 		density: 1.0,
 		seedRate: 0,
 		stimPeriod: 100,
-		diskRadius: 7, // larger seed (still symmetric)
+		diskRadius: 9, // larger seed (still symmetric)
 		vitalityMode: 'curve',
 		curvePoints: [
 			{ x: 0, y: 0 },

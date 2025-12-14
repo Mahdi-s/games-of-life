@@ -1018,14 +1018,31 @@ export const RULE_PRESETS: CARule[] = [
 	},
 	{
 		name: 'Ext24 Neo Coral',
-		birthMask: 0b1111100000, // 5, 6, 7, 8, 9
-		surviveMask: 0b1111111000000, // 6, 7, 8, 9, 10, 11, 12
-		numStates: 96,
-		ruleString: 'B5,6,7,8,9/S6,7,8,9,10,11,12/C96',
+		// Imported from neo coral.json (then capped to C256 for usability/perf)
+		birthMask: 992, // B56789
+		surviveMask: 8128, // S6-12
+		numStates: 256,
+		ruleString: 'B56789/S6,7,8,9,10,11,12/C256',
 		neighborhood: 'extendedMoore',
 		category: 'artistic',
-		description: 'Coral reef-like organic growth patterns',
-		density: 0.15
+		description: 'Neo coral growth (custom vitality curve)',
+		density: 0.25,
+		vitality: {
+			mode: 'curve',
+			threshold: 1.0,
+			ghostFactor: 0,
+			sigmoidSharpness: 10.0,
+			decayPower: 1.0,
+			curvePoints: [
+				{ x: 0, y: 0 },
+				{ x: 0.04336907932808316, y: -1.902238176074881 },
+				{ x: 0.19299944518769985, y: 0.6060420562784863 },
+				{ x: 0.4857545088260803, y: -0.15734757965514712 },
+				{ x: 0.7199585597367847, y: -0.15734757965514712 },
+				{ x: 0.8175435809495781, y: 0.8786812119690697 },
+				{ x: 1, y: -0.920737215588781 }
+			]
+		}
 	},
 	{
 		name: 'Ext24 Neo Waves',
