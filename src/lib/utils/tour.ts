@@ -200,7 +200,7 @@ const GALLERY_RULES: GalleryRule[] = [
 		density: 1.0,
 		seedRate: 0.0,
 		stimPeriod: 60,
-		stimShape: 'horizontalLine',
+		stimShape: 'disk',
 		stimRevive: 'deadOrDying',
 		diskRadius: 8,
 		vitalityMode: 'none'
