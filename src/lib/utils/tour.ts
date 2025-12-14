@@ -32,8 +32,10 @@ function notifyTourCompleted() {
 // Mini Simulation Gallery - 2x3 grid of simultaneous simulations (6 total)
 // ============================================================================
 
-const MINI_SIM_SIZE = 56; // Grid size for each mini sim (56x56 cells)
-const MINI_SIM_CELL_SIZE = 2; // Pixel size per cell (112px canvas)
+// Mini-sim density: keep canvas size constant while increasing the number of simulated cells.
+// 112px canvas with 112x112 cells => 1px per cell (denser without changing spatial dimensions).
+const MINI_SIM_SIZE = 112; // Grid size for each mini sim (112x112 cells)
+const MINI_SIM_CELL_SIZE = 1; // Pixel size per cell (112px canvas)
 
 // Initialization types for different visual effects
 type InitType = 'random' | 'centeredDisk' | 'symmetricCross' | 'randomLow' | 'centeredRing' | 'text';
