@@ -44,15 +44,15 @@ The simulation runs as a compute shader on the GPU. Each frame, the shader reads
 
 ```mermaid
 flowchart LR
-  A([Cell buffer A]) -->|read| C([Compute (step)])
-  C -->|write| B([Cell buffer B])
+  A(Cell buffer A) -->|read| C(Compute step)
+  C -->|write| B(Cell buffer B)
   B -->|swap| A
 
-  R([Rule + view params]) --> C
-  P([Brush paint ops]) --> C
+  R(Rule + view params) --> C
+  P(Brush paint ops) --> C
 
-  A --> D([Render])
-  D --> E([Canvas])
+  A --> D(Render)
+  D --> E(Canvas)
 ```
 
 ### Typical frame sequence
@@ -60,16 +60,16 @@ flowchart LR
 ```mermaid
 sequenceDiagram
   participant UI as App / UI
-  participant LC as LifeCanvas (wrapper)
+  participant LC as LifeCanvas wrapper
   participant WGPU as WebGPU device/context
-  participant SIM as Simulation (kernel + renderer)
+  participant SIM as Simulation kernel+renderer
   participant GPU as GPU
 
   UI->>LC: mount(canvas, props)
   LC->>WGPU: request device + canvas context
   LC->>SIM: new Simulation(ctx, config)
   loop each rAF
-    LC->>SIM: (0..N) step() within time budget
+    LC->>SIM: step N times within budget
     SIM->>GPU: dispatch compute
     LC->>SIM: render(viewport)
     SIM->>GPU: render pass
