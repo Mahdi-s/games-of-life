@@ -150,39 +150,40 @@ const GALLERY_RULES: GalleryRule[] = [
 		seedRate: 0.001,
 		vitalityMode: 'none'
 	},
-	// Row 3: More classics / “engine stress test” variety
+	// Row 3: More NEO (calmer, less frantic)
 	{
-		name: 'HighLife',
-		birthMask: 0b000001001, // B36
-		surviveMask: 0b000001100, // S23
-		numStates: 2,
-		neighborhood: 'moore',
+		name: 'Ext24 Neo Waves',
+		birthMask: 0b1111111111111111100100000, // 5, 8-24
+		surviveMask: 0b1111111110000001111100000, // 8-12, 16-24
+		numStates: 64,
+		neighborhood: 'extendedMoore',
 		initType: 'random',
-		density: 0.22,
-		seedRate: 0.001,
+		density: 0.2,
+		seedRate: 0.0009,
 		vitalityMode: 'none'
 	},
 	{
-		name: 'Day & Night',
-		birthMask: 0b111010100, // B3678
-		surviveMask: 0b111010101, // S34678
-		numStates: 2,
-		neighborhood: 'moore',
-		initType: 'randomLow',
-		density: 0.12,
+		name: 'Ext24 Neo Coral',
+		birthMask: 0b1111100000, // 5, 6, 7, 8, 9
+		surviveMask: 0b1111111000000, // 6, 7, 8, 9, 10, 11, 12
+		numStates: 96,
+		neighborhood: 'extendedMoore',
+		initType: 'random',
+		density: 0.15,
 		seedRate: 0.0007,
 		vitalityMode: 'none'
 	},
 	{
-		name: 'Seeds',
-		birthMask: 0b000000100, // B2
-		surviveMask: 0b000000000, // S (none)
-		numStates: 2,
-		neighborhood: 'extendedMoore',
-		initType: 'centeredRing',
-		density: 0.35,
+		name: 'Hex2 Aurora',
+		birthMask: 0b0000011000000, // 5, 6
+		surviveMask: 0b0000111100000, // 4, 5, 6, 7
+		numStates: 24,
+		neighborhood: 'extendedHexagonal',
+		initType: 'centeredDisk',
+		density: 1.0,
 		seedRate: 0.0,
-		stimPeriod: 120,
+		stimPeriod: 0,
+		diskRadius: 6,
 		vitalityMode: 'none'
 	}
 ];
