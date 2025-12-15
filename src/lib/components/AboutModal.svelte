@@ -30,6 +30,10 @@
 		setTimeout(() => onstarttour(), 150);
 	}
 
+	function handleLearnLibrary() {
+		onclose();
+	}
+
 	// CA Tutorial visualization
 	// A simple 5x5 grid showing a blinker oscillator
 	// Initial state: vertical line of 3 cells
@@ -118,6 +122,10 @@
 					exactly 3 neighbors and survive with 2 or 3. This app lets you explore Life and many other 
 					rule variants, all running on your GPU for smooth, real-time simulation.
 				</p>
+				<p>
+					This app is powered by the <strong>Games of Life</strong> library packages:
+					<code>@games-of-life/core</code>, <code>@games-of-life/webgpu</code>, <code>@games-of-life/svelte</code>.
+				</p>
 			</div>
 
 			<div class="columns">
@@ -132,6 +140,7 @@
 						</h3>
 						<ul>
 							<li><strong>WebGPU</strong> — GPU compute shaders for parallel simulation</li>
+							<li><strong>@games-of-life/*</strong> — reusable library powering this app</li>
 							<li><strong>Svelte 5</strong> — Reactive UI with runes</li>
 							<li><strong>SvelteKit</strong> — Static site generation</li>
 						</ul>
@@ -214,6 +223,14 @@
 					Developed by <strong>Neo Mohsenvand</strong>
 				</div>
 				<div class="footer-buttons">
+					<a href="/library" class="library-link" onclick={handleLearnLibrary}>
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
+							<path d="M4 4.5A2.5 2.5 0 016.5 7H20" />
+							<path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
+						</svg>
+						Learn the library
+					</a>
 					<button class="tour-btn" onclick={handleStartTour}>
 						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 							<path d="M3 6l7-2 7 2 4-1v13l-4 1-7-2-7 2V5z" />
@@ -523,6 +540,33 @@
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+
+	.library-link {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.4rem 0.7rem;
+		background: var(--ui-border, rgba(255, 255, 255, 0.08));
+		border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.1));
+		border-radius: 6px;
+		color: var(--ui-text-hover, #e0e0e0);
+		font-size: 0.7rem;
+		font-weight: 500;
+		text-decoration: none;
+		transition: all 0.15s;
+	}
+
+	.library-link:hover {
+		background: var(--ui-accent-bg, rgba(45, 212, 191, 0.15));
+		border-color: var(--ui-accent-border, rgba(45, 212, 191, 0.3));
+		color: var(--ui-accent, #2dd4bf);
+	}
+
+	.library-link svg {
+		width: 16px;
+		height: 16px;
 	}
 
 	.github-link {
