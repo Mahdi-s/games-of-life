@@ -1,6 +1,14 @@
 <script lang="ts">
 	import { initWebGPU, Simulation, type WebGPUError } from '@games-of-life/webgpu';
-	import type { CARule } from '$lib/utils/rules.js';
+	import type { NeighborhoodId } from '@games-of-life/core';
+
+	/** Minimal rule shape required by the WebGPU simulation. */
+	type CARuleLike = {
+		birthMask: number;
+		surviveMask: number;
+		numStates: number;
+		neighborhood?: NeighborhoodId;
+	};
 
 	type Seed =
 		| { kind: 'random'; density?: number; includeSpectrum?: boolean }
@@ -24,8 +32,8 @@
 		/** Grid size (cells). */
 		gridWidth?: number;
 		gridHeight?: number;
-		/** Simulation rule (app-side shape is compatible with webgpu Simulation). */
-		rule: CARule;
+		/** Simulation rule (compatible with `@games-of-life/webgpu`). */
+		rule: CARuleLike;
 		/** Steps per second. */
 		speed?: number;
 		/** Whether the sim is playing (bindable). */
