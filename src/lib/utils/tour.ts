@@ -1845,6 +1845,14 @@ export function getTourStyles(accentColor: string, isLightTheme: boolean): strin
 			border-radius: 12px !important;
 			box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
 			max-width: 380px !important;
+			/* Prevent side-scrolling on small screens (some steps contain flex rows/icons) */
+			overflow-x: hidden !important;
+			box-sizing: border-box !important;
+		}
+
+		.driver-popover.gol-tour-popover * {
+			box-sizing: border-box !important;
+			min-width: 0 !important;
 		}
 		
 		.driver-popover.gol-tour-popover .driver-popover-title {
@@ -1858,6 +1866,10 @@ export function getTourStyles(accentColor: string, isLightTheme: boolean): strin
 			color: ${mutedColor} !important;
 			font-size: 0.85rem !important;
 			line-height: 1.5 !important;
+			max-width: 100% !important;
+			overflow-x: hidden !important;
+			overflow-wrap: anywhere !important;
+			word-break: break-word !important;
 		}
 		
 		.driver-popover.gol-tour-popover .driver-popover-progress-text {
@@ -1867,6 +1879,7 @@ export function getTourStyles(accentColor: string, isLightTheme: boolean): strin
 		
 		.driver-popover.gol-tour-popover .driver-popover-navigation-btns {
 			gap: 0.5rem !important;
+			flex-wrap: wrap !important;
 		}
 		
 		.driver-popover.gol-tour-popover .driver-popover-prev-btn,
@@ -1882,6 +1895,7 @@ export function getTourStyles(accentColor: string, isLightTheme: boolean): strin
 			transition: all 0.15s !important;
 			box-shadow: none !important;
 			text-shadow: none !important;
+			max-width: 100% !important;
 		}
 		
 		.driver-popover.gol-tour-popover .driver-popover-prev-btn:hover,

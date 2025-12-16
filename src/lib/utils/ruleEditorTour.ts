@@ -250,6 +250,13 @@ export function getRuleEditorTourStyles(accentColor: string, isLightTheme: boole
 			max-width: 300px !important;
 			z-index: 100002 !important;
 			pointer-events: auto !important;
+			overflow-x: hidden !important;
+			box-sizing: border-box !important;
+		}
+
+		.driver-popover.rule-editor-tour-popover * {
+			box-sizing: border-box !important;
+			min-width: 0 !important;
 		}
 		
 		.driver-popover.rule-editor-tour-popover .driver-popover-title {
@@ -263,6 +270,10 @@ export function getRuleEditorTourStyles(accentColor: string, isLightTheme: boole
 			color: ${mutedColor} !important;
 			font-size: 0.8rem !important;
 			line-height: 1.5 !important;
+			max-width: 100% !important;
+			overflow-x: hidden !important;
+			overflow-wrap: anywhere !important;
+			word-break: break-word !important;
 		}
 		
 		.driver-popover.rule-editor-tour-popover .driver-popover-description p {
@@ -284,6 +295,7 @@ export function getRuleEditorTourStyles(accentColor: string, isLightTheme: boole
 		
 		.driver-popover.rule-editor-tour-popover .driver-popover-navigation-btns {
 			gap: 0.5rem !important;
+			flex-wrap: wrap !important;
 		}
 		
 		.driver-popover.rule-editor-tour-popover .driver-popover-prev-btn,
