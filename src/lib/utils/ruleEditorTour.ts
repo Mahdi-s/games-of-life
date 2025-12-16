@@ -250,13 +250,6 @@ export function getRuleEditorTourStyles(accentColor: string, isLightTheme: boole
 			max-width: 300px !important;
 			z-index: 100002 !important;
 			pointer-events: auto !important;
-			overflow-x: hidden !important;
-			box-sizing: border-box !important;
-		}
-
-		.driver-popover.rule-editor-tour-popover * {
-			box-sizing: border-box !important;
-			min-width: 0 !important;
 		}
 		
 		.driver-popover.rule-editor-tour-popover .driver-popover-title {
@@ -270,10 +263,6 @@ export function getRuleEditorTourStyles(accentColor: string, isLightTheme: boole
 			color: ${mutedColor} !important;
 			font-size: 0.8rem !important;
 			line-height: 1.5 !important;
-			max-width: 100% !important;
-			overflow-x: hidden !important;
-			overflow-wrap: anywhere !important;
-			word-break: break-word !important;
 		}
 		
 		.driver-popover.rule-editor-tour-popover .driver-popover-description p {
@@ -295,11 +284,6 @@ export function getRuleEditorTourStyles(accentColor: string, isLightTheme: boole
 		
 		.driver-popover.rule-editor-tour-popover .driver-popover-navigation-btns {
 			gap: 0.5rem !important;
-			flex-wrap: wrap !important;
-			position: sticky !important;
-			bottom: 0 !important;
-			background: ${bgColor} !important;
-			padding-top: 0.5rem !important;
 		}
 		
 		.driver-popover.rule-editor-tour-popover .driver-popover-prev-btn,
@@ -392,20 +376,15 @@ export function getRuleEditorTourStyles(accentColor: string, isLightTheme: boole
 		/* Mobile adjustments */
 		@media (max-width: 768px) {
 			.driver-popover.rule-editor-tour-popover {
-				max-width: min(94vw, 360px) !important;
-				width: min(94vw, 360px) !important;
+				max-width: 260px !important;
 			}
 			
 			.driver-popover.rule-editor-tour-popover .driver-popover-title {
 				font-size: 0.9rem !important;
-				white-space: normal !important;
-				overflow-wrap: anywhere !important;
 			}
 			
 			.driver-popover.rule-editor-tour-popover .driver-popover-description {
 				font-size: 0.75rem !important;
-				white-space: normal !important;
-				overflow-wrap: anywhere !important;
 			}
 			
 			.driver-popover.rule-editor-tour-popover .tour-icon {

@@ -1845,14 +1845,6 @@ export function getTourStyles(accentColor: string, isLightTheme: boolean): strin
 			border-radius: 12px !important;
 			box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
 			max-width: 380px !important;
-			/* Prevent side-scrolling on small screens (some steps contain flex rows/icons) */
-			overflow-x: hidden !important;
-			box-sizing: border-box !important;
-		}
-
-		.driver-popover.gol-tour-popover * {
-			box-sizing: border-box !important;
-			min-width: 0 !important;
 		}
 		
 		.driver-popover.gol-tour-popover .driver-popover-title {
@@ -1866,10 +1858,6 @@ export function getTourStyles(accentColor: string, isLightTheme: boolean): strin
 			color: ${mutedColor} !important;
 			font-size: 0.85rem !important;
 			line-height: 1.5 !important;
-			max-width: 100% !important;
-			overflow-x: hidden !important;
-			overflow-wrap: anywhere !important;
-			word-break: break-word !important;
 		}
 		
 		.driver-popover.gol-tour-popover .driver-popover-progress-text {
@@ -1879,12 +1867,6 @@ export function getTourStyles(accentColor: string, isLightTheme: boolean): strin
 		
 		.driver-popover.gol-tour-popover .driver-popover-navigation-btns {
 			gap: 0.5rem !important;
-			flex-wrap: wrap !important;
-			/* If the popover ever becomes scrollable, keep controls reachable */
-			position: sticky !important;
-			bottom: 0 !important;
-			background: ${bgColor} !important;
-			padding-top: 0.5rem !important;
 		}
 		
 		.driver-popover.gol-tour-popover .driver-popover-prev-btn,
@@ -1900,7 +1882,6 @@ export function getTourStyles(accentColor: string, isLightTheme: boolean): strin
 			transition: all 0.15s !important;
 			box-shadow: none !important;
 			text-shadow: none !important;
-			max-width: 100% !important;
 		}
 		
 		.driver-popover.gol-tour-popover .driver-popover-prev-btn:hover,
@@ -2139,22 +2120,16 @@ export function getTourStyles(accentColor: string, isLightTheme: boolean): strin
 		/* Mobile adjustments */
 		@media (max-width: 768px) {
 			.driver-popover.gol-tour-popover {
-				/* Keep the card readable — don't let it stretch edge-to-edge on phones */
-				/* Use more width to avoid excessive wrapping/height (but keep side margins) */
-				max-width: min(94vw, 420px) !important;
-				width: min(94vw, 420px) !important;
+				max-width: calc(100vw - 32px) !important;
+				/* Don't set margin - let driver.js handle centering */
 			}
 			
 			.driver-popover.gol-tour-popover .driver-popover-title {
 				font-size: 0.95rem !important;
-				white-space: normal !important;
-				overflow-wrap: anywhere !important;
 			}
 			
 			.driver-popover.gol-tour-popover .driver-popover-description {
 				font-size: 0.8rem !important;
-				white-space: normal !important;
-				overflow-wrap: anywhere !important;
 			}
 			
 			.tour-gallery {
@@ -2200,12 +2175,8 @@ export function getTourStyles(accentColor: string, isLightTheme: boolean): strin
 		/* Extra small phones */
 		@media (max-width: 380px) {
 			.driver-popover.gol-tour-popover {
-				max-width: min(96vw, 360px) !important;
-				width: min(96vw, 360px) !important;
-				/* Last-resort safety: on tiny phones, allow vertical scroll */
-				max-height: calc(100svh - 24px) !important;
-				overflow-y: auto !important;
-				-webkit-overflow-scrolling: touch !important;
+				max-width: calc(100vw - 24px) !important;
+				/* Don't set margin - let driver.js handle centering */
 			}
 			
 			.tour-gallery {
