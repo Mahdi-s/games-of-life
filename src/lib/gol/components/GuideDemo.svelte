@@ -16,6 +16,7 @@
 		height?: number;
 		gridWidth?: number;
 		gridHeight?: number;
+		showControls?: boolean;
 	}
 
 	let {
@@ -29,7 +30,8 @@
 		width = 320,
 		height = 320,
 		gridWidth = 128,
-		gridHeight = 128
+		gridHeight = 128,
+		showControls = false
 	}: Props = $props();
 
 	const simState = getSimulationState();
@@ -37,6 +39,13 @@
 	const neighborShadingIndex = $derived(
 		simState.neighborShading === 'off' ? 0 : simState.neighborShading === 'alive' ? 1 : 2
 	);
+
+	let canvasApi: { reset: () => void; paintDisk: (r?: number) => void } | null = $state(null);
+
+	function handlePulse() {
+		// Additive pulse
+		canvasApi?.paintDisk(Math.floor(Math.min(gridWidth, gridHeight) * 0.15));
+	}
 </script>
 
 <div class="guide-demo">
@@ -54,6 +63,7 @@
 		<div class="canvas-side">
 			<div class="canvas-wrap">
 				<LifeCanvas
+					bind:this={canvasApi}
 					{width}
 					{height}
 					{gridWidth}
@@ -68,6 +78,17 @@
 					aliveColor={simState.aliveColor}
 					className="guide-canvas"
 				/>
+				{#if showControls}
+					<div class="canvas-actions">
+						<button class="pulse-btn" onclick={handlePulse}>
+							<svg viewBox="0 0 24 24" fill="currentColor">
+								<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/>
+								<circle cx="12" cy="12" r="5"/>
+							</svg>
+							Pulse Seed
+						</button>
+					</div>
+				{/if}
 			</div>
 		</div>
 	</div>
@@ -75,14 +96,14 @@
 
 <style>
 	.guide-demo {
-		margin: 2rem 0;
+		margin: 2.5rem 0;
 		display: grid;
-		gap: 1.2rem;
+		gap: 1.5rem;
 	}
 
 	.info h3 {
 		margin: 0 0 0.5rem;
-		font-size: 1.2rem;
+		font-size: 1.3rem;
 		letter-spacing: -0.02em;
 		color: var(--color-text);
 	}
@@ -96,8 +117,8 @@
 
 	.layout {
 		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 1.5rem;
+		grid-template-columns: 1.2fr 1fr;
+		gap: 2rem;
 		align-items: start;
 	}
 
@@ -111,20 +132,51 @@
 	}
 
 	.canvas-wrap {
-		border-radius: 20px;
-		border: 1px solid rgba(255, 255, 255, 0.1);
+		position: relative;
+		border-radius: 24px;
+		border: 1px solid var(--ui-border);
 		background: rgba(0, 0, 0, 0.2);
 		padding: 1rem;
-		box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+		box-shadow: 0 15px 50px rgba(0, 0, 0, 0.4);
 	}
 
 	:global(.guide-canvas) {
-		border-radius: 12px;
+		border-radius: 16px;
 		border: 1px solid rgba(255, 255, 255, 0.08);
 		background: rgba(0, 0, 0, 0.4);
 	}
 
-	@media (max-width: 960px) {
+	.canvas-actions {
+		margin-top: 1rem;
+		display: flex;
+		justify-content: center;
+	}
+
+	.pulse-btn {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.6rem 1.2rem;
+		border-radius: 12px;
+		background: var(--ui-accent-bg);
+		color: var(--ui-accent);
+		border: 1px solid var(--ui-accent-border);
+		font-weight: 800;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+
+	.pulse-btn:hover {
+		background: var(--ui-accent-bg-hover);
+		transform: translateY(-1px);
+	}
+
+	.pulse-btn svg {
+		width: 18px;
+		height: 18px;
+	}
+
+	@media (max-width: 1024px) {
 		.layout {
 			grid-template-columns: 1fr;
 		}
@@ -134,4 +186,3 @@
 		}
 	}
 </style>
-

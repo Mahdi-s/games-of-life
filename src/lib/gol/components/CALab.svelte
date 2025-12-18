@@ -1,128 +1,201 @@
 <script lang="ts">
 	import { getSimulationState } from '$lib/stores/simulation.svelte.js';
+	import { fade, fly, scale } from 'svelte/transition';
+	import { cubicOut } from 'svelte/easing';
 
 	const simState = getSimulationState();
 
-	let step = $state(0);
-	
-	// Cell states: 0=dead, 1=alive
-	const grid = $state([
-		[0, 0, 0, 0, 0],
-		[0, 1, 1, 0, 0],
-		[0, 1, 0, 0, 0],
-		[0, 0, 0, 1, 0],
-		[0, 0, 0, 0, 0]
-	]);
+	let currentStep = $state(0);
+	let isApplying = $state(false);
+	let isRevealed = $state(false);
 
-	// Coordinates of the "target" cell we're teaching about
-	const tx = 2;
-	const ty = 2;
+	// Scenario Definitions
+	type Scenario = {
+		id: string;
+		name: string;
+		description: string;
+		grid: number[][];
+		tx: number;
+		ty: number;
+		neighbors: [number, number][];
+		resultState: number; // 0 or 1
+	};
 
-	// B3/S23 rule
-	const birth = [3];
-	const survive = [2, 3];
-
-	const neighbors = [
+	const neighbors: [number, number][] = [
 		[1, 1], [2, 1], [3, 1],
 		[1, 2],         [3, 2],
 		[1, 3], [2, 3], [3, 3]
 	];
 
-	const aliveNeighbors = $derived(
-		neighbors.filter(([nx, ny]) => grid[ny][nx] === 1).length
-	);
-
-	const isAlive = $derived(grid[ty][tx] === 1);
-	const willBeAlive = $derived(
-		isAlive ? survive.includes(aliveNeighbors) : birth.includes(aliveNeighbors)
-	);
+	// Initial grids for the 3 scenarios
+	const scenarios: Scenario[] = $state([
+		{
+			id: 'birth',
+			name: 'Birth',
+			description: 'Dead cell with exactly 3 neighbors.',
+			grid: [
+				[0, 0, 0, 0, 0],
+				[0, 1, 0, 0, 0],
+				[0, 1, 0, 1, 0],
+				[0, 0, 0, 0, 0],
+				[0, 0, 0, 0, 0]
+			],
+			tx: 2, ty: 2,
+			neighbors,
+			resultState: 1
+		},
+		{
+			id: 'survival',
+			name: 'Survival',
+			description: 'Alive cell with 2 neighbors.',
+			grid: [
+				[0, 0, 0, 0, 0],
+				[0, 1, 0, 0, 0],
+				[0, 0, 1, 0, 0],
+				[0, 0, 0, 1, 0],
+				[0, 0, 0, 0, 0]
+			],
+			tx: 2, ty: 2,
+			neighbors,
+			resultState: 1
+		},
+		{
+			id: 'death',
+			name: 'Death',
+			description: 'Alive cell with 1 neighbor.',
+			grid: [
+				[0, 0, 0, 0, 0],
+				[0, 1, 0, 0, 0],
+				[0, 0, 1, 0, 0],
+				[0, 0, 0, 0, 0],
+				[0, 0, 0, 0, 0]
+			],
+			tx: 2, ty: 2,
+			neighbors,
+			resultState: 0
+		}
+	]);
 
 	const accentColor = $derived.by(() => {
 		const [r, g, b] = simState.aliveColor;
 		return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
 	});
 
-	function next() {
-		if (step < 4) step++;
-		else {
-			// Apply result and reset
-			grid[ty][tx] = willBeAlive ? 1 : 0;
-			setTimeout(() => {
-				step = 0;
-				grid[ty][tx] = 0; // reset for next demo
-			}, 1500);
+	function getAliveCount(scenario: Scenario) {
+		return scenario.neighbors.filter(([nx, ny]) => scenario.grid[ny][nx] === 1).length;
+	}
+
+	async function next() {
+		if (currentStep < 4) {
+			currentStep++;
+		} else {
+			applyRule();
 		}
 	}
 
-	function reset() {
-		step = 0;
-		grid[ty][tx] = 0;
+	async function applyRule() {
+		isApplying = true;
+		await new Promise(r => setTimeout(r, 300));
+		scenarios.forEach(s => {
+			s.grid[s.ty][s.tx] = s.resultState;
+		});
+		await new Promise(r => setTimeout(r, 500));
+		isApplying = false;
+		isRevealed = true;
 	}
+
+	function reset() {
+		currentStep = 0;
+		isApplying = false;
+		isRevealed = false;
+		// Restore initial grids
+		scenarios[0].grid = [[0,0,0,0,0],[0,1,0,0,0],[0,1,0,1,0],[0,0,0,0,0],[0,0,0,0,0]];
+		scenarios[1].grid = [[0,0,0,0,0],[0,1,0,0,0],[0,0,1,0,0],[0,0,0,1,0],[0,0,0,0,0]];
+		scenarios[2].grid = [[0,0,0,0,0],[0,1,0,0,0],[0,0,1,0,0],[0,0,0,0,0],[0,0,0,0,0]];
+	}
+
+	const stepInfo = [
+		{
+			title: "1. The Concept",
+			text: "Cellular Automata operate on a grid where each cell's future state is determined by its immediate local neighbors."
+		},
+		{
+			title: "2. The Neighborhood",
+			text: "In the standard Moore neighborhood, each cell (bordered in white) looks at its 8 surrounding neighbors."
+		},
+		{
+			title: "3. Local Sensing",
+			text: "The first step is counting how many of those neighbors are currently alive. Notice the counts for each scenario below."
+		},
+		{
+			title: "4. The Transition Rule",
+			text: "The rule (e.g., B3/S23) acts like a lookup table: if 3 neighbors, a dead cell is born; if 2 or 3, an alive cell survives."
+		},
+		{
+			title: "5. Parallel Application",
+			text: "Every cell on the grid evaluates the rule at the same time. Let's apply it to see how these different configurations resolve."
+		}
+	];
 </script>
 
 <div class="ca-lab" style="--accent: {accentColor}">
-	<div class="lab-layout">
-		<div class="grid-wrap">
-			<div class="grid">
-				{#each grid as row, y}
-					{#each row as cell, x}
-						<div 
-							class="cell" 
-							class:alive={cell === 1}
-							class:target={x === tx && y === ty}
-							class:neighbor={step >= 1 && neighbors.some(([nx, ny]) => nx === x && ny === y)}
-							class:highlight-neighbor={step >= 2 && neighbors.some(([nx, ny]) => nx === x && ny === y) && cell === 1}
-						>
-							{#if x === tx && y === ty && step >= 3}
-								<span class="count">{aliveNeighbors}</span>
-							{/if}
-						</div>
-					{/each}
+	<div class="scenarios-grid">
+		{#each scenarios as s, idx}
+			<div class="scenario-card">
+				<div class="grid-wrap">
+					<div class="grid">
+						{#each s.grid as row, y}
+							{#each row as cell, x}
+								<div 
+									class="cell" 
+									class:alive={cell === 1}
+									class:target={!isRevealed && x === s.tx && y === s.ty}
+									class:neighbor={!isRevealed && currentStep >= 1 && s.neighbors.some(([nx, ny]) => nx === x && ny === y)}
+									class:highlight-neighbor={!isRevealed && currentStep >= 2 && s.neighbors.some(([nx, ny]) => nx === x && ny === y) && cell === 1}
+									class:applying={isApplying && x === s.tx && y === s.ty}
+								>
+									{#if !isRevealed && x === s.tx && y === s.ty && currentStep >= 2 && !isApplying}
+										<div class="count-badge" in:scale={{ duration: 300, easing: cubicOut }}>
+											{getAliveCount(s)}
+										</div>
+									{/if}
+								</div>
+							{/each}
+						{/each}
+					</div>
+				</div>
+				<div class="scenario-info">
+					<span class="badge" style="background: {idx === 0 ? 'rgba(74, 222, 128, 0.15)' : idx === 1 ? 'rgba(96, 165, 250, 0.15)' : 'rgba(248, 113, 113, 0.15)'}; color: {idx === 0 ? '#4ade80' : idx === 1 ? '#60a5fa' : '#f87171'}">
+						{s.name}
+					</span>
+					<p>{s.description}</p>
+				</div>
+			</div>
+		{/each}
+	</div>
+
+	<div class="control-panel">
+		<div class="stepper-box">
+			<div class="progress-bar">
+				{#each Array(5) as _, i}
+					<div class="progress-dot" class:active={i <= currentStep} class:completed={i < currentStep}></div>
 				{/each}
 			</div>
-		</div>
+			
+			<div class="text-wrap">
+				{#key currentStep}
+					<div class="step-content" in:fly={{ y: 8, duration: 400, delay: 100 }} out:fade={{ duration: 200 }}>
+						<h4>{stepInfo[currentStep].title}</h4>
+						<p>{stepInfo[currentStep].text}</p>
+					</div>
+				{/key}
+			</div>
 
-		<div class="info-wrap">
-			<div class="stepper">
-				<div class="progress">
-					{#each Array(5) as _, i}
-						<div class="dot" class:active={i <= step}></div>
-					{/each}
-				</div>
-				
-				<div class="content">
-					{#if step === 0}
-						<h4>1. Meet the Cell</h4>
-						<p>In a Cellular Automaton, every square is a "cell" that can be either dead or alive.</p>
-					{:else if step === 1}
-						<h4>2. The Neighborhood</h4>
-						<p>A cell's future depends entirely on its 8 immediate neighbors (highlighted).</p>
-					{:else if step === 2}
-						<h4>3. Counting Neighbors</h4>
-						<p>We count how many of those neighbors are currently alive. Here, we have <strong>{aliveNeighbors}</strong>.</p>
-					{:else if step === 3}
-						<h4>4. Consulting the Rule</h4>
-						<p>
-							Rule <strong>B3/S23</strong> says: 
-							{isAlive ? "An alive cell survives if it has 2 or 3 neighbors." : "A dead cell is born if it has exactly 3 neighbors."}
-						</p>
-					{:else if step === 4}
-						<h4>5. The Result</h4>
-						<p>
-							With {aliveNeighbors} neighbors, this cell will 
-							<strong>{willBeAlive ? "become ALIVE" : "stay DEAD"}</strong> in the next step.
-						</p>
-					{/if}
-				</div>
-
-				<div class="actions">
-					{#if step < 4}
-						<button class="btn primary" onclick={next}>Next Step</button>
-					{:else}
-						<button class="btn" onclick={next}>Apply & Reset</button>
-					{/if}
-					<button class="btn secondary" onclick={reset}>Reset</button>
-				</div>
+			<div class="actions">
+				<button class="btn primary" onclick={next} disabled={isApplying}>
+					{currentStep < 4 ? 'Next Step' : 'Apply to All'}
+				</button>
+				<button class="btn secondary" onclick={reset} disabled={isApplying}>Reset Tutorial</button>
 			</div>
 		</div>
 	</div>
@@ -130,145 +203,192 @@
 
 <style>
 	.ca-lab {
-		background: rgba(0, 0, 0, 0.25);
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 24px;
-		padding: 2rem;
+		background: rgba(0, 0, 0, 0.3);
+		border: 1px solid var(--ui-border);
+		border-radius: 32px;
+		padding: 2.5rem;
 		margin: 2rem 0;
-		backdrop-filter: blur(10px);
+		backdrop-filter: blur(20px);
+		box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
+		display: grid;
+		gap: 2.5rem;
 	}
 
-	.lab-layout {
+	.scenarios-grid {
 		display: grid;
-		grid-template-columns: auto 1fr;
-		gap: 2.5rem;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 1.5rem;
+	}
+
+	.scenario-card {
+		background: rgba(255, 255, 255, 0.02);
+		border: 1px solid rgba(255, 255, 255, 0.05);
+		border-radius: 20px;
+		padding: 1rem;
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
 		align-items: center;
 	}
 
 	.grid {
 		display: grid;
-		grid-template-columns: repeat(5, 50px);
-		grid-template-rows: repeat(5, 50px);
+		grid-template-columns: repeat(5, 36px);
+		grid-template-rows: repeat(5, 36px);
 		gap: 4px;
-		background: rgba(255, 255, 255, 0.05);
+		background: rgba(255, 255, 255, 0.02);
 		padding: 8px;
-		border-radius: 12px;
+		border-radius: 14px;
+		border: 1px solid rgba(255, 255, 255, 0.05);
 	}
 
 	.cell {
-		background: rgba(255, 255, 255, 0.03);
+		background: rgba(255, 255, 255, 0.02);
 		border-radius: 6px;
 		border: 1px solid rgba(255, 255, 255, 0.05);
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+		transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+		position: relative;
 	}
 
 	.cell.alive {
 		background: var(--accent);
 		box-shadow: 0 0 15px var(--accent);
-		opacity: 0.8;
+		border-color: rgba(255, 255, 255, 0.3);
 	}
 
 	.cell.target {
 		border: 2px solid #fff;
-		box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.5);
+		z-index: 2;
 	}
 
 	.cell.neighbor {
-		border-color: rgba(255, 255, 255, 0.3);
+		border-color: rgba(255, 255, 255, 0.2);
 	}
 
 	.cell.highlight-neighbor {
-		transform: scale(1.1);
-		opacity: 1;
-		box-shadow: 0 0 25px var(--accent);
+		background: rgba(255, 255, 255, 0.08);
+		border-color: var(--accent);
 	}
 
-	.count {
+	.cell.applying {
+		transform: scale(1.15);
+		filter: brightness(1.5);
+	}
+
+	.count-badge {
 		font-weight: 900;
-		font-size: 1.2rem;
+		font-size: 1rem;
 		color: #fff;
-		text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+		text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
 	}
 
-	.stepper {
+	.scenario-info {
+		text-align: center;
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+	}
+
+	.badge {
+		align-self: center;
+		font-size: 0.65rem;
+		font-weight: 900;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		padding: 0.2rem 0.6rem;
+		border-radius: 100px;
+	}
+
+	.scenario-info p {
+		margin: 0;
+		font-size: 0.85rem;
+		color: var(--color-text-muted);
+		line-height: 1.4;
+	}
+
+	.stepper-box {
+		max-width: 800px;
+		margin: 0 auto;
 		display: flex;
 		flex-direction: column;
 		gap: 1.5rem;
+		min-height: 160px;
 	}
 
-	.progress {
+	.progress-bar {
 		display: flex;
 		gap: 0.5rem;
 	}
 
-	.dot {
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		background: rgba(255, 255, 255, 0.1);
-		transition: all 0.3s;
+	.progress-dot {
+		flex: 1;
+		height: 4px;
+		border-radius: 2px;
+		background: rgba(255, 255, 255, 0.05);
+		transition: all 0.4s ease;
 	}
 
-	.dot.active {
-		background: var(--accent);
-		box-shadow: 0 0 8px var(--accent);
+	.progress-dot.active { background: var(--accent); }
+	.progress-dot.completed { background: var(--accent); opacity: 0.3; }
+
+	.text-wrap {
+		position: relative;
+		min-height: 80px;
+		display: flex;
+		align-items: center;
 	}
 
-	h4 {
+	.step-content {
+		position: absolute;
+		width: 100%;
+	}
+
+	.step-content h4 {
 		margin: 0 0 0.5rem;
-		font-size: 1.4rem;
+		font-size: 1.3rem;
 		color: var(--accent);
 	}
 
-	p {
+	.step-content p {
 		margin: 0;
-		font-size: 1.1rem;
-		line-height: 1.6;
+		font-size: 1rem;
+		line-height: 1.5;
 		color: var(--color-text-muted);
-	}
-
-	strong {
-		color: var(--color-text);
 	}
 
 	.actions {
 		display: flex;
 		gap: 1rem;
+		justify-content: center;
 	}
 
 	.btn {
-		padding: 0.7rem 1.5rem;
-		border-radius: 12px;
+		min-width: 140px;
+		height: 44px;
+		border-radius: 14px;
 		font-weight: 800;
 		cursor: pointer;
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		background: rgba(255, 255, 255, 0.05);
-		color: var(--color-text);
-		transition: all 0.2s;
+		border: 1px solid var(--ui-border);
+		background: var(--btn-bg);
+		color: var(--ui-text);
+		transition: all 0.3s;
 	}
 
-	.btn:hover {
-		background: rgba(255, 255, 255, 0.1);
-		transform: translateY(-1px);
+	.btn:not(:disabled):hover {
+		border-color: var(--ui-accent);
+		background: var(--btn-bg-hover);
+		color: var(--ui-text-hover);
+		transform: translateY(-2px);
 	}
 
-	.btn.primary {
-		background: var(--accent);
-		color: #000;
-		border: none;
-	}
+	.btn.primary { background: var(--ui-accent); color: #000; border: none; }
+	.btn:disabled { opacity: 0.4; }
 
-	@media (max-width: 768px) {
-		.lab-layout {
-			grid-template-columns: 1fr;
-			place-items: center;
-			text-align: center;
-		}
-		.progress { justify-content: center; }
-		.actions { justify-content: center; }
+	@media (max-width: 900px) {
+		.scenarios-grid { grid-template-columns: 1fr; }
+		.ca-lab { padding: 1.5rem; }
 	}
 </style>
-

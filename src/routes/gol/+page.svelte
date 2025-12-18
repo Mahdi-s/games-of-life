@@ -1,6 +1,7 @@
 <script lang="ts">
 	import GuideDemo from '$lib/gol/components/GuideDemo.svelte';
 	import CALab from '$lib/gol/components/CALab.svelte';
+	import VitalityLab from '$lib/gol/components/VitalityLab.svelte';
 	import DemoCard from '$lib/gol/components/DemoCard.svelte';
 	import { GALLERY_RULES } from '$lib/sims/gallery-rules.js';
 	import { base } from '$app/paths';
@@ -11,6 +12,16 @@
 
 	const mandalaRule = $derived.by(() => {
 		const r = byName("Hex Neo Mandala 1");
+		return {
+			birthMask: r.birthMask,
+			surviveMask: r.surviveMask,
+			numStates: r.numStates,
+			neighborhood: r.neighborhood
+		};
+	});
+
+	const starWarsRule = $derived.by(() => {
+		const r = byName("Star Wars");
 		return {
 			birthMask: r.birthMask,
 			surviveMask: r.surviveMask,
@@ -55,9 +66,8 @@
 		<CALab />
 
 		<p>
-			In GoL, we focus on 2D grids with support for both square and hexagonal geometries. 
 			The library handles the heavy lifting of neighbor counting and rule application using 
-			high-performance GPU shaders.
+			high-performance GPU shaders, allowing for massive grids and complex rules.
 		</p>
 	</section>
 
@@ -78,21 +88,39 @@
 		/>
 	</section>
 
-	<section class="section" id="rules">
-		<h2>Defining Rules</h2>
+	<section class="section" id="generations">
+		<h2>Generations: Life with Trails</h2>
 		<p>
-			Rules in GoL are defined using <strong>Birth</strong> and <strong>Survival</strong> bitmasks. 
-			This allows for classic B/S rules (like B3/S23) as well as complex multi-state "Generations" rules.
+			Standard CA has only two states: dead and alive. GoL supports "Generations," where 
+			cells don't die instantly. Instead, they transition through a series of "decay" states, 
+			creating beautiful trails and color spectrums.
 		</p>
 
 		<GuideDemo
-			title="Birth/Survive Masks"
-			description="A bitmask determines if a cell is born or survives based on its neighbor count. Bit 3 = 1 means 'if 3 neighbors, then action'."
-			codeHtml={data.snippets.rules}
-			codeTitle="rules.ts"
-			rule={byName("Conway's Life")}
-			seed={{ kind: 'random', density: 0.15 }}
+			title="More Than Two States"
+			description="When numStates > 2, alive cells transition to state 2 instead of dying. This example uses 4 states, creating a brief color trail."
+			codeHtml={data.snippets.generations}
+			codeTitle="generations.ts"
+			rule={starWarsRule}
+			seed={{ kind: 'random', density: 0.25, includeSpectrum: true }}
 		/>
+	</section>
+
+	<section class="section" id="vitality">
+		<h2>Vitality Influence</h2>
+		<p>
+			GoL generalizes Cellular Automata further with <strong>Vitality Influence</strong>. 
+			In standard CA, only fully "alive" cells count toward a neighbor's birth or survival. 
+			In GoL, even cells in decay states can contribute to the neighbor count.
+		</p>
+		
+		<VitalityLab />
+
+		<p>
+			By defining an <strong>Influence Curve</strong>, you can control exactly how much 
+			influence a cell has at every stage of its life cycle. This leads to the discovery 
+			of organic, material-like behaviors rule types.
+		</p>
 	</section>
 
 	<section class="section" id="hex">
@@ -109,10 +137,11 @@
 			codeHtml={data.snippets.hex}
 			codeTitle="hexRule.ts"
 			rule={mandalaRule}
-			seed={{ kind: 'random', density: 0.4, includeSpectrum: true }}
+			seed={{ kind: 'disk', radius: 35 }}
 			gridWidth={160}
 			gridHeight={185}
 			speed={8}
+			showControls={true}
 		/>
 	</section>
 
@@ -169,6 +198,7 @@
 					gridWidth={128}
 					gridHeight={148}
 					seedKind="disk"
+					defaultDensity={1.0}
 				/>
 				<DemoCard
 					title="Mandala 1"
@@ -180,6 +210,7 @@
 					gridWidth={128}
 					gridHeight={148}
 					seedKind="disk"
+					defaultDensity={1.0}
 				/>
 				<DemoCard
 					title="Slime Mold"
@@ -190,6 +221,8 @@
 					height={200}
 					gridWidth={128}
 					gridHeight={148}
+					seedKind="disk"
+					defaultDensity={1.0}
 				/>
 			</div>
 
@@ -265,14 +298,15 @@
 	}
 
 	h1 {
-		font-size: 2.8rem;
+		font-size: 3.5rem;
 		margin: 0 0 1.2rem;
 		letter-spacing: -0.04em;
 		line-height: 1.1;
+		color: var(--color-text);
 	}
 
 	.lead {
-		font-size: 1.25rem;
+		font-size: 1.4rem;
 		color: var(--color-text-muted);
 		max-width: 60ch;
 		margin: 0 auto 2.5rem;
@@ -286,51 +320,59 @@
 	}
 
 	.meta-card {
-		padding: 1.2rem;
-		border-radius: 20px;
+		padding: 1.5rem;
+		border-radius: 24px;
 		background: rgba(255, 255, 255, 0.04);
 		border: 1px solid rgba(255, 255, 255, 0.06);
 		display: flex;
 		flex-direction: column;
-		gap: 0.3rem;
+		gap: 0.4rem;
+		transition: all 0.3s;
+	}
+
+	.meta-card:hover {
+		background: rgba(255, 255, 255, 0.06);
+		border-color: var(--ui-accent-border);
+		transform: translateY(-2px);
 	}
 
 	.meta-card strong {
-		font-size: 0.95rem;
+		font-size: 1.1rem;
 		color: var(--color-text);
 	}
 
 	.meta-card span {
-		font-size: 0.85rem;
+		font-size: 0.9rem;
 		color: var(--color-text-muted);
 	}
 
 	.section {
-		margin-bottom: 5rem;
+		margin-bottom: 8rem;
 		padding: 0 1rem;
 	}
 
 	.section-head {
-		margin-bottom: 2rem;
+		margin-bottom: 3rem;
 	}
 
 	h2 {
-		font-size: 2rem;
-		margin: 0 0 1.2rem;
+		font-size: 2.5rem;
+		margin: 0 0 1.5rem;
 		letter-spacing: -0.03em;
+		color: var(--color-text);
 	}
 
 	p {
-		font-size: 1.1rem;
+		font-size: 1.2rem;
 		color: var(--color-text-muted);
 		line-height: 1.7;
-		margin-bottom: 1.5rem;
+		margin-bottom: 2rem;
 		max-width: 80ch;
 	}
 
 	.gallery-grid {
 		display: grid;
-		gap: 3rem;
+		gap: 4rem;
 	}
 
 	.group {
@@ -341,10 +383,38 @@
 
 	.group h3 {
 		grid-column: span 3;
-		font-size: 1.4rem;
-		margin: 0;
+		font-size: 1.8rem;
+		margin: 0 0 0.5rem;
 		color: var(--ui-accent);
 		opacity: 0.8;
+	}
+
+	.footer {
+		margin-top: 6rem;
+		text-align: center;
+		padding: 5rem 2rem;
+		border-top: 1px solid var(--ui-border);
+		background: rgba(0, 0, 0, 0.1);
+		border-radius: 40px 40px 0 0;
+	}
+
+	.back-btn {
+		display: inline-block;
+		margin-top: 2rem;
+		padding: 1rem 3rem;
+		border-radius: 20px;
+		background: var(--ui-accent, #2dd4bf);
+		color: #000;
+		font-weight: 900;
+		font-size: 1.1rem;
+		text-decoration: none;
+		transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+		box-shadow: 0 10px 30px var(--ui-accent-bg);
+	}
+
+	.back-btn:hover {
+		transform: translateY(-3px) scale(1.02);
+		box-shadow: 0 15px 40px var(--ui-accent-bg);
 	}
 
 	@media (max-width: 1200px) {
@@ -353,35 +423,10 @@
 	}
 
 	@media (max-width: 800px) {
+		h1 { font-size: 2.5rem; }
+		.meta-grid { grid-template-columns: 1fr; }
 		.group { grid-template-columns: 1fr; }
 		.group h3 { grid-column: span 1; }
-	}
-
-	.footer {
-		margin-top: 4rem;
-		text-align: center;
-		padding: 3rem;
-		border-top: 1px solid rgba(255, 255, 255, 0.1);
-	}
-
-	.back-btn {
-		display: inline-block;
-		margin-top: 1.5rem;
-		padding: 0.8rem 2rem;
-		border-radius: 16px;
-		background: var(--ui-accent, #2dd4bf);
-		color: #000;
-		font-weight: 900;
-		text-decoration: none;
-		transition: transform 0.2s;
-	}
-
-	.back-btn:hover {
-		transform: translateY(-2px);
-	}
-
-	@media (max-width: 768px) {
-		h1 { font-size: 2rem; }
-		.meta-grid { grid-template-columns: 1fr; }
+		.hero { padding: 3rem 1.5rem; }
 	}
 </style>

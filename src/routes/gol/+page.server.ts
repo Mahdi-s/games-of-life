@@ -43,6 +43,12 @@ frame();`,
   surviveMask: 0b0111_1000_00,
   numStates: 96,
   neighborhood: 'extendedHexagonal'
+};`,
+	generations: `const starWars = {
+  birthMask: 0b0000_0010_0,   // B2
+  surviveMask: 0b0001_1100_0, // S345
+  numStates: 4,               // 2 extra decay states
+  neighborhood: 'moore'
 };`
 };
 
@@ -50,11 +56,10 @@ export const load: PageServerLoad = async () => {
 	const highlighted: Record<string, string> = {};
 	
 	for (const [key, code] of Object.entries(snippets)) {
-		highlighted[key] = await highlight(code, key === 'webgpu' || key === 'rules' || key === 'hex' ? 'ts' : 'svelte');
+		highlighted[key] = await highlight(code, key === 'svelte' ? 'svelte' : 'ts');
 	}
 
 	return {
 		snippets: highlighted
 	};
 };
-

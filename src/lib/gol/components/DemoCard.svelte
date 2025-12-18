@@ -63,6 +63,10 @@
 	function handleReset() {
 		canvasRef?.reset();
 	}
+
+	function handlePulse() {
+		canvasRef?.paintDisk(Math.floor(Math.min(gridWidth, gridHeight) * 0.12));
+	}
 </script>
 
 <section class="demo-card">
@@ -73,6 +77,7 @@
 		</div>
 
 		<div class="controls">
+			<button class="btn" type="button" onclick={handlePulse}>Pulse</button>
 			<button class="btn" type="button" onclick={() => (playing = !playing)}>{playing ? 'Pause' : 'Play'}</button>
 			<button class="btn" type="button" onclick={handleReset}>Reset</button>
 		</div>

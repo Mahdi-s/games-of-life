@@ -50,6 +50,8 @@
 		aliveColor?: [number, number, number];
 		/** Optional class for the <canvas>. */
 		className?: string;
+		/** Optional vitality curve samples (128 f32 values). If provided, overrides default curve. */
+		vitalityCurve?: number[];
 	}
 
 	let {
@@ -67,7 +69,8 @@
 		spectrumFrequency = 1.0,
 		isLightTheme = false,
 		aliveColor = [0.2, 0.9, 0.95],
-		className
+		className,
+		vitalityCurve
 	}: Props = $props();
 
 	let canvas: HTMLCanvasElement | null = $state(null);
@@ -88,7 +91,10 @@
 			isLightTheme,
 			aliveColor,
 			// Hide brush in previews unless parent enables it later
-			brushRadius: -1
+			brushRadius: -1,
+			// Apply custom curve if provided
+			vitalityMode: vitalityCurve ? 'curve' : undefined,
+			vitalityCurveSamples: vitalityCurve
 		});
 	}
 
@@ -96,6 +102,19 @@
 		if (!simulation) return;
 		simulation.step();
 		simulation.render(width, height);
+	}
+
+	/**
+	 * Manually paint a disk of cells at the center of the grid.
+	 * This adds to the existing grid rather than replacing it.
+	 */
+	export function paintDisk(radius?: number, state: number = 1, density: number = 1.0) {
+		if (!simulation) return;
+		const r = radius ?? Math.floor(Math.min(gridWidth, gridHeight) * 0.2);
+		simulation.paintBrush(gridWidth / 2, gridHeight / 2, r, state, 'solid', { 
+			density,
+			shape: 'circle' 
+		});
 	}
 
 	export function reset() {
@@ -106,13 +125,7 @@
 			simulation.randomize(seed.density ?? 0.22, seed.includeSpectrum ?? true);
 		} else if (seed.kind === 'disk') {
 			simulation.clear();
-			const radius = seed.radius ?? Math.floor(Math.min(gridWidth, gridHeight) * 0.2);
-			const density = seed.density ?? 1.0;
-			const state = seed.state ?? 1;
-			simulation.paintBrush(gridWidth / 2, gridHeight / 2, radius, state, 'solid', { 
-				density,
-				shape: 'circle' 
-			});
+			paintDisk(seed.radius, seed.state, seed.density);
 		} else {
 			simulation.clear();
 			const state = seed.state ?? 1;
@@ -160,6 +173,13 @@
 			initError = null;
 
 			applyViewDefaults();
+			
+			// For hex grids, ensure we reset view to handle centering correctly
+			const isHex = rule.neighborhood === 'hexagonal' || rule.neighborhood === 'extendedHexagonal';
+			if (isHex) {
+				sim.resetView(width, height, false);
+			}
+
 			reset();
 
 			const loop = (t: number) => {
@@ -205,6 +225,10 @@
 		const oldNeighborhood = simulation.getRule().neighborhood;
 		simulation.setRule(rule);
 		if (rule.neighborhood !== oldNeighborhood) {
+			const isHex = rule.neighborhood === 'hexagonal' || rule.neighborhood === 'extendedHexagonal';
+			if (isHex) {
+				simulation.resetView(width, height, false);
+			}
 			reset();
 		}
 	});
@@ -238,5 +262,3 @@
 		background: rgba(0, 0, 0, 0.06);
 	}
 </style>
-
-
