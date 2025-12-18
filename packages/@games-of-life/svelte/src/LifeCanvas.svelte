@@ -13,6 +13,7 @@
 	type Seed =
 		| { kind: 'random'; density?: number; includeSpectrum?: boolean }
 		| { kind: 'blank' }
+		| { kind: 'disk'; radius?: number; density?: number; state?: number }
 		| {
 				kind: 'cells';
 				/** Relative [dx, dy] from center. */
@@ -103,6 +104,15 @@
 			simulation.clear();
 		} else if (seed.kind === 'random') {
 			simulation.randomize(seed.density ?? 0.22, seed.includeSpectrum ?? true);
+		} else if (seed.kind === 'disk') {
+			simulation.clear();
+			const radius = seed.radius ?? Math.floor(Math.min(gridWidth, gridHeight) * 0.2);
+			const density = seed.density ?? 1.0;
+			const state = seed.state ?? 1;
+			simulation.paintBrush(gridWidth / 2, gridHeight / 2, radius, state, 'solid', { 
+				density,
+				shape: 'circle' 
+			});
 		} else {
 			simulation.clear();
 			const state = seed.state ?? 1;
@@ -192,7 +202,11 @@
 
 	$effect(() => {
 		if (!simulation) return;
+		const oldNeighborhood = simulation.getRule().neighborhood;
 		simulation.setRule(rule);
+		if (rule.neighborhood !== oldNeighborhood) {
+			reset();
+		}
 	});
 
 	$effect(() => {

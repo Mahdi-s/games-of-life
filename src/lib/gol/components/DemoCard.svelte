@@ -19,7 +19,7 @@
 		gridHeight?: number;
 		defaultDensity?: number;
 		defaultSpeed?: number;
-		seedKind?: 'random' | 'blank';
+		seedKind?: 'random' | 'blank' | 'disk';
 	}
 
 	let {
@@ -49,7 +49,15 @@
 
 	const seed = $derived.by((): Seed => {
 		if (seedKind === 'blank') return { kind: 'blank' };
+		if (seedKind === 'disk') return { kind: 'disk', density, radius: Math.floor(Math.min(gridWidth, gridHeight) * 0.15) };
 		return { kind: 'random', density, includeSpectrum: true };
+	});
+
+	const cleanRule = $derived({
+		birthMask: rule.birthMask,
+		surviveMask: rule.surviveMask,
+		numStates: rule.numStates,
+		neighborhood: rule.neighborhood
 	});
 
 	function handleReset() {
@@ -78,7 +86,7 @@
 				{height}
 				{gridWidth}
 				{gridHeight}
-				rule={rule}
+				rule={cleanRule}
 				{seed}
 				{playing}
 				speed={speed}
@@ -179,13 +187,14 @@
 	}
 
 	.body {
-		display: grid;
-		grid-template-columns: 1fr 260px;
+		display: flex;
+		flex-direction: column;
 		gap: 1rem;
-		align-items: start;
+		align-items: center;
 	}
 
 	.canvas-wrap {
+		width: 100%;
 		border-radius: 16px;
 		border: 1px solid rgba(255, 255, 255, 0.10);
 		background: rgba(0, 0, 0, 0.25);
@@ -195,12 +204,15 @@
 	}
 
 	:global(.gol-demo-canvas) {
+		max-width: 100%;
+		height: auto !important;
 		border-radius: 14px;
 		border: 1px solid rgba(255, 255, 255, 0.12);
 		background: rgba(0, 0, 0, 0.35);
 	}
 
 	.meta {
+		width: 100%;
 		border-radius: 16px;
 		border: 1px solid rgba(255, 255, 255, 0.10);
 		background: rgba(0, 0, 0, 0.18);
@@ -266,6 +278,7 @@
 
 	input[type="range"] {
 		width: 100%;
+		accent-color: var(--ui-accent, #2dd4bf);
 	}
 
 	@media (max-width: 980px) {
