@@ -12,6 +12,7 @@
 	import AboutModal from '$lib/components/AboutModal.svelte';
 	import HistoryTimelineModal from '$lib/components/HistoryTimelineModal.svelte';
 	import BrushEditorModal from '$lib/components/BrushEditorModal.svelte';
+	import AudioModal from '$lib/components/AudioModal.svelte';
 	import { getSimulationState, getUIState, DARK_THEME_COLORS, LIGHT_THEME_COLORS, SPECTRUM_MODES, type GridScale } from '$lib/stores/simulation.svelte.js';
 	import { closeModal, toggleModal, getModalStates } from '$lib/stores/modalManager.svelte.js';
 	import { hasTourBeenCompleted, startTour, getTourStyles, getSelectedGalleryRule } from '$lib/utils/tour.js';
@@ -32,6 +33,7 @@
 	const showSettings = $derived(modalStates.settings.isOpen);
 	const showHistoryTimeline = $derived(modalStates.historyTimeline.isOpen);
 	const showBrushEditor = $derived(modalStates.brushEditor.isOpen);
+	const showAudio = $derived(modalStates.audio.isOpen);
 	let canvas: Canvas;
 	let tourStyleElement: HTMLStyleElement | null = null;
 	
@@ -477,6 +479,12 @@
 		{#if showBrushEditor}
 			<BrushEditorModal
 				onclose={() => closeModal('brushEditor')}
+			/>
+		{/if}
+
+		{#if showAudio}
+			<AudioModal
+				onclose={() => closeModal('audio')}
 			/>
 		{/if}
 
