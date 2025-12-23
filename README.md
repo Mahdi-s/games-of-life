@@ -21,9 +21,10 @@ This repo is a **monorepo**:
 
 - **WebGPU CA kernel**: double-buffered compute + render for smooth performance
 - **Square + hex grids** (and an architecture that keeps future tilings in mind)
-- **Multi-state “Generations” rules** (B/S + N states)
+- **Multi-state "Generations" rules** (B/S + N states)
 - **Vitality influence**: dying cells can contribute positively/negatively via a user curve
 - **Brush system**: paint/erase with preview (including hex-friendly circle brush)
+- **Audio sonification**: GPU-accelerated spectral synthesis turns cell states into sound
 - **CPU fallback kernel** (useful for mini-sims, tests, or non-WebGPU environments)
 
 ## Packages (the library)
@@ -32,8 +33,9 @@ This repo is a **monorepo**:
 
 | Package | What it is | When to use it |
 |---|---|---|
-| `@games-of-life/core` | UI/framework-free specs + rule parsing + vitality + seeds + CPU stepper | Shared “single source of truth”, CPU fallback |
+| `@games-of-life/core` | UI/framework-free specs + rule parsing + vitality + seeds + CPU stepper | Shared "single source of truth", CPU fallback |
 | `@games-of-life/webgpu` | Framework-free WebGPU runtime (`Simulation`, WGSL shaders, context helpers) | Vanilla/React/Svelte/Web Components |
+| `@games-of-life/audio` | GPU-accelerated audio sonification (`AudioEngine`, spectral synthesis) | Adding sound to CA simulations |
 | `@games-of-life/svelte` | Svelte 5 wrapper components (`LifeCanvas`) | Drop-in canvases in Svelte apps |
 
 The demo app uses these packages via workspace deps (see `package.json`).
@@ -75,6 +77,23 @@ sequenceDiagram
     SIM->>GPU: render pass
   end
 ```
+
+### Audio Sonification
+
+The audio engine transforms cell states into sound using GPU-accelerated spectral synthesis:
+
+```mermaid
+flowchart LR
+  A[Cell States] -->|GPU shader| B[Spectral Aggregation]
+  B -->|256 frequency bins| C[Spectrum Buffer]
+  C -->|transfer| D[AudioWorklet]
+  D -->|additive synthesis| E[Audio Output]
+  
+  P[Audio Config] --> B
+  P --> D
+```
+
+Each visible cell contributes to a frequency spectrum based on its vitality and position. The GPU aggregates thousands of cells in parallel into 256 frequency bins. An AudioWorklet then synthesizes the waveform using additive synthesis, creating emergent soundscapes that mirror the visual patterns.
 
 ## Using the library
 
@@ -130,6 +149,34 @@ function frame() {
 frame();
 ```
 
+### Adding audio sonification
+
+```ts
+import { initWebGPU, Simulation } from '@games-of-life/webgpu';
+import { AudioEngine } from '@games-of-life/audio';
+
+const res = await initWebGPU(canvas);
+const sim = new Simulation(res.value, { width: 256, height: 256, rule });
+
+// Create and initialize audio engine
+const audio = new AudioEngine();
+await audio.initialize(res.value.device, sim);
+
+// Enable audio (must be from user gesture)
+button.onclick = () => audio.setEnabled(true);
+
+function frame() {
+  sim.step();
+  sim.render(canvas.width, canvas.height);
+  
+  // Update audio each frame
+  audio.update(canvas.width, canvas.height);
+  
+  requestAnimationFrame(frame);
+}
+frame();
+```
+
 ## The demo app (what’s in `src/`)
 
 The SvelteKit app is a “kitchen sink” UI around the library: rule editor + previews, grid initialization, brush tools, tour gallery, and visualization controls.
@@ -166,6 +213,8 @@ Requires a browser with WebGPU support (Chrome/Edge/Safari 18+; Firefox Nightly 
 | `C` | Cycle colors |
 | `Shift+C` | Cycle spectrum modes |
 | `V` | Start/Stop video recording |
+| `M` | Toggle audio on/off |
+| `Shift+M` | Cycle audio presets |
 | `?` | Help overlay |
 | `Esc` | Close modals |
 
