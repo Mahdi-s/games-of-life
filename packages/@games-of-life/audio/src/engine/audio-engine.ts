@@ -31,6 +31,7 @@ export class AudioEngine {
 	private synthesizer: AudioSynthesizer | null = null;
 	private config: AudioConfig = { ...DEFAULT_AUDIO_CONFIG };
 	private isInitialized = false;
+	private basePath: string = '';
 	
 	// Throttle spectrum updates (audio runs at lower rate than video)
 	private lastUpdateTime = 0;
@@ -41,12 +42,14 @@ export class AudioEngine {
 	 * 
 	 * @param device - WebGPU device
 	 * @param simulation - Simulation instance (for cell buffer and viewport)
+	 * @param basePath - Base path for assets (e.g., '/games-of-life' in production)
 	 */
-	async initialize(device: GPUDevice, simulation: Simulation): Promise<void> {
+	async initialize(device: GPUDevice, simulation: Simulation, basePath: string = ''): Promise<void> {
 		if (this.isInitialized) return;
 
 		this.device = device;
 		this.simulation = simulation;
+		this.basePath = basePath;
 
 		// Create GPU pipeline
 		this.pipeline = new AudioPipeline(device);
@@ -160,6 +163,10 @@ export class AudioEngine {
 		this.config.enabled = enabled;
 
 		if (enabled && this.synthesizer) {
+			// Pass basePath when initializing synthesizer (happens on first enable)
+			if (!this.synthesizer.isReady()) {
+				await this.synthesizer.initialize(this.basePath);
+			}
 			await this.synthesizer.setEnabled(true);
 		} else if (!enabled && this.synthesizer) {
 			await this.synthesizer.setEnabled(false);

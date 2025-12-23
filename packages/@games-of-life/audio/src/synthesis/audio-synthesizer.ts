@@ -24,13 +24,17 @@ export class AudioSynthesizer {
 	private isInitialized = false;
 	private isWorkletLoaded = false;
 	private config: AudioConfig = { ...DEFAULT_AUDIO_CONFIG };
+	private basePath: string = '';
 
 	/**
 	 * Initialize the audio context and load the AudioWorklet.
 	 * Must be called from a user gesture (click/touch) for autoplay policy.
+	 * @param basePath - Base path for assets (e.g., '/games-of-life' in production)
 	 */
-	async initialize(): Promise<void> {
+	async initialize(basePath: string = ''): Promise<void> {
 		if (this.isInitialized) return;
+		
+		this.basePath = basePath;
 
 		try {
 			// Create audio context
@@ -39,8 +43,9 @@ export class AudioSynthesizer {
 				latencyHint: 'interactive',
 			});
 
-			// Load the AudioWorklet processor
-			await this.audioContext.audioWorklet.addModule('/audio/spectral-processor.js');
+			// Load the AudioWorklet processor with correct base path
+			const workletPath = `${basePath}/audio/spectral-processor.js`;
+			await this.audioContext.audioWorklet.addModule(workletPath);
 			this.isWorkletLoaded = true;
 
 			// Create the worklet node
@@ -147,13 +152,10 @@ export class AudioSynthesizer {
 
 	/**
 	 * Enable or disable audio output.
+	 * Note: initialize() must be called with basePath before enabling.
 	 */
 	async setEnabled(enabled: boolean): Promise<void> {
 		this.config.enabled = enabled;
-		
-		if (!this.isInitialized && enabled) {
-			await this.initialize();
-		}
 		
 		if (this.isInitialized) {
 			if (enabled) {

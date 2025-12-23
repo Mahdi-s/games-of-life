@@ -8,6 +8,7 @@
 import type { AudioConfig, AudioEngineState } from '@games-of-life/audio';
 import { DEFAULT_AUDIO_CONFIG, AudioEngine, AUDIO_PRESETS } from '@games-of-life/audio';
 import type { Simulation } from '@games-of-life/webgpu';
+import { base } from '$app/paths';
 
 // Audio engine instance (singleton)
 let audioEngine: AudioEngine | null = null;
@@ -35,7 +36,8 @@ export async function initializeAudio(device: GPUDevice, simulation: Simulation)
 	}
 
 	audioEngine = new AudioEngine();
-	await audioEngine.initialize(device, simulation);
+	// Pass the SvelteKit base path for correct asset loading (e.g., '/games-of-life' in production)
+	await audioEngine.initialize(device, simulation, base);
 	isInitialized = true;
 
 	// Sync state
