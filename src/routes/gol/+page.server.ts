@@ -49,14 +49,51 @@ frame();`,
   surviveMask: 0b0001_1100_0, // S345
   numStates: 4,               // 2 extra decay states
   neighborhood: 'moore'
-};`
+};`,
+	audioEngine: `import { AudioEngine } from '@games-of-life/audio';
+
+// Initialize after WebGPU & Simulation
+const engine = new AudioEngine();
+await engine.initialize(device, simulation, basePath);
+
+// Enable audio (first call must be from user gesture)
+await engine.setEnabled(true);
+
+// In your render loop
+engine.update(canvasWidth, canvasHeight);`,
+	audioConfig: `const config = {
+  enabled: true,
+  masterVolume: 0.5,
+  minFreq: 80,        // Bass frequencies
+  maxFreq: 2000,      // Upper range
+  softening: 0.6,     // Smooth transitions
+  scale: 'pentatonic' // Musical scale
+};
+
+engine.updateConfig(config);`,
+	audioSpectral: `// GPU Shader: Aggregate cells → spectrum
+// Each cell contributes to frequency bins
+
+// Cell Y-position → frequency bin
+let bin = u32(y_norm * f32(NUM_BINS));
+
+// Vitality → amplitude contribution
+let amp = sample_curve(AMPLITUDE, vitality);
+
+// Atomic accumulation (fixed-point)
+atomicAdd(&spectrum[bin].amplitude, i32(amp * FP_SCALE));`
 };
 
 export const load: PageServerLoad = async () => {
 	const highlighted: Record<string, string> = {};
 	
 	for (const [key, code] of Object.entries(snippets)) {
-		highlighted[key] = await highlight(code, key === 'svelte' ? 'svelte' : 'ts');
+		// Determine language based on snippet type
+		let lang = 'ts';
+		if (key === 'svelte') lang = 'svelte';
+		if (key === 'audioSpectral') lang = 'wgsl';
+		
+		highlighted[key] = await highlight(code, lang);
 	}
 
 	return {

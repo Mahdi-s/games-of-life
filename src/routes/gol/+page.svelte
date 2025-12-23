@@ -2,9 +2,11 @@
 	import GuideDemo from '$lib/gol/components/GuideDemo.svelte';
 	import CALab from '$lib/gol/components/CALab.svelte';
 	import VitalityLab from '$lib/gol/components/VitalityLab.svelte';
+	import AudioLab from '$lib/gol/components/AudioLab.svelte';
 	import DemoCard from '$lib/gol/components/DemoCard.svelte';
 	import { GALLERY_RULES } from '$lib/sims/gallery-rules.js';
 	import { base } from '$app/paths';
+	import CodeBlock from '$lib/gol/components/CodeBlock.svelte';
 
 	let { data } = $props();
 
@@ -52,6 +54,11 @@
 			<div class="meta-card">
 				<strong>@games-of-life/svelte</strong>
 				<span>Reactive LifeCanvas</span>
+			</div>
+			<div class="meta-card highlight">
+				<strong>@games-of-life/audio</strong>
+				<span>GPU Spectral Synthesis</span>
+				<span class="new-badge">NEW</span>
 			</div>
 		</div>
 	</header>
@@ -121,6 +128,76 @@
 			influence a cell has at every stage of its life cycle. This leads to the discovery 
 			of organic, material-like behaviors rule types.
 		</p>
+	</section>
+
+	<section class="section" id="audio">
+		<h2>Audio Sonification</h2>
+		<p>
+			GoL transforms cellular automata into <strong>sound</strong> using GPU-accelerated spectral 
+			synthesis. Every visible cell contributes to a frequency spectrum, creating an emergent 
+			auditory experience that mirrors the visual complexity.
+		</p>
+		
+		<AudioLab />
+
+		<div class="audio-explainer">
+			<h3>How It Works</h3>
+			<p>
+				The audio system uses a <strong>spectral aggregation</strong> approach instead of 
+				individual oscillators. This allows sonification of millions of cells into 256 
+				frequency bins—mathematically equivalent to having millions of oscillators but 
+				computationally tractable.
+			</p>
+			
+			<div class="code-grid">
+				<div class="code-section">
+					<h4>1. Initialize Engine</h4>
+					<CodeBlock title="audio-engine.ts" html={data.snippets.audioEngine} />
+				</div>
+				<div class="code-section">
+					<h4>2. Configure Sound</h4>
+					<CodeBlock title="audio-config.ts" html={data.snippets.audioConfig} />
+				</div>
+			</div>
+			
+			<h4>The GPU Shader</h4>
+			<p>
+				The heart of the system is a WebGPU compute shader that maps each cell to frequency 
+				bins based on its position and vitality:
+			</p>
+			<CodeBlock title="spectral-aggregate.wgsl" html={data.snippets.audioSpectral} />
+			
+			<div class="key-concepts">
+				<div class="concept">
+					<span class="concept-icon">🎵</span>
+					<div>
+						<strong>Pitch Mapping</strong>
+						<span>Cell Y-position → frequency bin (low to high)</span>
+					</div>
+				</div>
+				<div class="concept">
+					<span class="concept-icon">🔊</span>
+					<div>
+						<strong>Amplitude Mapping</strong>
+						<span>Cell vitality → contribution loudness</span>
+					</div>
+				</div>
+				<div class="concept">
+					<span class="concept-icon">🎹</span>
+					<div>
+						<strong>Musical Scales</strong>
+						<span>Quantize to pentatonic, major, minor, chromatic</span>
+					</div>
+				</div>
+				<div class="concept">
+					<span class="concept-icon">🎧</span>
+					<div>
+						<strong>Spatial Audio</strong>
+						<span>Cell X-position → stereo panning</span>
+					</div>
+				</div>
+			</div>
+		</div>
 	</section>
 
 	<section class="section" id="hex">
@@ -315,19 +392,20 @@
 
 	.meta-grid {
 		display: grid;
-		grid-template-columns: repeat(3, 1fr);
-		gap: 1.5rem;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 1.25rem;
 	}
 
 	.meta-card {
-		padding: 1.5rem;
-		border-radius: 24px;
+		padding: 1.25rem;
+		border-radius: 20px;
 		background: rgba(255, 255, 255, 0.04);
 		border: 1px solid rgba(255, 255, 255, 0.06);
 		display: flex;
 		flex-direction: column;
-		gap: 0.4rem;
+		gap: 0.3rem;
 		transition: all 0.3s;
+		position: relative;
 	}
 
 	.meta-card:hover {
@@ -336,14 +414,36 @@
 		transform: translateY(-2px);
 	}
 
+	.meta-card.highlight {
+		background: var(--ui-accent-bg);
+		border-color: var(--ui-accent-border);
+	}
+
+	.meta-card.highlight:hover {
+		background: var(--ui-accent-bg-hover);
+	}
+
 	.meta-card strong {
-		font-size: 1.1rem;
+		font-size: 1rem;
 		color: var(--color-text);
 	}
 
 	.meta-card span {
-		font-size: 0.9rem;
+		font-size: 0.85rem;
 		color: var(--color-text-muted);
+	}
+
+	.new-badge {
+		position: absolute;
+		top: -8px;
+		right: -8px;
+		font-size: 0.6rem;
+		font-weight: 900;
+		padding: 0.2rem 0.5rem;
+		border-radius: 8px;
+		background: var(--ui-accent);
+		color: #000;
+		letter-spacing: 0.05em;
 	}
 
 	.section {
@@ -422,11 +522,94 @@
 		.group h3 { grid-column: span 2; }
 	}
 
+	/* Audio Explainer Styles */
+	.audio-explainer {
+		margin-top: 3rem;
+		padding: 2rem;
+		background: rgba(0, 0, 0, 0.2);
+		border-radius: 24px;
+		border: 1px solid var(--ui-border);
+	}
+
+	.audio-explainer h3 {
+		font-size: 1.6rem;
+		margin: 0 0 1rem;
+		color: var(--ui-accent);
+	}
+
+	.audio-explainer h4 {
+		font-size: 1.1rem;
+		margin: 2rem 0 0.75rem;
+		color: var(--color-text);
+	}
+
+	.audio-explainer p {
+		font-size: 1.1rem;
+		margin-bottom: 1.5rem;
+	}
+
+	.code-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1.5rem;
+		margin-bottom: 1.5rem;
+	}
+
+	.code-section h4 {
+		margin: 0 0 0.75rem;
+		font-size: 0.9rem;
+		color: var(--color-text-muted);
+	}
+
+	.key-concepts {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: 1rem;
+		margin-top: 2rem;
+	}
+
+	.concept {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.75rem;
+		padding: 1rem;
+		background: rgba(255, 255, 255, 0.03);
+		border-radius: 16px;
+		border: 1px solid rgba(255, 255, 255, 0.06);
+	}
+
+	.concept-icon {
+		font-size: 1.5rem;
+		flex-shrink: 0;
+	}
+
+	.concept strong {
+		display: block;
+		font-size: 0.95rem;
+		color: var(--color-text);
+		margin-bottom: 0.2rem;
+	}
+
+	.concept span {
+		font-size: 0.85rem;
+		color: var(--color-text-muted);
+		line-height: 1.4;
+	}
+
+	@media (max-width: 1024px) {
+		.code-grid { grid-template-columns: 1fr; }
+		.key-concepts { grid-template-columns: 1fr; }
+	}
+
 	@media (max-width: 800px) {
 		h1 { font-size: 2.5rem; }
-		.meta-grid { grid-template-columns: 1fr; }
+		.meta-grid { grid-template-columns: 1fr 1fr; }
 		.group { grid-template-columns: 1fr; }
 		.group h3 { grid-column: span 1; }
 		.hero { padding: 3rem 1.5rem; }
+	}
+
+	@media (max-width: 500px) {
+		.meta-grid { grid-template-columns: 1fr; }
 	}
 </style>
