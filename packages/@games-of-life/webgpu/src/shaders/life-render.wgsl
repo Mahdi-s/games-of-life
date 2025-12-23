@@ -39,6 +39,7 @@ struct RenderParams {
 @group(0) @binding(0) var<uniform> params: RenderParams;
 @group(0) @binding(1) var<storage, read> cell_state: array<u32>;
 @group(0) @binding(2) var<storage, read> text_bitmap: array<u32>;
+@group(0) @binding(3) var<storage, read> agent_metrics: array<u32>;
 
 // Full-screen triangle vertices (oversized triangle that covers entire viewport)
 @vertex
@@ -135,6 +136,63 @@ fn get_cell_state(grid_x: i32, grid_y: i32) -> u32 {
     }
     
     return cell_state[u32(fx) + u32(fy) * u32(params.grid_width)];
+}
+
+// Get per-cell visualization metric (packed u32). Matches boundary transform behavior of get_cell_state().
+fn get_cell_metric(grid_x: i32, grid_y: i32) -> u32 {
+    let w = i32(params.grid_width);
+    let h = i32(params.grid_height);
+    let mode = u32(params.boundary_mode);
+    
+    var fx = grid_x;
+    var fy = grid_y;
+    
+    let wraps_x = mode == 1u || mode == 3u || mode == 4u || mode == 6u || mode == 7u || mode == 8u;
+    let wraps_y = mode == 2u || mode == 3u || mode == 5u || mode == 6u || mode == 7u || mode == 8u;
+    let flips_x = mode == 4u || mode == 6u || mode == 8u;
+    let flips_y = mode == 5u || mode == 7u || mode == 8u;
+    
+    var x_wraps = 0;
+    var y_wraps = 0;
+    
+    if (fx < 0 || fx >= w) {
+        if (!wraps_x) {
+            return 0u;
+        }
+        if (fx < 0) {
+            x_wraps = (-fx - 1) / w + 1;
+            fx = ((fx % w) + w) % w;
+        } else {
+            x_wraps = fx / w;
+            fx = fx % w;
+        }
+    }
+    
+    if (fy < 0 || fy >= h) {
+        if (!wraps_y) {
+            return 0u;
+        }
+        if (fy < 0) {
+            y_wraps = (-fy - 1) / h + 1;
+            fy = ((fy % h) + h) % h;
+        } else {
+            y_wraps = fy / h;
+            fy = fy % h;
+        }
+    }
+    
+    if (flips_x && (x_wraps & 1) == 1) {
+        fy = h - 1 - fy;
+    }
+    if (flips_y && (y_wraps & 1) == 1) {
+        fx = w - 1 - fx;
+    }
+    
+    if (fx < 0 || fx >= w || fy < 0 || fy >= h) {
+        return 0u;
+    }
+    
+    return agent_metrics[u32(fx) + u32(fy) * u32(params.grid_width)];
 }
 
 // Check if a cell is "alive" (state == 1)
@@ -1211,6 +1269,25 @@ fn render_square(input: VertexOutput) -> vec4<f32> {
     if (state > 0u) {
         color = apply_neighbor_shading(color, cell_x, cell_y);
     }
+
+    // Agent metrics modulation (render-only):
+    // - faster responses glow brighter
+    // - changed cells get a subtle tint
+    if (state > 0u) {
+        let m = get_cell_metric(cell_x, cell_y);
+        if (m != 0u) {
+            let lat = clamp(f32(m & 255u) / 255.0, 0.0, 1.0); // larger = slower
+            let inv = 1.0 - lat; // larger = faster
+            let glow = inv * 0.28;
+            color = mix(color, vec3<f32>(1.0, 1.0, 1.0), glow);
+            
+            let changed = (m >> 8u) & 1u;
+            if (changed == 1u) {
+                let tint = select(vec3<f32>(0.18, 0.05, 0.18), vec3<f32>(1.0, 0.25, 0.75), params.is_light_theme < 0.5);
+                color = mix(color, tint, 0.12);
+            }
+        }
+    }
     
     // Brush preview highlight - subtle semi-transparent overlay
     if (is_in_brush(cell_x, cell_y)) {
@@ -1323,6 +1400,22 @@ fn render_hexagonal(input: VertexOutput) -> vec4<f32> {
     // Apply neighbor shading if enabled (only for non-dead cells)
     if (state > 0u) {
         color = apply_neighbor_shading(color, cell_x, cell_y);
+    }
+
+    // Agent metrics modulation (render-only)
+    if (state > 0u) {
+        let m = get_cell_metric(cell_x, cell_y);
+        if (m != 0u) {
+            let lat = clamp(f32(m & 255u) / 255.0, 0.0, 1.0);
+            let inv = 1.0 - lat;
+            let glow = inv * 0.28;
+            color = mix(color, vec3<f32>(1.0, 1.0, 1.0), glow);
+            let changed = (m >> 8u) & 1u;
+            if (changed == 1u) {
+                let tint = select(vec3<f32>(0.18, 0.05, 0.18), vec3<f32>(1.0, 0.25, 0.75), params.is_light_theme < 0.5);
+                color = mix(color, tint, 0.12);
+            }
+        }
     }
     
     // Brush preview highlight

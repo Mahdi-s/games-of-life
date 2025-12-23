@@ -3,7 +3,20 @@
  * Manages multiple draggable modals with position persistence and z-index management
  */
 
+<<<<<<< Updated upstream
 export type ModalId = 'ruleEditor' | 'initialize' | 'about' | 'settings' | 'help' | 'brushEditor' | 'historyTimeline' | 'audio';
+=======
+export type ModalId =
+	| 'ruleEditor'
+	| 'initialize'
+	| 'about'
+	| 'settings'
+	| 'help'
+	| 'brushEditor'
+	| 'historyTimeline'
+	| 'nlcaSettings'
+	| 'nlcaPlayback';
+>>>>>>> Stashed changes
 
 export interface ModalState {
 	isOpen: boolean;
@@ -23,7 +36,12 @@ const modalStates = $state<Record<ModalId, ModalState>>({
 	help: { isOpen: false, position: null, zIndex: BASE_Z_INDEX },
 	brushEditor: { isOpen: false, position: null, zIndex: BASE_Z_INDEX },
 	historyTimeline: { isOpen: false, position: null, zIndex: BASE_Z_INDEX },
+<<<<<<< Updated upstream
 	audio: { isOpen: false, position: null, zIndex: BASE_Z_INDEX }
+=======
+	nlcaSettings: { isOpen: false, position: null, zIndex: BASE_Z_INDEX },
+	nlcaPlayback: { isOpen: false, position: null, zIndex: BASE_Z_INDEX }
+>>>>>>> Stashed changes
 });
 
 // Track the highest z-index used

@@ -1,10 +1,14 @@
 <script lang="ts">
 	import './layout.css';
 	import MainApp from '$lib/components/MainApp.svelte';
+	import MainAppNlca from '$lib/components/MainAppNlca.svelte';
+	import { page } from '$app/stores';
 	import { getSimulationState, DARK_THEME_COLORS, LIGHT_THEME_COLORS } from '$lib/stores/simulation.svelte.js';
 	
 	let { children } = $props();
 	const simState = getSimulationState();
+
+	const isNlca = $derived($page.url.pathname.startsWith('/nlca'));
 
 	// Convert alive color (0-1 RGB) to CSS color strings
 	const accentColor = $derived.by(() => {
@@ -128,7 +132,11 @@
 	class:light-theme={simState.isLightTheme}
 	style="--ui-accent: {accentColor}; --ui-accent-bg: {accentColorBg}; --ui-accent-border: {accentColorBorder}; --ui-accent-bg-hover: {accentColorBgHover}; --toolbar-bg: {toolbarBg}; --toolbar-border: {toolbarBorder}; --btn-bg: {btnBg}; --btn-bg-hover: {btnBgHover}; --btn-bg-active: {btnBgActive}; --group-bg: {groupBg}; --group-border: {groupBorder}; --group-bg-hover: {groupBgHover}; --group-border-hover: {groupBorderHover};"
 >
-	<MainApp />
+	{#if isNlca}
+		<MainAppNlca />
+	{:else}
+		<MainApp />
+	{/if}
 
 	{@render children()}
 </div>

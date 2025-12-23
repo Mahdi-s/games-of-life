@@ -41,6 +41,9 @@
 		"@games-of-life/core": "0.0.0",
 		"@games-of-life/svelte": "0.0.0",
 		"@games-of-life/webgpu": "0.0.0",
+		"@langchain/core": "^1.1.8",
+		"@langchain/openai": "^1.2.0",
+		"@sqlite.org/sqlite-wasm": "^3.51.1-build2",
 		"driver.js": "^1.4.0"
 	}
 }
