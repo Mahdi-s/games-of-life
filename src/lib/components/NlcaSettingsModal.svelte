@@ -16,8 +16,8 @@
 	let apiKey = $state('');
 	let model = $state('openai/gpt-4.1-mini');
 	let maxConcurrency = $state(50);
-	let gridWidth = $state(64);
-	let gridHeight = $state(64);
+	let gridWidth = $state(25);
+	let gridHeight = $state(25);
 	let neighborhood = $state<NlcaNeighborhood>('moore');
 
 	onMount(() => {
@@ -35,10 +35,10 @@
 			// ignore
 		}
 
-		// Default to 64x64 for NLCA, or current sim dimensions if already set
+		// Default to 25x25 for NLCA, or current sim dimensions if already set
 		if (simState.gridWidth === 0 || simState.gridHeight === 0) {
-			gridWidth = 64;
-			gridHeight = 64;
+			gridWidth = 25;
+			gridHeight = 25;
 		} else {
 			gridWidth = simState.gridWidth;
 			gridHeight = simState.gridHeight;

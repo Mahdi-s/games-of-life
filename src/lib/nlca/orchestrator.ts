@@ -10,12 +10,44 @@ export interface CellDecisionResult {
 	latencyMs: number;
 	raw: string;
 	success: boolean;
+	inputTokens?: number;
+	outputTokens?: number;
+	cost?: number;
+}
+
+export interface DebugLogEntry {
+	timestamp: number;
+	cellId: number;
+	x: number;
+	y: number;
+	generation: number;
+	input: string;
+	output: string;
+	latencyMs: number;
+	success: boolean;
+	cost?: number;
+}
+
+export interface NlcaCostStats {
+	totalCost: number;
+	totalInputTokens: number;
+	totalOutputTokens: number;
+	callCount: number;
 }
 
 export class NlcaOrchestrator {
 	private llm: ChatOpenAI;
 	private cfg: NlcaOrchestratorConfig;
 	private callCount = 0;
+	private costStats: NlcaCostStats = {
+		totalCost: 0,
+		totalInputTokens: 0,
+		totalOutputTokens: 0,
+		callCount: 0
+	};
+	private debugLog: DebugLogEntry[] = [];
+	private maxDebugLogSize = 500; // Keep last 500 entries
+	private debugEnabled = true;
 
 	constructor(cfg: NlcaOrchestratorConfig) {
 		this.cfg = cfg;
@@ -54,9 +86,40 @@ export class NlcaOrchestrator {
 		return this.callCount;
 	}
 
-	/** Reset call counter */
+	/** Reset call counter and cost stats */
 	resetCallCount(): void {
 		this.callCount = 0;
+		this.costStats = {
+			totalCost: 0,
+			totalInputTokens: 0,
+			totalOutputTokens: 0,
+			callCount: 0
+		};
+	}
+
+	/** Get accumulated cost statistics */
+	getCostStats(): NlcaCostStats {
+		return { ...this.costStats };
+	}
+
+	/** Get debug log entries */
+	getDebugLog(): DebugLogEntry[] {
+		return [...this.debugLog];
+	}
+
+	/** Clear debug log */
+	clearDebugLog(): void {
+		this.debugLog = [];
+	}
+
+	/** Enable/disable debug logging */
+	setDebugEnabled(enabled: boolean): void {
+		this.debugEnabled = enabled;
+	}
+
+	/** Check if debug logging is enabled */
+	isDebugEnabled(): boolean {
+		return this.debugEnabled;
 	}
 
 	/**
@@ -99,10 +162,37 @@ export class NlcaOrchestrator {
 		let success = false;
 		let state: CellState01 = req.self; // Default: keep current state
 		let confidence: number | undefined;
+		let inputTokens: number | undefined;
+		let outputTokens: number | undefined;
+		let cost: number | undefined;
 
 		try {
 			const res = await this.llm.invoke(messages);
 			raw = typeof res.content === 'string' ? res.content : JSON.stringify(res.content);
+
+			// Extract token usage from response metadata (OpenRouter provides this)
+			// Type assertion needed because LangChain types don't include OpenRouter-specific fields
+			const responseMetadata = res.response_metadata as Record<string, unknown> | undefined;
+			const usageMetadata = res.usage_metadata as Record<string, number> | undefined;
+			const usage = (responseMetadata?.usage ?? usageMetadata) as Record<string, number> | undefined;
+			
+			if (usage) {
+				inputTokens = (usage.prompt_tokens ?? usage.input_tokens) as number | undefined;
+				outputTokens = (usage.completion_tokens ?? usage.output_tokens) as number | undefined;
+				
+				// Calculate cost based on typical OpenRouter pricing
+				// Most models: ~$0.001-0.01 per 1K tokens
+				// Using conservative estimate for gpt-4.1-mini: $0.0001/1K input, $0.0003/1K output
+				const inputCost = (inputTokens ?? 0) * 0.0000001; // $0.0001/1K
+				const outputCost = (outputTokens ?? 0) * 0.0000003; // $0.0003/1K
+				cost = inputCost + outputCost;
+				
+				// Update cumulative cost stats
+				this.costStats.totalInputTokens += inputTokens ?? 0;
+				this.costStats.totalOutputTokens += outputTokens ?? 0;
+				this.costStats.totalCost += cost;
+				this.costStats.callCount++;
+			}
 
 			const parsed = parseCellResponse(raw);
 			if (parsed) {
@@ -123,7 +213,29 @@ export class NlcaOrchestrator {
 		// Add assistant response to history
 		agent.addMessage({ role: 'assistant', content: raw || `{"state":${state}}` });
 
-		return { state, confidence, latencyMs, raw, success };
+		// Add debug log entry if enabled
+		if (this.debugEnabled) {
+			const entry: DebugLogEntry = {
+				timestamp: Date.now(),
+				cellId: agent.cellId,
+				x: agent.x,
+				y: agent.y,
+				generation: req.generation,
+				input: userPrompt,
+				output: raw,
+				latencyMs,
+				success,
+				cost
+			};
+			this.debugLog.push(entry);
+			
+			// Trim log if it exceeds max size
+			if (this.debugLog.length > this.maxDebugLogSize) {
+				this.debugLog = this.debugLog.slice(-this.maxDebugLogSize);
+			}
+		}
+
+		return { state, confidence, latencyMs, raw, success, inputTokens, outputTokens, cost };
 	}
 }
 

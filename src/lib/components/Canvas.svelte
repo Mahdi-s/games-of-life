@@ -3,11 +3,24 @@
 	import { initWebGPU, type WebGPUContext, type WebGPUError } from '@games-of-life/webgpu';
 	import { Simulation } from '@games-of-life/webgpu';
 	import { getSimulationState, getUIState, GRID_SCALES, type GridScale, type SpectrumMode, type BrushShape, setSimulationRef, wasBrushEditorSnapshotTaken, markBrushEditorSnapshotTaken, markBrushEditorEdited } from '../stores/simulation.svelte.js';
+	import type { BoundaryMode } from '../stores/simulation.svelte.js';
 	import { addSnapshotWithBefore, resetHistory } from '../stores/history.js';
 	import { isTourActive } from '../utils/tour.js';
-	import { isModalOpen } from '../stores/modalManager.svelte.js';
+	import { isModalOpen, openModal } from '../stores/modalManager.svelte.js';
 	import { brushShapeToIndex, spectrumModeToIndex } from '@games-of-life/core';
 	import { initializeAudio, getAudioState, updateAudio, updateAudioSimulation, silenceAudio } from '../stores/audio.svelte.js';
+
+	// NLCA imports (lazy-loaded when nlcaMode is true)
+	import { NlcaStepper } from '$lib/nlca/stepper.js';
+	import { NlcaTape, encodeMetrics, pack01ToBitset } from '$lib/nlca/tape.js';
+	import { CellAgentManager } from '$lib/nlca/agentManager.js';
+	import type { NlcaNeighborhood } from '$lib/nlca/types.js';
+
+	// Props
+	interface Props {
+		nlcaMode?: boolean;
+	}
+	let { nlcaMode = false }: Props = $props();
 
 	const simState = getSimulationState();
 	const uiState = getUIState();
@@ -40,6 +53,178 @@
 
 	let canvasWidth = $state(0);
 	let canvasHeight = $state(0);
+
+	// NLCA (LLM-driven) stepping state - only active when nlcaMode is true
+	let nlcaApiKey = $state('');
+	let nlcaModel = $state('openai/gpt-4.1-mini');
+	let nlcaMaxConcurrency = $state(50);
+	let nlcaNeighborhood = $state<NlcaNeighborhood>('moore');
+	let nlcaRunId = $state('');
+	let nlcaStepInFlight = $state(false);
+	let nlcaLastError = $state<string | null>(null);
+	let nlcaAvgLatencyMs = $state<number | null>(null);
+	let nlcaLastStoredGen = $state<number | null>(null);
+	
+	// Cost tracking
+	let nlcaTotalCost = $state(0);
+	let nlcaTotalInputTokens = $state(0);
+	let nlcaTotalOutputTokens = $state(0);
+	let nlcaTotalCalls = $state(0);
+	
+	// Progress tracking for streaming visualization
+	let nlcaProgress = $state<{ completed: number; total: number } | null>(null);
+	
+	// Debug panel state
+	let nlcaShowDebug = $state(false);
+	let nlcaDebugEntries = $state<Array<{ timestamp: number; cellId: number; x: number; y: number; generation: number; input: string; output: string; latencyMs: number; success: boolean; cost?: number }>>([]);
+
+	let nlcaStepper: NlcaStepper | null = null;
+	let nlcaTape: NlcaTape | null = null;
+	let nlcaAgentManager: CellAgentManager | null = null;
+
+	function loadNlcaConfigFromStorage() {
+		if (!nlcaMode) return;
+		try {
+			nlcaApiKey = localStorage.getItem('nlca_openrouter_api_key') ?? '';
+			nlcaModel = localStorage.getItem('nlca_model') ?? 'openai/gpt-4.1-mini';
+			nlcaMaxConcurrency = Number(localStorage.getItem('nlca_max_concurrency') ?? '50') || 50;
+			const nbh = (localStorage.getItem('nlca_neighborhood') ?? 'moore') as NlcaNeighborhood;
+			nlcaNeighborhood = nbh === 'vonNeumann' || nbh === 'extendedMoore' || nbh === 'moore' ? nbh : 'moore';
+		} catch {
+			// ignore
+		}
+	}
+
+	function newRunId(): string {
+		return (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+			? crypto.randomUUID()
+			: `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+	}
+
+	async function ensureNlcaReady(width: number, height: number) {
+		if (!nlcaMode) return;
+		console.log(`[NLCA] ensureNlcaReady called: ${width}x${height}`);
+		
+		if (!nlcaTape) nlcaTape = new NlcaTape();
+		await nlcaTape.init();
+
+		if (!nlcaAgentManager) {
+			console.log(`[NLCA] Creating new CellAgentManager: ${width}x${height}`);
+			nlcaAgentManager = new CellAgentManager(width, height);
+		} else {
+			const dims = nlcaAgentManager.getDimensions();
+			if (dims.width !== width || dims.height !== height) {
+				console.log(`[NLCA] Agent dimensions mismatch (${dims.width}x${dims.height} -> ${width}x${height}), resetting`);
+				nlcaAgentManager.reset(width, height);
+			} else {
+				console.log(`[NLCA] Agent dimensions match: ${dims.width}x${dims.height}`);
+			}
+		}
+
+		if (!nlcaRunId) {
+			nlcaRunId = newRunId();
+			nlcaAgentManager.clearAllHistory();
+			await nlcaTape.startRun({
+				runId: nlcaRunId,
+				createdAt: Date.now(),
+				width,
+				height,
+				neighborhood: nlcaNeighborhood,
+				model: nlcaModel,
+				maxConcurrency: nlcaMaxConcurrency
+			});
+			console.log(`[NLCA] New run started: ${nlcaRunId}, grid: ${width}x${height}, agents: ${width * height}`);
+		}
+
+		nlcaStepper =
+			nlcaApiKey.trim().length > 0
+				? new NlcaStepper(
+						{
+							runId: nlcaRunId,
+							neighborhood: nlcaNeighborhood,
+							boundary: simState.boundaryMode as BoundaryMode,
+							orchestrator: {
+								apiKey: nlcaApiKey.trim(),
+								model: { model: nlcaModel, temperature: 0, maxOutputTokens: 64 },
+								maxConcurrency: nlcaMaxConcurrency,
+								cellTimeoutMs: 30_000
+							}
+						},
+						nlcaAgentManager
+					)
+				: null;
+	}
+
+	async function startNlcaStep() {
+		if (!simulation) return;
+		if (!nlcaStepper) return;
+		if (!nlcaTape) return;
+		if (nlcaStepInFlight) return;
+
+		nlcaStepInFlight = true;
+		nlcaLastError = null;
+		nlcaProgress = { completed: 0, total: simState.gridWidth * simState.gridHeight };
+
+		(async () => {
+			try {
+				if (simState.seedingEnabled && simState.seedingRate > 0) {
+					simulation.continuousSeed(simState.seedingRate, simState.seedPattern, simState.seedAlive);
+				}
+
+				const width = simState.gridWidth;
+				const height = simState.gridHeight;
+				const gen = simState.generation;
+
+				const prev = await simulation.getCellDataAsync();
+				
+				// Step with progress callbacks for streaming visualization
+				const { next, metrics } = await nlcaStepper.step(prev, width, height, gen, {
+					onBatchProgress: (completed, total, partialGrid) => {
+						nlcaProgress = { completed, total };
+						// Update grid in real-time as results stream in
+						simulation?.setCellData(partialGrid);
+					}
+				});
+				
+				simulation.setCellData(next);
+				simState.incrementGeneration();
+
+				// Update cost stats from stepper
+				const costStats = nlcaStepper.getCostStats();
+				nlcaTotalCost = costStats.totalCost;
+				nlcaTotalInputTokens = costStats.totalInputTokens;
+				nlcaTotalOutputTokens = costStats.totalOutputTokens;
+				nlcaTotalCalls = costStats.callCount;
+				
+				// Update debug log
+				nlcaDebugEntries = nlcaStepper.getDebugLog().slice(-100); // Keep last 100 for display
+
+				if (metrics) {
+					let sum = 0;
+					for (let i = 0; i < metrics.latency8.length; i++) sum += metrics.latency8[i] ?? 0;
+					nlcaAvgLatencyMs = (sum / Math.max(1, metrics.latency8.length)) * 10;
+					simulation.setAgentMetrics(metrics.latency8, metrics.changed01);
+				} else {
+					nlcaAvgLatencyMs = null;
+				}
+
+				await nlcaTape.appendFrame({
+					runId: nlcaRunId,
+					generation: gen + 1,
+					createdAt: Date.now(),
+					stateBits: pack01ToBitset(next),
+					metrics: metrics ? encodeMetrics(metrics) : undefined
+				});
+				nlcaLastStoredGen = gen + 1;
+			} catch (err) {
+				nlcaLastError = err instanceof Error ? err.message : String(err);
+				simState.isPlaying = false;
+			} finally {
+				nlcaStepInFlight = false;
+				nlcaProgress = null;
+			}
+		})();
+	}
 
 	// Mouse state
 	let isDrawing = $state(false);
@@ -155,7 +340,61 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 	}
 
 	onMount(() => {
+		if (nlcaMode) loadNlcaConfigFromStorage();
 		initializeWebGPU();
+
+		// Handle NLCA config changes from settings modal
+		const onNlcaConfigChanged = (e: Event) => {
+			if (!nlcaMode) return;
+			const detail = (e as CustomEvent).detail as
+				| {
+						apiKey?: string;
+						model?: string;
+						maxConcurrency?: number;
+						neighborhood?: NlcaNeighborhood;
+						gridWidth?: number;
+						gridHeight?: number;
+					}
+				| undefined;
+			if (!detail) return;
+
+			if (typeof detail.apiKey === 'string') nlcaApiKey = detail.apiKey;
+			if (typeof detail.model === 'string') nlcaModel = detail.model;
+			if (typeof detail.maxConcurrency === 'number' && Number.isFinite(detail.maxConcurrency)) nlcaMaxConcurrency = detail.maxConcurrency;
+			if (
+				detail.neighborhood === 'moore' ||
+				detail.neighborhood === 'vonNeumann' ||
+				detail.neighborhood === 'extendedMoore'
+			) {
+				nlcaNeighborhood = detail.neighborhood;
+				simState.currentRule.neighborhood = detail.neighborhood;
+				simulation?.setRule(simState.currentRule);
+				nlcaStepper?.updateNeighborhood(detail.neighborhood);
+			}
+
+			// Check if grid dimensions are changing
+			const newWidth = typeof detail.gridWidth === 'number' ? detail.gridWidth : simState.gridWidth;
+			const newHeight = typeof detail.gridHeight === 'number' ? detail.gridHeight : simState.gridHeight;
+			const dimensionsChanging = newWidth !== simState.gridWidth || newHeight !== simState.gridHeight;
+
+			console.log(`[NLCA] Config changed - current: ${simState.gridWidth}x${simState.gridHeight}, new: ${newWidth}x${newHeight}, changing: ${dimensionsChanging}`);
+
+			if (dimensionsChanging) {
+				// resize() will handle nlcaRunId reset and ensureNlcaReady with new dimensions
+				console.log(`[NLCA] Resizing grid to ${newWidth}x${newHeight}`);
+				resize(newWidth, newHeight);
+			} else {
+				// Only reset run if dimensions stay the same (API key change, etc.)
+				console.log(`[NLCA] Dimensions unchanged, resetting run only`);
+				nlcaRunId = '';
+				if (simulation) {
+					void ensureNlcaReady(simState.gridWidth, simState.gridHeight);
+				}
+			}
+		};
+		if (nlcaMode) {
+			window.addEventListener('nlca-config-changed', onNlcaConfigChanged as EventListener);
+		}
 
 		// Handle resize
 		const resizeObserver = new ResizeObserver(handleResize);
@@ -174,6 +413,9 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 		canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
 
 		return () => {
+			if (nlcaMode) {
+				window.removeEventListener('nlca-config-changed', onNlcaConfigChanged as EventListener);
+			}
 			resizeObserver.disconnect();
 			if (animationId !== null) {
 				cancelAnimationFrame(animationId);
@@ -200,14 +442,35 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 
 		ctx = result.value;
 		
-		// Calculate initial grid size based on actual visible viewport
-		// Uses visualViewport API on mobile for accurate dimensions
-		const viewport = getVisibleViewportSize();
-		
-		const isHex = simState.currentRule.neighborhood === 'hexagonal' || simState.currentRule.neighborhood === 'extendedHexagonal';
-		const { width, height } = calculateGridDimensions(simState.gridScale, viewport.width, viewport.height, isHex);
-		simState.gridWidth = width;
-		simState.gridHeight = height;
+		let width: number;
+		let height: number;
+
+		if (nlcaMode) {
+			// NLCA mode uses fixed 25x25 grid by default
+			// Override any store defaults - NLCA is a special mode with small grids
+			width = 25;
+			height = 25;
+			simState.gridWidth = width;
+			simState.gridHeight = height;
+			// NLCA mode starts paused - user must manually step or play
+			simState.pause();
+			console.log(`[NLCA] Initialized grid: ${width}x${height} (paused)`);
+			
+			// Force square-grid neighborhoods only for NLCA mode
+			if (simState.currentRule.neighborhood === 'hexagonal' || simState.currentRule.neighborhood === 'extendedHexagonal') {
+				simState.currentRule.neighborhood = 'moore';
+			}
+		} else {
+			// Calculate initial grid size based on actual visible viewport
+			// Uses visualViewport API on mobile for accurate dimensions
+			const viewport = getVisibleViewportSize();
+			const isHex = simState.currentRule.neighborhood === 'hexagonal' || simState.currentRule.neighborhood === 'extendedHexagonal';
+			const dims = calculateGridDimensions(simState.gridScale, viewport.width, viewport.height, isHex);
+			width = dims.width;
+			height = dims.height;
+			simState.gridWidth = width;
+			simState.gridHeight = height;
+		}
 		
 		simulation = new Simulation(ctx, {
 			width,
@@ -217,20 +480,29 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 		setSimulationRef(simulation);
 		await resetHistory(simulation);
 
+		// Initialize NLCA components if in NLCA mode
+		if (nlcaMode) {
+			await ensureNlcaReady(width, height);
+		}
+
 		// Initialize audio engine (won't start playing until user enables it)
-		try {
-			await initializeAudio(ctx.device, simulation);
-		} catch (e) {
-			console.warn('Audio initialization failed:', e);
+		// Skip audio for NLCA mode (not applicable)
+		if (!nlcaMode) {
+			try {
+				await initializeAudio(ctx.device, simulation);
+			} catch (e) {
+				console.warn('Audio initialization failed:', e);
+			}
 		}
 
 		// Apply the selected initialization method
 		applyLastInitialization();
 		
 		// Use viewport dimensions since canvas may not be sized yet
+		const viewport = getVisibleViewportSize();
 		const dpr = window.devicePixelRatio || 1;
-		const initialCanvasWidth = viewport.width * dpr;
-		const initialCanvasHeight = viewport.height * dpr;
+		const initialCanvasWidth = nlcaMode ? width * 10 * dpr : viewport.width * dpr;
+		const initialCanvasHeight = nlcaMode ? height * 10 * dpr : viewport.height * dpr;
 		
 		// Set view to fit the grid (no zoom animation)
 		simulation.resetView(initialCanvasWidth, initialCanvasHeight, false);
@@ -296,24 +568,34 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 			frameDt = Math.min(frameDt, 50);
 			simAccMs += frameDt;
 
-			// Keep the UI smooth by giving stepping a time budget each frame.
-			const frameStart = performance.now();
-			const stepBudgetMs = 6;
-			const hardMaxStepsPerFrame = 64;
-
-			let stepsRan = 0;
-			while (simAccMs >= stepMs && stepsRan < hardMaxStepsPerFrame) {
-				if (simState.seedingEnabled && simState.seedingRate > 0) {
-					simulation.continuousSeed(simState.seedingRate, simState.seedPattern, simState.seedAlive);
+			if (nlcaMode) {
+				// NLCA mode: async LLM stepping, one step at a time
+				if (!nlcaStepInFlight && simAccMs >= stepMs) {
+					simAccMs = Math.min(simAccMs, stepMs);
+					simAccMs -= stepMs;
+					startNlcaStep();
 				}
-				simulation.step();
-				simAccMs -= stepMs;
-				stepsRan++;
+			} else {
+				// Normal mode: GPU compute stepping
+				// Keep the UI smooth by giving stepping a time budget each frame.
+				const frameStart = performance.now();
+				const stepBudgetMs = 6;
+				const hardMaxStepsPerFrame = 64;
 
-				if (performance.now() - frameStart > stepBudgetMs) break;
+				let stepsRan = 0;
+				while (simAccMs >= stepMs && stepsRan < hardMaxStepsPerFrame) {
+					if (simState.seedingEnabled && simState.seedingRate > 0) {
+						simulation.continuousSeed(simState.seedingRate, simState.seedPattern, simState.seedAlive);
+					}
+					simulation.step();
+					simAccMs -= stepMs;
+					stepsRan++;
+
+					if (performance.now() - frameStart > stepBudgetMs) break;
+				}
+
+				if (stepsRan > 0) simState.incrementGenerationBy(stepsRan);
 			}
-
-			if (stepsRan > 0) simState.incrementGenerationBy(stepsRan);
 		} else {
 			// Prevent a giant catch-up when resuming play.
 			lastFrameTime = 0;
@@ -954,12 +1236,18 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 
 	export function stepOnce() {
 		if (!simulation) return;
-		simulation.step();
-		simState.incrementGeneration();
-		// Update alive cells count after step
-		simulation.countAliveCellsAsync().then(count => {
-			simState.aliveCells = count;
-		});
+		if (nlcaMode) {
+			// NLCA mode: async LLM stepping
+			startNlcaStep();
+		} else {
+			// Normal mode: GPU compute stepping
+			simulation.step();
+			simState.incrementGeneration();
+			// Update alive cells count after step
+			simulation.countAliveCellsAsync().then(count => {
+				simState.aliveCells = count;
+			});
+		}
 	}
 
 	export function resetView() {
@@ -969,6 +1257,24 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 
 	export function updateRule() {
 		if (!simulation || !ctx) return;
+		
+		// NLCA mode only supports square neighborhoods
+		if (nlcaMode) {
+			const nbh = simState.currentRule.neighborhood;
+			if (nbh === 'hexagonal' || nbh === 'extendedHexagonal') {
+				simState.currentRule.neighborhood = 'moore';
+			}
+			simulation.setRule(simState.currentRule);
+
+			// Keep NLCA stepper aligned with boundary + neighborhood
+			const nextNbh = simState.currentRule.neighborhood as NlcaNeighborhood;
+			if (nextNbh === 'moore' || nextNbh === 'vonNeumann' || nextNbh === 'extendedMoore') {
+				nlcaNeighborhood = nextNbh;
+				nlcaStepper?.updateNeighborhood(nextNbh);
+			}
+			nlcaStepper?.updateBoundary(simState.boundaryMode as BoundaryMode);
+			return;
+		}
 		
 		const currentNeighborhood = simulation.getRule().neighborhood;
 		const newNeighborhood = simState.currentRule.neighborhood;
@@ -1194,6 +1500,8 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 	export function resize(width: number, height: number) {
 		if (!ctx || !simulation) return;
 		
+		console.log(`[Canvas] resize() called: ${width}x${height}`);
+		
 		// Update store
 		simState.gridWidth = width;
 		simState.gridHeight = height;
@@ -1206,8 +1514,17 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 			rule: simState.currentRule
 		});
 		setSimulationRef(simulation);
-		updateAudioSimulation(simulation);
+		if (!nlcaMode) {
+			updateAudioSimulation(simulation);
+		}
 		applyLastInitialization();
+
+		// NLCA: new run for a new grid shape
+		if (nlcaMode) {
+			console.log(`[NLCA] New grid created: ${width}x${height}, resetting run`);
+			nlcaRunId = '';
+			void ensureNlcaReady(width, height);
+		}
 	}
 	
 	export function setScale(scale: GridScale) {
@@ -1215,7 +1532,7 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 		
 		// Calculate new dimensions based on visible viewport
 		const viewport = getVisibleViewportSize();
-		const isHex = simState.currentRule.neighborhood === 'hexagonal' || simState.currentRule.neighborhood === 'extendedHexagonal';
+		const isHex = nlcaMode ? false : (simState.currentRule.neighborhood === 'hexagonal' || simState.currentRule.neighborhood === 'extendedHexagonal');
 		const { width, height } = calculateGridDimensions(scale, viewport.width, viewport.height, isHex);
 		
 		// Update store
@@ -1231,11 +1548,19 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 			rule: simState.currentRule
 		});
 		setSimulationRef(simulation);
-		updateAudioSimulation(simulation);
+		if (!nlcaMode) {
+			updateAudioSimulation(simulation);
+		}
 		applyLastInitialization();
 		
 		// Reset view to fit the new grid (no animation since grid was recreated)
 		simulation.resetView(canvasWidth, canvasHeight, false);
+
+		// NLCA: new run for a new grid shape
+		if (nlcaMode) {
+			nlcaRunId = '';
+			void ensureNlcaReady(width, height);
+		}
 	}
 </script>
 
@@ -1265,6 +1590,86 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 		class:panning={isPanning}
 		class:pan-ready={effectiveToolMode === 'pan' && !isPanning}
 	></canvas>
+
+	{#if nlcaMode && !error}
+		<div class="nlca-hud">
+			<div class="row">
+				<span class="pill">NLCA</span>
+				{#if nlcaStepInFlight && nlcaProgress}
+					<span class="muted">Thinking… {nlcaProgress.completed}/{nlcaProgress.total}</span>
+				{:else if nlcaStepInFlight}
+					<span class="muted">Thinking…</span>
+				{:else if !nlcaApiKey}
+					<span class="muted">No API key (open NLCA Settings)</span>
+				{:else}
+					<span class="muted">Ready</span>
+				{/if}
+			</div>
+
+			{#if nlcaStepInFlight && nlcaProgress}
+				<div class="progress-bar">
+					<div class="progress-fill" style="width: {(nlcaProgress.completed / nlcaProgress.total) * 100}%"></div>
+				</div>
+			{/if}
+
+			<div class="grid">
+				<div><span class="k">Grid</span> <span class="v">{simState.gridWidth}×{simState.gridHeight}</span></div>
+				<div><span class="k">Neighborhood</span> <span class="v">{nlcaNeighborhood}</span></div>
+				<div><span class="k">Run</span> <span class="v mono">{nlcaRunId.slice(0, 8)}…</span></div>
+				<div><span class="k">Stored</span> <span class="v">{nlcaLastStoredGen ?? 0}</span></div>
+				<div><span class="k">Avg latency</span> <span class="v">{nlcaAvgLatencyMs ? `${Math.round(nlcaAvgLatencyMs)}ms` : '—'}</span></div>
+				<div><span class="k">Calls</span> <span class="v">{nlcaTotalCalls.toLocaleString()}</span></div>
+				<div><span class="k">Cost</span> <span class="v cost">${nlcaTotalCost.toFixed(4)}</span></div>
+			</div>
+
+			<div class="row">
+				<button class="debug-btn" onclick={() => nlcaShowDebug = !nlcaShowDebug}>
+					{nlcaShowDebug ? 'Hide Debug' : 'Show Debug'}
+				</button>
+				<button class="debug-btn" onclick={() => openModal('nlcaPrompt')}>
+					View Prompts
+				</button>
+			</div>
+
+			{#if nlcaLastError}
+				<div class="err">{nlcaLastError}</div>
+			{/if}
+		</div>
+
+		{#if nlcaShowDebug}
+			<div class="nlca-debug">
+				<div class="debug-header">
+					<span>LLM Debug Log</span>
+					<button class="close-btn" onclick={() => nlcaShowDebug = false}>×</button>
+				</div>
+				<div class="debug-stats">
+					<span>Tokens: {nlcaTotalInputTokens.toLocaleString()} in / {nlcaTotalOutputTokens.toLocaleString()} out</span>
+				</div>
+				<div class="debug-entries">
+					{#each nlcaDebugEntries.slice(-50).reverse() as entry (entry.timestamp + '-' + entry.cellId)}
+						<div class="debug-entry" class:success={entry.success} class:fail={!entry.success}>
+							<div class="entry-header">
+								<span class="cell-id">Cell ({entry.x},{entry.y})</span>
+								<span class="gen">Gen {entry.generation}</span>
+								<span class="latency">{entry.latencyMs.toFixed(0)}ms</span>
+								{#if entry.cost}<span class="entry-cost">${entry.cost.toFixed(6)}</span>{/if}
+							</div>
+							<div class="entry-io">
+								<div class="io-label">IN:</div>
+								<pre class="io-content">{entry.input}</pre>
+							</div>
+							<div class="entry-io">
+								<div class="io-label">OUT:</div>
+								<pre class="io-content">{entry.output}</pre>
+							</div>
+						</div>
+					{:else}
+						<div class="no-entries">No debug entries yet. Run a step to see LLM I/O.</div>
+					{/each}
+				</div>
+			</div>
+		{/if}
+	{/if}
 
 	<!-- History / Branch toolbar -->
 </div>
@@ -1343,6 +1748,210 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 	.error .hint {
 		color: #888;
 		font-size: 0.9rem;
+	}
+
+	/* NLCA HUD styles */
+	.nlca-hud {
+		position: absolute;
+		left: 12px;
+		top: 12px;
+		max-width: min(360px, calc(100vw - 24px));
+		background: rgba(0, 0, 0, 0.55);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		border-radius: 14px;
+		padding: 10px 12px;
+		backdrop-filter: blur(14px);
+		color: #eaeaf2;
+		pointer-events: auto;
+		z-index: 100;
+	}
+	.nlca-hud .row {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		margin-bottom: 8px;
+	}
+	.nlca-hud .pill {
+		font-weight: 900;
+		font-size: 0.72rem;
+		letter-spacing: 0.04em;
+		padding: 2px 8px;
+		border-radius: 999px;
+		background: rgba(255, 255, 255, 0.08);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+	}
+	.nlca-hud .muted {
+		color: rgba(255, 255, 255, 0.7);
+		font-size: 0.82rem;
+	}
+	.nlca-hud .grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 6px 10px;
+		font-size: 0.82rem;
+		margin-bottom: 8px;
+	}
+	.nlca-hud .k {
+		color: rgba(255, 255, 255, 0.65);
+		margin-right: 6px;
+	}
+	.nlca-hud .v.cost {
+		color: #4ade80;
+		font-weight: 600;
+		font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+	}
+	.nlca-hud .mono {
+		font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+	}
+	.nlca-hud .err {
+		margin-top: 8px;
+		color: #ffb3b3;
+		font-size: 0.8rem;
+		line-height: 1.3;
+		white-space: pre-wrap;
+	}
+	.nlca-hud .progress-bar {
+		width: 100%;
+		height: 4px;
+		background: rgba(255, 255, 255, 0.1);
+		border-radius: 2px;
+		margin-bottom: 8px;
+		overflow: hidden;
+	}
+	.nlca-hud .progress-fill {
+		height: 100%;
+		background: linear-gradient(90deg, #4ade80, #2dd4bf);
+		transition: width 0.15s ease-out;
+		border-radius: 2px;
+	}
+	.nlca-hud .debug-btn {
+		background: rgba(255, 255, 255, 0.08);
+		border: 1px solid rgba(255, 255, 255, 0.15);
+		border-radius: 8px;
+		color: #eaeaf2;
+		padding: 4px 10px;
+		font-size: 0.75rem;
+		cursor: pointer;
+		transition: background 0.15s;
+	}
+	.nlca-hud .debug-btn:hover {
+		background: rgba(255, 255, 255, 0.15);
+	}
+
+	/* NLCA Debug Panel */
+	.nlca-debug {
+		position: absolute;
+		right: 12px;
+		top: 12px;
+		width: min(480px, calc(100vw - 400px));
+		max-height: calc(100vh - 100px);
+		background: rgba(0, 0, 0, 0.85);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 14px;
+		backdrop-filter: blur(18px);
+		color: #eaeaf2;
+		pointer-events: auto;
+		z-index: 101;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+	.nlca-debug .debug-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 10px 14px;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+		font-weight: 600;
+		font-size: 0.85rem;
+	}
+	.nlca-debug .close-btn {
+		background: transparent;
+		border: none;
+		color: #888;
+		font-size: 1.2rem;
+		cursor: pointer;
+		padding: 2px 6px;
+		line-height: 1;
+	}
+	.nlca-debug .close-btn:hover {
+		color: #fff;
+	}
+	.nlca-debug .debug-stats {
+		padding: 8px 14px;
+		font-size: 0.75rem;
+		color: rgba(255, 255, 255, 0.7);
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+		font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	}
+	.nlca-debug .debug-entries {
+		flex: 1;
+		overflow-y: auto;
+		padding: 8px;
+	}
+	.nlca-debug .debug-entry {
+		background: rgba(255, 255, 255, 0.03);
+		border: 1px solid rgba(255, 255, 255, 0.06);
+		border-radius: 8px;
+		padding: 8px 10px;
+		margin-bottom: 6px;
+		font-size: 0.72rem;
+	}
+	.nlca-debug .debug-entry.success {
+		border-left: 3px solid #4ade80;
+	}
+	.nlca-debug .debug-entry.fail {
+		border-left: 3px solid #f87171;
+	}
+	.nlca-debug .entry-header {
+		display: flex;
+		gap: 10px;
+		margin-bottom: 6px;
+		color: rgba(255, 255, 255, 0.8);
+	}
+	.nlca-debug .cell-id {
+		font-weight: 600;
+		color: #2dd4bf;
+	}
+	.nlca-debug .gen {
+		color: rgba(255, 255, 255, 0.6);
+	}
+	.nlca-debug .latency {
+		color: #fbbf24;
+	}
+	.nlca-debug .entry-cost {
+		color: #4ade80;
+		font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	}
+	.nlca-debug .entry-io {
+		display: flex;
+		gap: 6px;
+		margin-bottom: 4px;
+	}
+	.nlca-debug .io-label {
+		color: rgba(255, 255, 255, 0.5);
+		min-width: 28px;
+		font-weight: 500;
+	}
+	.nlca-debug .io-content {
+		flex: 1;
+		margin: 0;
+		padding: 4px 6px;
+		background: rgba(0, 0, 0, 0.3);
+		border-radius: 4px;
+		font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+		font-size: 0.68rem;
+		white-space: pre-wrap;
+		word-break: break-all;
+		max-height: 60px;
+		overflow-y: auto;
+		color: rgba(255, 255, 255, 0.9);
+	}
+	.nlca-debug .no-entries {
+		color: rgba(255, 255, 255, 0.5);
+		text-align: center;
+		padding: 20px;
+		font-size: 0.8rem;
 	}
 
 </style>

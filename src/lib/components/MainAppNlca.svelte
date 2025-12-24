@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import CanvasNlca from '$lib/components/Canvas-nlca.svelte';
+	import Canvas from '$lib/components/Canvas.svelte';
 	import ControlsNlca from '$lib/components/ControlsNlca.svelte';
 	import Settings from '$lib/components/Settings.svelte';
 	import HelpOverlay from '$lib/components/HelpOverlay.svelte';
@@ -10,6 +10,7 @@
 	import InitializeModal from '$lib/components/InitializeModal.svelte';
 	import NlcaSettingsModal from '$lib/components/NlcaSettingsModal.svelte';
 	import NlcaPlaybackModal from '$lib/components/NlcaPlaybackModal.svelte';
+	import NlcaPromptModal from '$lib/components/NlcaPromptModal.svelte';
 
 	import { getSimulationState, getUIState } from '$lib/stores/simulation.svelte.js';
 	import { getModalStates, toggleModal, closeModal } from '$lib/stores/modalManager.svelte.js';
@@ -24,8 +25,9 @@
 	const showSettings = $derived(modalStates.settings.isOpen);
 	const showNlcaSettings = $derived(modalStates.nlcaSettings.isOpen);
 	const showNlcaPlayback = $derived(modalStates.nlcaPlayback.isOpen);
+	const showNlcaPrompt = $derived(modalStates.nlcaPrompt.isOpen);
 
-	let canvas: CanvasNlca;
+	let canvas: Canvas;
 
 	function handleClear() {
 		canvas.clear();
@@ -67,9 +69,12 @@
 	function openNlcaPlaybackModal() {
 		toggleModal('nlcaPlayback');
 	}
+	function openNlcaPromptModal() {
+		toggleModal('nlcaPrompt');
+	}
 </script>
 
-<CanvasNlca bind:this={canvas} />
+<Canvas bind:this={canvas} nlcaMode={true} />
 
 <ControlsNlca
 	onclear={handleClear}
@@ -116,5 +121,9 @@
 
 {#if showNlcaPlayback}
 	<NlcaPlaybackModal onclose={() => closeModal('nlcaPlayback')} />
+{/if}
+
+{#if showNlcaPrompt}
+	<NlcaPromptModal onclose={() => closeModal('nlcaPrompt')} />
 {/if}
 

@@ -1,32 +1,65 @@
 import type { NlcaCellRequest, NlcaCellResponse, CellState01 } from './types.js';
 
 /**
- * Prompt strategy for individual cell agents:
- * - Each cell is its own agent with conversation history
- * - Minimal prompt focused on collaborative goal: "make the number 3"
- * - Strict JSON output for reliable parsing
+ * Prompt strategy for NLCA (Neural-Linguistic Cellular Automata):
+ * 
+ * Goal: Cells collectively form an MNIST-style handwritten digit "3".
+ * 
+ * Each cell is a binary agent that outputs ONLY 0 or 1:
+ * - 1 = ON (part of the digit stroke)
+ * - 0 = OFF (background)
+ * 
+ * The digit "3" shape reference (on a normalized grid):
+ * - Two curved horizontal strokes stacked vertically
+ * - Top curve: arc from top-left through top-center to middle-right
+ * - Bottom curve: arc from middle-right through bottom-center to bottom-left
+ * - Both curves meet at the right side, around mid-height
+ * 
+ * Cells decide based on:
+ * 1. Their position (x,y) relative to where the "3" stroke should be
+ * 2. Their neighbors' states (to maintain stroke continuity)
  */
 
 /**
  * Build the system prompt for a cell agent.
- * This is cached via KV by OpenRouter for efficiency.
+ * Kept minimal for token efficiency - OpenRouter caches system prompts.
  */
 export function buildCellSystemPrompt(cellId: number, x: number, y: number, width: number, height: number): string {
-	return `You are cell ${cellId} at position (${x},${y}) on a ${width}x${height} grid.
-You and your neighbors are working together to display the number "3".
-Based on your neighbors' states, decide: should you be ON (1) or OFF (0)?
-Reply with JSON only: {"state":0} or {"state":1}`;
+	// Normalize position to 0-1 range for position-aware decisions
+	const nx = (x / (width - 1)).toFixed(2);
+	const ny = (y / (height - 1)).toFixed(2);
+	
+	return `You are cell (${x},${y}) on a ${width}x${height} grid. Normalized position: (${nx},${ny}).
+
+TASK: Output 1 if you should be part of the digit "3" stroke, else 0.
+
+MNIST "3" shape guide (normalized coords):
+- Top arc: y≈0.1-0.3, curves from x≈0.3 to x≈0.7
+- Middle: y≈0.4-0.6, stroke at x≈0.5-0.7 (where curves meet)
+- Bottom arc: y≈0.7-0.9, curves from x≈0.7 to x≈0.3
+- Stroke width: ~2-3 cells
+
+Rules:
+1. If your position is ON the "3" stroke path → output 1
+2. If neighbors form a continuous stroke and you connect them → output 1
+3. Otherwise → output 0
+
+OUTPUT FORMAT: {"state":0} or {"state":1} — nothing else.`;
 }
 
 /**
  * Build the user prompt for a single cell's decision.
- * Compact format to minimize tokens.
+ * Compact JSON format to minimize tokens.
  */
 export function buildCellUserPrompt(req: NlcaCellRequest): string {
-	// Compact format: gen, self state, neighbors as [dx,dy,state] tuples
+	// Count alive neighbors for quick context
+	const aliveCount = req.neighbors.filter(n => n.state === 1).length;
+	
+	// Compact format: generation, self state, alive neighbor count, neighbor details
 	const payload = {
 		g: req.generation,
 		s: req.self,
+		alive: aliveCount,
 		n: req.neighbors.map((nn) => [nn.dx, nn.dy, nn.state])
 	};
 	return JSON.stringify(payload);

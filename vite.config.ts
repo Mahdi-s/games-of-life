@@ -9,16 +9,12 @@ export default defineConfig({
 	// we must ensure Vite bundles/transpiles them instead of Node trying to load
 	// raw `.ts` (which causes ERR_UNKNOWN_FILE_EXTENSION).
 	ssr: {
-<<<<<<< Updated upstream
-		noExternal: ['@games-of-life/core', '@games-of-life/webgpu', '@games-of-life/svelte', '@games-of-life/audio']
-=======
-		noExternal: ['@games-of-life/core', '@games-of-life/webgpu', '@games-of-life/svelte'],
+		noExternal: ['@games-of-life/core', '@games-of-life/webgpu', '@games-of-life/svelte', '@games-of-life/audio'],
 		external: ['@sqlite.org/sqlite-wasm']
 	},
 	resolve: {
 		// Prefer browser exports over Node.js exports
 		conditions: ['browser', 'import', 'module', 'default']
->>>>>>> Stashed changes
 	},
 	server: {
 		headers: {

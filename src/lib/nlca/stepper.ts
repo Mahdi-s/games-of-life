@@ -1,7 +1,7 @@
 import type { BoundaryMode } from '$lib/stores/simulation.svelte.js';
 import type { CellContext, NlcaCellMetricsFrame, NlcaCellRequest, NlcaOrchestratorConfig, NlcaStepResult, NlcaNeighborhood, CellState01 } from './types.js';
 import { extractCellContext } from './neighborhood.js';
-import { NlcaOrchestrator } from './orchestrator.js';
+import { NlcaOrchestrator, type CellDecisionResult, type NlcaCostStats, type DebugLogEntry } from './orchestrator.js';
 import { CellAgentManager } from './agentManager.js';
 
 export interface NlcaStepperConfig {
@@ -9,6 +9,13 @@ export interface NlcaStepperConfig {
 	neighborhood: NlcaNeighborhood;
 	boundary: BoundaryMode;
 	orchestrator: NlcaOrchestratorConfig;
+}
+
+export interface NlcaProgressCallback {
+	/** Called after each cell decision completes */
+	onCellComplete?: (cellId: number, result: CellDecisionResult, completed: number, total: number) => void;
+	/** Called periodically with batch progress (for UI updates) */
+	onBatchProgress?: (completed: number, total: number, partialGrid: Uint32Array) => void;
 }
 
 async function asyncPool<T, R>(
@@ -76,6 +83,31 @@ export class NlcaStepper {
 		console.log(`[NLCA] New run started: ${runId}`);
 	}
 
+	/** Get cost statistics from orchestrator */
+	getCostStats(): NlcaCostStats {
+		return this.orchestrator.getCostStats();
+	}
+
+	/** Get debug log from orchestrator */
+	getDebugLog(): DebugLogEntry[] {
+		return this.orchestrator.getDebugLog();
+	}
+
+	/** Clear debug log */
+	clearDebugLog(): void {
+		this.orchestrator.clearDebugLog();
+	}
+
+	/** Enable/disable debug logging */
+	setDebugEnabled(enabled: boolean): void {
+		this.orchestrator.setDebugEnabled(enabled);
+	}
+
+	/** Check if debug is enabled */
+	isDebugEnabled(): boolean {
+		return this.orchestrator.isDebugEnabled();
+	}
+
 	private buildContexts(prev: Uint32Array, width: number, height: number): CellContext[] {
 		const cells: CellContext[] = [];
 		for (let y = 0; y < height; y++) {
@@ -91,7 +123,9 @@ export class NlcaStepper {
 		width: number,
 		height: number,
 		generation: number,
-		latency8: Uint8Array
+		latency8: Uint8Array,
+		prev: Uint32Array,
+		callbacks?: NlcaProgressCallback
 	): Promise<Map<number, CellState01>> {
 		const maxConcurrency = Math.max(1, this.cfg.orchestrator.maxConcurrency);
 		const decisions = new Map<number, CellState01>();
@@ -101,10 +135,15 @@ export class NlcaStepper {
 		let failCount = 0;
 		let totalLatency = 0;
 		let lastLogTime = Date.now();
+		let lastBatchTime = Date.now();
 		const logInterval = 2000; // Log progress every 2 seconds
+		const batchUpdateInterval = 500; // Update UI every 500ms
 
 		console.log(`[NLCA] Generation ${generation} starting - ${totalCells} cells, concurrency: ${maxConcurrency}`);
 		const genStartTime = performance.now();
+
+		// Create a working grid for streaming updates
+		const workingGrid = new Uint32Array(prev);
 
 		await asyncPool(
 			maxConcurrency,
@@ -127,6 +166,7 @@ export class NlcaStepper {
 				const result = await this.orchestrator.decideCell(agent, req);
 
 				decisions.set(cell.id, result.state);
+				workingGrid[cell.id] = result.state;
 				latency8[cell.id] = latencyToU8(result.latencyMs);
 				totalLatency += result.latencyMs;
 
@@ -135,6 +175,9 @@ export class NlcaStepper {
 				} else {
 					failCount++;
 				}
+
+				// Notify per-cell callback
+				callbacks?.onCellComplete?.(cell.id, result, successCount + failCount, totalCells);
 
 				return result;
 			},
@@ -146,8 +189,17 @@ export class NlcaStepper {
 					console.log(`[NLCA] Progress: ${completed}/${total} cells (${pct}%)`);
 					lastLogTime = now;
 				}
+
+				// Send batch progress for UI updates
+				if (callbacks?.onBatchProgress && now - lastBatchTime >= batchUpdateInterval) {
+					callbacks.onBatchProgress(completed, total, workingGrid);
+					lastBatchTime = now;
+				}
 			}
 		);
+
+		// Final batch progress update
+		callbacks?.onBatchProgress?.(totalCells, totalCells, workingGrid);
 
 		const genDuration = performance.now() - genStartTime;
 		const avgLatency = totalLatency / totalCells;
@@ -162,7 +214,13 @@ export class NlcaStepper {
 		return decisions;
 	}
 
-	async step(prev: Uint32Array, width: number, height: number, generation: number): Promise<NlcaStepResult> {
+	async step(
+		prev: Uint32Array,
+		width: number,
+		height: number,
+		generation: number,
+		callbacks?: NlcaProgressCallback
+	): Promise<NlcaStepResult> {
 		const expected = width * height;
 		if (prev.length !== expected) {
 			throw new Error(`NLCA stepper: grid length mismatch (have ${prev.length}, expected ${expected})`);
@@ -179,7 +237,7 @@ export class NlcaStepper {
 		const latency8 = new Uint8Array(expected);
 		const changed01 = new Uint8Array(expected);
 
-		const decisionMap = await this.decideCells(contexts, width, height, generation, latency8);
+		const decisionMap = await this.decideCells(contexts, width, height, generation, latency8, prev, callbacks);
 
 		const next = new Uint32Array(expected);
 		let changedCount = 0;
