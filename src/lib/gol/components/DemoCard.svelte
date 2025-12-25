@@ -7,6 +7,7 @@
 	type Seed =
 		| { kind: 'random'; density?: number; includeSpectrum?: boolean }
 		| { kind: 'blank' }
+		| { kind: 'disk'; radius?: number; density?: number; state?: number }
 		| { kind: 'cells'; cells: [number, number][]; tiled?: boolean; spacing?: number; state?: number };
 
 	interface Props {

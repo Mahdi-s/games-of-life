@@ -7,6 +7,7 @@
 // - Y position → frequency bin (via pitch curve)
 // - Vitality → amplitude (via amplitude curve)
 // - Neighbor count → harmonic spread (via timbre curve)
+// - Neighbor vitality → loudness gain (via neighbor vitality curve)
 // - X position → stereo pan (via spatial curve)
 
 // Fixed-point scale factor (16.16 format)
@@ -31,12 +32,17 @@ struct AudioParams {
     
     // Master volume (0-1)
     master_volume: f32,
-    
-    _padding: u32,
+
+    // Neighbor vitality modulation controls
+    neighbor_amp_depth: f32,    // 0..1, scales exponent for 2^(curve * depth)
+    neighbor_timbre_depth: f32, // 0..1, bias timbre/brightness based on curve
+    neighbor_wave_depth: f32,   // 0..1, modulate waveform complexity based on curve
+    neighbor_sign: f32,         // +1 or -1 (invert)
+    _pad0: f32,
 }
 
 // Output spectrum bins - using atomic i32 for accumulation
-// Layout: [amplitude_fp, phase_fp, pan_left_fp, pan_right_fp] per bin
+// Layout: [amplitude_fp, wave_sum_fp, pan_left_fp, pan_right_fp] per bin
 // These are in fixed-point format (multiply by 65536)
 struct SpectralOutput {
     data: array<atomic<i32>>,
@@ -49,7 +55,8 @@ struct SpectralOutput {
 @group(0) @binding(4) var<storage, read> timbre_curve: array<f32>;     // 128 samples
 @group(0) @binding(5) var<storage, read> spatial_curve: array<f32>;    // 128 samples
 @group(0) @binding(6) var<storage, read> wave_curve: array<f32>;       // 128 samples
-@group(0) @binding(7) var<storage, read_write> spectrum: SpectralOutput;
+@group(0) @binding(7) var<storage, read> neighbor_vitality_curve: array<f32>; // 128 samples (log2 gain)
+@group(0) @binding(8) var<storage, read_write> spectrum: SpectralOutput;
 
 // Sample a curve at position t (0-1)
 fn sample_curve(curve_base: u32, t: f32) -> f32 {
@@ -82,6 +89,10 @@ fn sample_curve(curve_base: u32, t: f32) -> f32 {
         case 4u: {
             v0 = wave_curve[i0];
             v1 = wave_curve[i1];
+        }
+        case 5u: {
+            v0 = neighbor_vitality_curve[i0];
+            v1 = neighbor_vitality_curve[i1];
         }
         default: {
             v0 = 0.0;
@@ -118,15 +129,36 @@ fn count_neighbors_normalized(x: i32, y: i32) -> f32 {
     return count / 8.0; // Normalize to 0-1
 }
 
-// Add to spectrum bin using fixed-point atomics
-fn add_to_spectrum(bin: u32, amplitude: f32, phase: f32, pan_left: f32, pan_right: f32) {
+// Average vitality of neighbors (0..1), Moore neighborhood, toroidal wrap.
+fn neighbor_vitality_normalized(x: i32, y: i32) -> f32 {
+    var total: f32 = 0.0;
+    let w = i32(params.grid_width);
+    let h = i32(params.grid_height);
+    
+    for (var dy: i32 = -1; dy <= 1; dy++) {
+        for (var dx: i32 = -1; dx <= 1; dx++) {
+            if (dx == 0 && dy == 0) { continue; }
+            let nx = (x + dx + w) % w;
+            let ny = (y + dy + h) % h;
+            let idx = u32(nx) + u32(ny) * params.grid_width;
+            total += get_vitality(cells[idx]);
+        }
+    }
+    
+    return total / 8.0;
+}
+
+// Add to spectrum bin using fixed-point atomics.
+// Note: the second channel is used as an amplitude-weighted "wave complexity" accumulator (not true phase).
+// The AudioWorklet reconstructs per-bin wave shape as: wave = wave_sum / (amplitude + eps).
+fn add_to_spectrum(bin: u32, amplitude: f32, wave_sum: f32, pan_left: f32, pan_right: f32) {
     if (bin >= params.num_bins) { return; }
     
     let base_idx = bin * 4u;
     
     // Convert to fixed-point and atomically add
     atomicAdd(&spectrum.data[base_idx + 0u], i32(amplitude * FP_SCALE));
-    atomicAdd(&spectrum.data[base_idx + 1u], i32(phase * FP_SCALE));
+    atomicAdd(&spectrum.data[base_idx + 1u], i32(wave_sum * FP_SCALE));
     atomicAdd(&spectrum.data[base_idx + 2u], i32(pan_left * FP_SCALE));
     atomicAdd(&spectrum.data[base_idx + 3u], i32(pan_right * FP_SCALE));
 }
@@ -171,13 +203,18 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let pitch_t = sample_curve(0u, y_normalized);
     let freq_bin = u32(clamp(pitch_t * f32(params.num_bins - 1u), 0.0, f32(params.num_bins - 1u)));
     
-    // Amplitude: vitality → loudness (curve 1)
-    // Scale per-cell contribution - normalization happens on CPU side
-    let base_amplitude = sample_curve(1u, vitality) * params.master_volume;
-    let amplitude = base_amplitude * 0.1; // Each cell contributes to the total
+    // Neighbor vitality curve sample (in -2..2), allow global inversion
+    let neighbor_vitality = neighbor_vitality_normalized(i32(cell_x), i32(cell_y));
+    let neighbor_curve = sample_curve(5u, neighbor_vitality) * params.neighbor_sign;
+
+    // Amplitude: vitality → loudness (curve 1), modulated by neighbor vitality (2^(curve * depth))
+    let neighbor_gain = pow(2.0, neighbor_curve * params.neighbor_amp_depth); // depth=1 => 0.25×..4×
+    let amplitude = sample_curve(1u, vitality) * params.master_volume * neighbor_gain;
     
     // Timbre: neighbors → harmonic spread (curve 2)
-    let timbre = sample_curve(2u, neighbors);
+    var timbre = sample_curve(2u, neighbors);
+    let timbre_bias = clamp(neighbor_curve * 0.5, -1.0, 1.0) * params.neighbor_timbre_depth * 0.5;
+    timbre = clamp(timbre + timbre_bias, 0.0, 1.0);
     
     // Spatial: X position → stereo pan (curve 3)
     // Curve output 0-1, convert to -1 to +1 for pan
@@ -185,22 +222,26 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let pan_left = sqrt(0.5 * (1.0 - pan));
     let pan_right = sqrt(0.5 * (1.0 + pan));
     
-    // Wave: vitality → phase variation (curve 4)
-    let wave_phase = sample_curve(4u, vitality) * 6.28318; // 0-2π
+    // Waveform complexity (0..1), modulated by neighbor vitality curve.
+    // Stored as amplitude-weighted sum; the AudioWorklet divides by amplitude to get an average.
+    var wave = clamp(sample_curve(4u, vitality), 0.0, 1.0);
+    wave = clamp(wave + neighbor_curve * params.neighbor_wave_depth * 0.25, 0.0, 1.0);
     
     // Add to main frequency bin
-    add_to_spectrum(freq_bin, amplitude, wave_phase, amplitude * pan_left, amplitude * pan_right);
+    add_to_spectrum(freq_bin, amplitude, wave * amplitude, amplitude * pan_left, amplitude * pan_right);
     
     // Harmonic spread based on timbre (adds to adjacent bins)
     if (timbre > 0.1) {
-        let spread = u32(timbre * 2.0); // 0-2 adjacent bins
+        let spread = u32(clamp(timbre, 0.0, 1.0) * 6.0 + 0.5); // ~0-6 adjacent bins
         for (var d: u32 = 1u; d <= spread; d++) {
-            let harmonic_amp = amplitude * (1.0 - f32(d) * 0.4);
+            let falloff = pow(0.7, f32(d));
             if (freq_bin + d < params.num_bins) {
-                add_to_spectrum(freq_bin + d, harmonic_amp * 0.4, wave_phase, harmonic_amp * 0.4 * pan_left, harmonic_amp * 0.4 * pan_right);
+                let up_amp = amplitude * falloff * 0.45;
+                add_to_spectrum(freq_bin + d, up_amp, wave * up_amp, up_amp * pan_left, up_amp * pan_right);
             }
             if (freq_bin >= d) {
-                add_to_spectrum(freq_bin - d, harmonic_amp * 0.25, wave_phase, harmonic_amp * 0.25 * pan_left, harmonic_amp * 0.25 * pan_right);
+                let down_amp = amplitude * falloff * 0.28;
+                add_to_spectrum(freq_bin - d, down_amp, wave * down_amp, down_amp * pan_left, down_amp * pan_right);
             }
         }
     }

@@ -15,7 +15,7 @@
 	import AudioModal from '$lib/components/AudioModal.svelte';
 	import { getSimulationState, getUIState, DARK_THEME_COLORS, LIGHT_THEME_COLORS, SPECTRUM_MODES, type GridScale } from '$lib/stores/simulation.svelte.js';
 	import { closeModal, toggleModal, getModalStates } from '$lib/stores/modalManager.svelte.js';
-	import { getAudioState, toggleAudio, cycleAudioPreset } from '$lib/stores/audio.svelte.js';
+	import { getAudioState, toggleAudio, toggleMute } from '$lib/stores/audio.svelte.js';
 	import { hasTourBeenCompleted, startTour, getTourStyles, getSelectedGalleryRule } from '$lib/utils/tour.js';
 	import { getRuleByName } from '$lib/utils/rules.js';
 	import 'driver.js/dist/driver.css';
@@ -372,10 +372,10 @@
 				}
 				break;
 			case 'KeyM':
-				// M toggles audio on/off, Shift+M cycles presets
+				// M toggles audio on/off, Shift+M toggles mute
 				if (!e.ctrlKey && !e.metaKey) {
 					if (e.shiftKey) {
-						cycleAudioPreset();
+						toggleMute();
 					} else {
 						toggleAudio();
 					}

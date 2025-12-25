@@ -17,7 +17,6 @@ export { AudioSynthesizer } from './synthesis/index.js';
 // Types
 export type {
 	AudioConfig,
-	AudioPreset,
 	AudioEngineState,
 	ViewportBounds,
 	SpectralBin,
@@ -30,6 +29,5 @@ export {
 	DEFAULT_AUDIO_CONFIG,
 	AUDIO_CURVE_SAMPLES,
 	SPECTRUM_BINS,
-	AUDIO_PRESETS,
 } from './types.js';
 

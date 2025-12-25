@@ -30,6 +30,11 @@ export interface AudioConfig {
 	timbreCurve: CurvePoint[];      // Neighbors → harmonic richness
 	spatialCurve: CurvePoint[];     // X-position → stereo pan
 	waveCurve: CurvePoint[];        // Vitality → waveform complexity
+	neighborVitalityCurve: CurvePoint[]; // Avg neighbor vitality → log2 loudness gain (-2..2), applied as 2^y
+	neighborVitalityAmpDepth: number;    // 0-1, scales loudness modulation strength
+	neighborVitalityTimbreDepth: number; // 0-1, modulates harmonic spread/brightness
+	neighborVitalityWaveDepth: number;   // 0-1, modulates phase variation
+	neighborVitalityInvert: boolean;     // Invert neighbor vitality modulation (flip curve sign)
 
 	// Quick controls
 	softening: number;      // 0-1, smoothing amount
@@ -37,16 +42,6 @@ export interface AudioConfig {
 	// Frequency range
 	minFreq: number;        // Hz (default 80)
 	maxFreq: number;        // Hz (default 2000)
-}
-
-/**
- * Preset definition for saved audio configurations.
- */
-export interface AudioPreset {
-	id: string;
-	name: string;
-	description: string;
-	config: Partial<AudioConfig>;
 }
 
 /**
@@ -70,84 +65,12 @@ export type TimbreMode =
 	| 'bell';       // Bell-like metallic tones
 
 /**
- * Built-in audio presets.
- */
-export const AUDIO_PRESETS: AudioPreset[] = [
-	{
-		id: 'ambient',
-		name: 'Ambient',
-		description: 'Soft, dreamy pad-like tones',
-		config: {
-			masterVolume: 0.6,
-			softening: 0.8,
-			minFreq: 80,
-			maxFreq: 800,
-		}
-	},
-	{
-		id: 'crystalline',
-		name: 'Crystalline',
-		description: 'High, sparkly bell-like tones',
-		config: {
-			masterVolume: 0.4,
-			softening: 0.3,
-			minFreq: 400,
-			maxFreq: 4000,
-		}
-	},
-	{
-		id: 'deep',
-		name: 'Deep',
-		description: 'Low, rumbling bass frequencies',
-		config: {
-			masterVolume: 0.7,
-			softening: 0.9,
-			minFreq: 40,
-			maxFreq: 300,
-		}
-	},
-	{
-		id: 'choir',
-		name: 'Choir',
-		description: 'Mid-range vocal-like tones',
-		config: {
-			masterVolume: 0.5,
-			softening: 0.6,
-			minFreq: 200,
-			maxFreq: 1200,
-		}
-	},
-	{
-		id: 'cosmic',
-		name: 'Cosmic',
-		description: 'Wide frequency range, space-like',
-		config: {
-			masterVolume: 0.5,
-			softening: 0.5,
-			minFreq: 60,
-			maxFreq: 2500,
-		}
-	},
-	{
-		id: 'meditative',
-		name: 'Meditative',
-		description: 'Calm, centered tones',
-		config: {
-			masterVolume: 0.4,
-			softening: 0.95,
-			minFreq: 100,
-			maxFreq: 600,
-		}
-	},
-];
-
-/**
  * Spectral bin data from GPU aggregation.
  * Packed as 4 floats per bin for efficient transfer.
  */
 export interface SpectralBin {
 	amplitude: number;      // Total energy at this frequency
-	phase: number;          // Combined phase offset
+	waveSum: number;        // Amplitude-weighted waveform complexity accumulator
 	panLeft: number;        // Left channel contribution
 	panRight: number;       // Right channel contribution
 }
@@ -217,6 +140,16 @@ export const DEFAULT_AUDIO_CONFIG: AudioConfig = {
 		{ x: 0, y: 0 },      // Dead = sine (pure)
 		{ x: 1, y: 0.4 }     // Alive = slightly complex
 	],
+
+	// Neighbor vitality: neutral by default (2^0 = 1×)
+	neighborVitalityCurve: [
+		{ x: 0, y: 0 },
+		{ x: 1, y: 0 }
+	],
+	neighborVitalityAmpDepth: 1.0,
+	neighborVitalityTimbreDepth: 0.0,
+	neighborVitalityWaveDepth: 0.0,
+	neighborVitalityInvert: false,
 
 	softening: 0.6,
 	minFreq: 80,
