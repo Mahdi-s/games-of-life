@@ -6,7 +6,7 @@
  */
 
 import type { AudioConfig, AudioEngineState } from '@games-of-life/audio';
-import { DEFAULT_AUDIO_CONFIG, AudioEngine, AUDIO_PRESETS } from '@games-of-life/audio';
+import { DEFAULT_AUDIO_CONFIG, AudioEngine } from '@games-of-life/audio';
 import type { Simulation } from '@games-of-life/webgpu';
 import { base } from '$app/paths';
 
@@ -22,9 +22,6 @@ let isMuted = $state(false);
 
 // Current configuration (simplified for Phase 1)
 let config = $state<AudioConfig>({ ...DEFAULT_AUDIO_CONFIG });
-
-// Current preset index for cycling
-let currentPresetIndex = $state(0);
 
 /**
  * Initialize the audio engine.
@@ -133,39 +130,6 @@ export function setSoftening(softening: number): void {
 	const value = Math.max(0, Math.min(1, softening));
 	config = { ...config, softening: value };
 	audioEngine?.updateConfig({ softening: value });
-}
-
-/**
- * Update musical scale.
- */
-export function setScale(scale: AudioConfig['scale']): void {
-	config = { ...config, scale };
-	audioEngine?.updateConfig({ scale });
-}
-
-/**
- * Cycle through audio presets.
- * Returns the name of the new preset.
- */
-export function cycleAudioPreset(): string {
-	currentPresetIndex = (currentPresetIndex + 1) % AUDIO_PRESETS.length;
-	const preset = AUDIO_PRESETS[currentPresetIndex];
-	
-	// Apply preset config
-	config = { ...config, ...preset.config };
-	if (preset.config.masterVolume !== undefined) {
-		masterVolume = preset.config.masterVolume;
-	}
-	audioEngine?.updateConfig(preset.config);
-	
-	return preset.name;
-}
-
-/**
- * Get the current preset name.
- */
-export function getCurrentPresetName(): string {
-	return AUDIO_PRESETS[currentPresetIndex].name;
 }
 
 /**

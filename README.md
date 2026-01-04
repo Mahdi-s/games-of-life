@@ -24,7 +24,7 @@ This repo is a **monorepo**:
 - **Multi-state "Generations" rules** (B/S + N states)
 - **Vitality influence**: dying cells can contribute positively/negatively via a user curve
 - **Brush system**: paint/erase with preview (including hex-friendly circle brush)
-- **Audio sonification**: GPU-accelerated spectral synthesis turns cell states into sound
+- **Audio sonification**: GPU-accelerated spectral synthesis with neighbor vitality modulation routing
 - **CPU fallback kernel** (useful for mini-sims, tests, or non-WebGPU environments)
 
 ## Packages (the library)
@@ -35,7 +35,7 @@ This repo is a **monorepo**:
 |---|---|---|
 | `@games-of-life/core` | UI/framework-free specs + rule parsing + vitality + seeds + CPU stepper | Shared "single source of truth", CPU fallback |
 | `@games-of-life/webgpu` | Framework-free WebGPU runtime (`Simulation`, WGSL shaders, context helpers) | Vanilla/React/Svelte/Web Components |
-| `@games-of-life/audio` | GPU-accelerated audio sonification (`AudioEngine`, spectral synthesis) | Adding sound to CA simulations |
+| `@games-of-life/audio` | GPU-accelerated audio sonification (`AudioEngine`, spectral synthesis, neighbor vitality modulation) | Adding sound to CA simulations |
 | `@games-of-life/svelte` | Svelte 5 wrapper components (`LifeCanvas`) | Drop-in canvases in Svelte apps |
 
 The demo app uses these packages via workspace deps (see `package.json`).
@@ -93,7 +93,7 @@ flowchart LR
   P --> D
 ```
 
-Each visible cell contributes to a frequency spectrum based on its vitality and position. The GPU aggregates thousands of cells in parallel into 256 frequency bins. An AudioWorklet then synthesizes the waveform using additive synthesis, creating emergent soundscapes that mirror the visual patterns.
+Each visible cell contributes to a frequency spectrum based on its vitality and position. The GPU aggregates thousands of cells in parallel into 256 frequency bins. Neighbor vitality can modulate loudness, timbre, and waveform complexity via curve-based routing. An AudioWorklet then synthesizes the waveform using additive synthesis, creating emergent soundscapes that mirror the visual patterns.
 
 ## Using the library
 
@@ -214,7 +214,6 @@ Requires a browser with WebGPU support (Chrome/Edge/Safari 18+; Firefox Nightly 
 | `Shift+C` | Cycle spectrum modes |
 | `V` | Start/Stop video recording |
 | `M` | Toggle audio on/off |
-| `Shift+M` | Cycle audio presets |
 | `?` | Help overlay |
 | `Esc` | Close modals |
 

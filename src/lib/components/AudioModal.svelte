@@ -5,13 +5,12 @@
 		setVolume, 
 		setFrequencyRange, 
 		setSoftening, 
-		setScale, 
 		updateAudioConfig 
 	} from '../stores/audio.svelte.js';
 	import { getSimulationState } from '../stores/simulation.svelte.js';
 	import { draggable } from '../utils/draggable.js';
 	import { bringToFront, setModalPosition, getModalState } from '../stores/modalManager.svelte.js';
-	import { AUDIO_PRESETS, type MusicalScale } from '@games-of-life/audio';
+	import InfluenceCurveEditor from './InfluenceCurveEditor.svelte';
 
 	interface Props {
 		onclose: () => void;
@@ -33,79 +32,141 @@
 		bringToFront('audio');
 	}
 
-	// Get accent color from simulation state
-	const accentColor = $derived(() => {
-		const [r, g, b] = simState.aliveColor;
-		return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
-	});
-
 	// Local state for UI (synced from store config)
 	let volume = $state(audioState.config.masterVolume);
 	let minFreq = $state(audioState.config.minFreq);
 	let maxFreq = $state(audioState.config.maxFreq);
 	let softening = $state(audioState.config.softening);
-	let selectedPreset = $state<string | null>(null);
-	let selectedScale = $state<MusicalScale>(audioState.config.scale);
+	type CurvePoint = { x: number; y: number };
+	let neighborAmpDepth = $state(audioState.config.neighborVitalityAmpDepth);
+	let neighborTimbreDepth = $state(audioState.config.neighborVitalityTimbreDepth);
+	let neighborWaveDepth = $state(audioState.config.neighborVitalityWaveDepth);
+	let neighborInvert = $state(audioState.config.neighborVitalityInvert);
+	let activeRoute = $state<'amp' | 'timbre' | 'wave'>('amp');
 
-	// Pitch curve state (maps vitality to frequency)
-	let pitchCurvePoints = $state<{x: number, y: number}[]>([
-		{ x: 0, y: 0.2 },
-		{ x: 1, y: 0.8 }
-	]);
-
-	// Amplitude curve state (maps vitality to volume)
-	let amplitudeCurvePoints = $state<{x: number, y: number}[]>([
-		{ x: 0, y: 0 },
-		{ x: 1, y: 1 }
-	]);
-
-	// Musical scales for the selector
-	const SCALES: { id: MusicalScale; name: string }[] = [
-		{ id: 'pentatonic', name: 'Penta' },
-		{ id: 'major', name: 'Major' },
-		{ id: 'minor', name: 'Minor' },
-		{ id: 'chromatic', name: 'Chrom' },
-		{ id: 'whole-tone', name: 'Whole' },
-		{ id: 'free', name: 'Free' },
+	const VITALITY_PRESETS: Array<{
+		id: string;
+		name: string;
+		description: string;
+		curve: CurvePoint[];
+		ampDepth: number;
+		timbreDepth: number;
+		waveDepth: number;
+		invert: boolean;
+	}> = [
+		{
+			id: 'neutral',
+			name: 'Neutral',
+			description: 'No neighbor vitality modulation',
+			curve: [
+				{ x: 0, y: 0 },
+				{ x: 1, y: 0 }
+			],
+			ampDepth: 1.0,
+			timbreDepth: 0.0,
+			waveDepth: 0.0,
+			invert: false
+		},
+		{
+			id: 'swarm',
+			name: 'Swarm Pulse',
+			description: 'Dense neighborhoods swell louder + brighter',
+			curve: [
+				{ x: 0, y: 0 },
+				{ x: 0.25, y: -0.35 },
+				{ x: 0.6, y: 0.35 },
+				{ x: 1, y: 1.15 }
+			],
+			ampDepth: 0.85,
+			timbreDepth: 0.7,
+			waveDepth: 0.15,
+			invert: false
+		},
+		{
+			id: 'ghost-choir',
+			name: 'Ghost Choir',
+			description: 'Mid-vital neighborhoods sing; phase shimmers',
+			curve: [
+				{ x: 0, y: 0 },
+				{ x: 0.22, y: 1.35 },
+				{ x: 0.55, y: 0.15 },
+				{ x: 1, y: -0.65 }
+			],
+			ampDepth: 0.65,
+			timbreDepth: 0.25,
+			waveDepth: 0.8,
+			invert: false
+		},
+		{
+			id: 'antisocial',
+			name: 'Anti-social',
+			description: 'Isolated cells pop; clusters duck',
+			curve: [
+				{ x: 0, y: 0 },
+				{ x: 0.25, y: -0.2 },
+				{ x: 1, y: 1.0 }
+			],
+			ampDepth: 0.8,
+			timbreDepth: 0.55,
+			waveDepth: 0.25,
+			invert: true
+		}
 	];
+
+	// Local state object for InfluenceCurveEditor (audio neighbor vitality → loudness gain)
+	// We reuse the exact same curve editor by presenting an object that looks like simState.
+	const neighborVitalityGainState = $state({
+		// Curve editor expects vitality settings fields
+		vitalityMode: (audioState.config.neighborVitalityCurve?.length ?? 0) >= 2 ? 'curve' : 'none',
+		vitalityCurvePoints: (audioState.config.neighborVitalityCurve ?? []).map((p) => ({ x: p.x, y: p.y })),
+		vitalityGhostFactor: 0,
+		vitalityThreshold: 1.0,
+		vitalitySigmoidSharpness: 10.0,
+		vitalityDecayPower: 1.0,
+
+		// For spectrum gradient coloring (matches canvas theme)
+		aliveColor: simState.aliveColor,
+		isLightTheme: simState.isLightTheme,
+		spectrumMode: simState.spectrumMode,
+		spectrumFrequency: simState.spectrumFrequency
+	});
+
+	$effect(() => {
+		neighborVitalityGainState.aliveColor = simState.aliveColor;
+		neighborVitalityGainState.isLightTheme = simState.isLightTheme;
+		neighborVitalityGainState.spectrumMode = simState.spectrumMode;
+		neighborVitalityGainState.spectrumFrequency = simState.spectrumFrequency;
+	});
 
 	// Event handlers for sliders
 	function handleVolumeChange() {
 		setVolume(volume);
-		selectedPreset = null;
 	}
 
 	function handleFreqChange() {
 		setFrequencyRange(minFreq, maxFreq);
-		selectedPreset = null;
 	}
 
 	function handleSofteningChange() {
 		setSoftening(softening);
-		selectedPreset = null;
 	}
 
-	// Apply preset
-	function applyPreset(presetId: string) {
-		const preset = AUDIO_PRESETS.find(p => p.id === presetId);
-		if (!preset) return;
-		
-		selectedPreset = presetId;
-		
-		if (preset.config.masterVolume !== undefined) volume = preset.config.masterVolume;
-		if (preset.config.minFreq !== undefined) minFreq = preset.config.minFreq;
-		if (preset.config.maxFreq !== undefined) maxFreq = preset.config.maxFreq;
-		if (preset.config.softening !== undefined) softening = preset.config.softening;
-		if (preset.config.scale !== undefined) selectedScale = preset.config.scale;
-		
-		updateAudioConfig(preset.config);
-	}
+	function applyVitalityPreset(preset: (typeof VITALITY_PRESETS)[number]) {
+		neighborInvert = preset.invert;
+		neighborAmpDepth = preset.ampDepth;
+		neighborTimbreDepth = preset.timbreDepth;
+		neighborWaveDepth = preset.waveDepth;
 
-	// Handle scale selection
-	function handleScaleChange(scale: MusicalScale) {
-		selectedScale = scale;
-		setScale(scale);
-		selectedPreset = null;
+		neighborVitalityGainState.vitalityMode = 'curve';
+		neighborVitalityGainState.vitalityCurvePoints = preset.curve.map((p) => ({ x: p.x, y: p.y }));
+
+		updateAudioConfig({
+			neighborVitalityCurve: preset.curve,
+			neighborVitalityAmpDepth: preset.ampDepth,
+			neighborVitalityTimbreDepth: preset.timbreDepth,
+			neighborVitalityWaveDepth: preset.waveDepth,
+			neighborVitalityInvert: preset.invert
+		});
 	}
 
 	// Get frequency display
@@ -186,23 +247,6 @@
 				/>
 			</div>
 
-			<!-- Presets -->
-			<div class="row col">
-				<span class="label">Presets</span>
-				<div class="preset-grid">
-					{#each AUDIO_PRESETS as preset}
-						<button
-							class="preset-btn"
-							class:active={selectedPreset === preset.id}
-							onclick={() => applyPreset(preset.id)}
-							title={preset.description}
-						>
-							{preset.name}
-						</button>
-					{/each}
-				</div>
-			</div>
-
 			<!-- Frequency Range (dual-knob slider) -->
 			<div class="row col">
 				<div class="row-header">
@@ -259,19 +303,98 @@
 				/>
 			</div>
 
-			<!-- Scale -->
-			<div class="row col">
-				<span class="label">Scale</span>
-				<div class="scale-grid">
-					{#each SCALES as scale}
-						<button
-							class="scale-btn"
-							class:active={selectedScale === scale.id}
-							onclick={() => handleScaleChange(scale.id)}
-						>
-							{scale.name}
-						</button>
-					{/each}
+			<!-- Vitality Sonification (Neighbor Vitality → Audio Modulation) -->
+			<div class="row col vitality-sonification">
+				<div class="section-head">
+					<span class="label">Vitality Sonification</span>
+					<span class="value">neighbor vitality</span>
+				</div>
+
+				<div class="vitality-panel">
+					<div class="vitality-presets" aria-label="Vitality presets">
+						{#each VITALITY_PRESETS as vp (vp.id)}
+							<button class="vitality-preset" onclick={() => applyVitalityPreset(vp)} title={vp.description}>
+								{vp.name}
+							</button>
+						{/each}
+					</div>
+
+					<div class="routing-compact">
+						<div class="tabs">
+							<button class="tab" class:active={activeRoute === 'amp'} onclick={() => (activeRoute = 'amp')}>
+								Amp
+							</button>
+							<button class="tab" class:active={activeRoute === 'timbre'} onclick={() => (activeRoute = 'timbre')}>
+								Timbre
+							</button>
+							<button class="tab" class:active={activeRoute === 'wave'} onclick={() => (activeRoute = 'wave')}>
+								Wave
+							</button>
+							<button
+								class="invert-btn"
+								class:active={neighborInvert}
+								onclick={() => {
+									neighborInvert = !neighborInvert;
+									updateAudioConfig({ neighborVitalityInvert: neighborInvert });
+								}}
+								title="Invert neighbor vitality modulation"
+							>
+								Inv {neighborInvert ? 'On' : 'Off'}
+							</button>
+						</div>
+
+						<div class="depth-row">
+							<span class="route-label">Depth</span>
+							<input
+								type="range"
+								min="0"
+								max="1"
+								step="0.01"
+								value={activeRoute === 'amp' ? neighborAmpDepth : activeRoute === 'timbre' ? neighborTimbreDepth : neighborWaveDepth}
+								oninput={(e) => {
+									const v = parseFloat((e.currentTarget as HTMLInputElement).value);
+									if (activeRoute === 'amp') {
+										neighborAmpDepth = v;
+										updateAudioConfig({ neighborVitalityAmpDepth: v });
+									} else if (activeRoute === 'timbre') {
+										neighborTimbreDepth = v;
+										updateAudioConfig({ neighborVitalityTimbreDepth: v });
+									} else {
+										neighborWaveDepth = v;
+										updateAudioConfig({ neighborVitalityWaveDepth: v });
+									}
+								}}
+								aria-label="Routing depth"
+							/>
+							<span class="route-value">
+								{Math.round(
+									(activeRoute === 'amp'
+										? neighborAmpDepth
+										: activeRoute === 'timbre'
+											? neighborTimbreDepth
+											: neighborWaveDepth) * 100
+								)}%
+							</span>
+						</div>
+					</div>
+
+					<div class="curve-block">
+						<InfluenceCurveEditor
+							width={360}
+							height={140}
+							compact={true}
+							title="Neighbor Vitality → Curve (y = log2)"
+							stateOverride={neighborVitalityGainState}
+							onChange={(mode: string, points: CurvePoint[]) => {
+								updateAudioConfig({
+									neighborVitalityCurve: mode === 'curve' && points.length >= 2 ? points : []
+								});
+							}}
+						/>
+						<div class="curve-help">
+							y is log2 gain. Depth routes it into amp / timbre / wave.
+						</div>
+					</div>
 				</div>
 			</div>
 		</div>
@@ -295,8 +418,9 @@
 		border-radius: 8px;
 		padding: 0.6rem;
 		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-		width: 260px;
+		width: 320px;
 		backdrop-filter: blur(12px);
+		max-width: calc(100vw - 24px);
 	}
 
 	.header {
@@ -354,6 +478,9 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
+		max-height: calc(100vh - 140px);
+		overflow: auto;
+		padding-right: 0.15rem;
 	}
 
 	.row {
@@ -385,6 +512,161 @@
 		font-size: 0.65rem;
 		color: var(--ui-accent, #2dd4bf);
 		font-weight: 500;
+	}
+
+	.section-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		padding: 0.1rem 0.1rem 0.15rem;
+	}
+
+	.vitality-panel {
+		display: flex;
+		flex-direction: column;
+		gap: 0.45rem;
+	}
+
+	.vitality-presets {
+		display: flex;
+		flex-wrap: nowrap;
+		gap: 0.25rem;
+		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
+		padding-bottom: 0.1rem;
+	}
+
+	.vitality-preset {
+		-webkit-tap-highlight-color: transparent;
+		padding: 0.3rem 0.4rem;
+		border-radius: 5px;
+		border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.1));
+		background: var(--ui-border, rgba(255, 255, 255, 0.03));
+		color: var(--ui-text, #888);
+		font-size: 0.6rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.12s ease;
+	}
+
+	.vitality-preset:hover {
+		background: var(--ui-border-hover, rgba(255, 255, 255, 0.08));
+		color: var(--ui-text-hover, #fff);
+	}
+
+	@media (max-width: 420px) {
+		.curve-help {
+			display: none;
+		}
+	}
+
+	.routing-compact {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+		padding: 0.35rem 0.4rem;
+		border-radius: 6px;
+		border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.08));
+		background: rgba(0, 0, 0, 0.12);
+	}
+
+	.tabs {
+		display: flex;
+		gap: 0.25rem;
+		align-items: center;
+	}
+
+	.tab {
+		-webkit-tap-highlight-color: transparent;
+		padding: 0.25rem 0.4rem;
+		border-radius: 999px;
+		border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.1));
+		background: var(--ui-border, rgba(255, 255, 255, 0.03));
+		color: var(--ui-text, #888);
+		font-size: 0.6rem;
+		font-weight: 700;
+		cursor: pointer;
+	}
+
+	.tab.active {
+		background: var(--ui-accent-bg, rgba(45, 212, 191, 0.15));
+		border-color: var(--ui-accent-border, rgba(45, 212, 191, 0.3));
+		color: var(--ui-accent, #2dd4bf);
+	}
+
+	.depth-row {
+		display: grid;
+		grid-template-columns: 44px 1fr 44px;
+		align-items: center;
+		gap: 0.4rem;
+	}
+
+	.route-label {
+		font-size: 0.6rem;
+		color: var(--ui-text, #777);
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+	}
+
+	.route-value {
+		font-size: 0.6rem;
+		color: var(--ui-accent, #2dd4bf);
+		text-align: right;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.depth-row input[type="range"] {
+		width: 100%;
+		height: 4px;
+		border-radius: 2px;
+		background: var(--ui-border, rgba(255, 255, 255, 0.1));
+		-webkit-appearance: none;
+		appearance: none;
+		cursor: pointer;
+	}
+
+	.depth-row input[type="range"]::-webkit-slider-thumb {
+		-webkit-appearance: none;
+		appearance: none;
+		width: 12px;
+		height: 12px;
+		border-radius: 50%;
+		background: var(--ui-accent, #2dd4bf);
+		border: none;
+	}
+
+	.invert-btn {
+		-webkit-tap-highlight-color: transparent;
+		height: 22px;
+		padding: 0 0.5rem;
+		border-radius: 999px;
+		border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.1));
+		background: var(--ui-border, rgba(255, 255, 255, 0.03));
+		color: var(--ui-text, #888);
+		font-size: 0.6rem;
+		font-weight: 700;
+		cursor: pointer;
+		justify-self: start;
+		margin-left: auto;
+	}
+
+	.invert-btn.active {
+		background: var(--ui-accent-bg, rgba(45, 212, 191, 0.15));
+		border-color: var(--ui-accent-border, rgba(45, 212, 191, 0.3));
+		color: var(--ui-accent, #2dd4bf);
+	}
+
+	.curve-block {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+	}
+
+	.curve-help {
+		font-size: 0.6rem;
+		color: var(--ui-text, #777);
+		line-height: 1.35;
 	}
 
 	/* Toggle */
@@ -461,38 +743,6 @@
 		background: var(--ui-accent, #2dd4bf);
 		cursor: pointer;
 		border: none;
-	}
-
-	/* Presets Grid */
-	.preset-grid {
-		display: grid;
-		grid-template-columns: repeat(3, 1fr);
-		gap: 0.25rem;
-		width: 100%;
-	}
-
-	.preset-btn {
-		padding: 0.35rem 0.2rem;
-		border-radius: 4px;
-		border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.1));
-		background: var(--ui-border, rgba(255, 255, 255, 0.03));
-		color: var(--ui-text, #888);
-		font-size: 0.6rem;
-		font-weight: 500;
-		cursor: pointer;
-		transition: all 0.1s ease;
-		text-transform: capitalize;
-	}
-
-	.preset-btn:hover {
-		background: var(--ui-border-hover, rgba(255, 255, 255, 0.08));
-		color: var(--ui-text-hover, #fff);
-	}
-
-	.preset-btn.active {
-		background: var(--ui-accent-bg, rgba(45, 212, 191, 0.15));
-		border-color: var(--ui-accent-border, rgba(45, 212, 191, 0.3));
-		color: var(--ui-accent, #2dd4bf);
 	}
 
 	/* Dual-Knob Range Slider */
@@ -585,36 +835,5 @@
 
 	.range-max {
 		z-index: 1;
-	}
-
-	/* Scale Grid */
-	.scale-grid {
-		display: grid;
-		grid-template-columns: repeat(6, 1fr);
-		gap: 0.2rem;
-		width: 100%;
-	}
-
-	.scale-btn {
-		padding: 0.3rem 0.1rem;
-		border-radius: 3px;
-		border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.1));
-		background: var(--ui-border, rgba(255, 255, 255, 0.03));
-		color: var(--ui-text, #888);
-		font-size: 0.55rem;
-		font-weight: 500;
-		cursor: pointer;
-		transition: all 0.1s ease;
-	}
-
-	.scale-btn:hover {
-		background: var(--ui-border-hover, rgba(255, 255, 255, 0.08));
-		color: var(--ui-text-hover, #fff);
-	}
-
-	.scale-btn.active {
-		background: var(--ui-accent-bg, rgba(45, 212, 191, 0.15));
-		border-color: var(--ui-accent-border, rgba(45, 212, 191, 0.3));
-		color: var(--ui-accent, #2dd4bf);
 	}
 </style>

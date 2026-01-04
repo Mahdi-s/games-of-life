@@ -105,7 +105,7 @@ export class AudioSynthesizer {
 
 	/**
 	 * Update the spectrum data from GPU.
-	 * @param spectrum - Float32Array with [amp, phase, panL, panR] × numBins
+	 * @param spectrum - Float32Array with [amp, waveSum, panL, panR] × numBins
 	 */
 	updateSpectrum(spectrum: Float32Array): void {
 		if (!this.workletNode || !this.isInitialized) return;

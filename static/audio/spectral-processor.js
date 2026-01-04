@@ -20,7 +20,7 @@ class SpectralProcessor extends AudioWorkletProcessor {
 		/** @type {number} */
 		this.maxFreq = options.processorOptions?.maxFreq ?? 2000;
 		
-		/** @type {Float32Array} - Current spectrum: [amp, phase, panL, panR] × numBins */
+		/** @type {Float32Array} - Current spectrum: [amp, waveSum, panL, panR] × numBins */
 		this.spectrum = new Float32Array(this.numBins * 4);
 		
 		/** @type {Float32Array} - Target spectrum for smooth interpolation */
@@ -141,8 +141,10 @@ class SpectralProcessor extends AudioWorkletProcessor {
 				// Skip silent bins
 				if (amplitude < 0.0001) continue;
 				
-				// Clamp pan values too
-				const phase = this.spectrum[offset + 1];
+				// Waveform complexity (amplitude-weighted sum); normalize by amplitude to get average 0..1
+				const waveSum = this.spectrum[offset + 1];
+				const ampForWave = Math.max(Math.abs(rawAmp), 1e-6);
+				const wave = Math.min(Math.max(waveSum / ampForWave, 0), 1);
 				const panL = Math.min(Math.max(this.spectrum[offset + 2], 0), 2.0);
 				const panR = Math.min(Math.max(this.spectrum[offset + 3], 0), 2.0);
 				
@@ -156,9 +158,17 @@ class SpectralProcessor extends AudioWorkletProcessor {
 					this.phases[bin] -= 1;
 				}
 				
-				// Generate sine sample with phase offset
-				const theta = (this.phases[bin] + phase / 6.28318) * Math.PI * 2;
-				const sample = Math.sin(theta);
+				// Generate waveform: blend harmonics based on wave (0..1)
+				const theta = this.phases[bin] * Math.PI * 2;
+				const s1 = Math.sin(theta);
+				const s2 = Math.sin(theta * 2);
+				const s3 = Math.sin(theta * 3);
+				const s4 = Math.sin(theta * 4);
+				const sample =
+					s1 * (1.0 - wave * 0.6) +
+					s2 * (wave * 0.45) +
+					s3 * (wave * wave * 0.25) +
+					s4 * (wave * wave * 0.15);
 				
 				// Scale amplitude: normalize by active bins to prevent additive clipping
 				// The 0.5 factor keeps overall level reasonable

@@ -41,7 +41,7 @@ export class AudioPipeline {
 	private paramsBuffer: GPUBuffer | null = null;
 	private spectrumBuffer: GPUBuffer | null = null;
 	private readbackBuffers: GPUBuffer[] = [];
-	private curveBuffers: GPUBuffer[] = []; // 5 curves
+	private curveBuffers: GPUBuffer[] = []; // 6 curves
 
 	// Triple-buffering state
 	private writeIndex = 0;  // Index of buffer to write to next
@@ -51,6 +51,12 @@ export class AudioPipeline {
 
 	// Cell buffer reference (from Simulation)
 	private cellBuffer: GPUBuffer | null = null;
+
+	// Neighbor vitality modulation params (packed into params uniform)
+	private neighborVitalityAmpDepth = 1.0;
+	private neighborVitalityTimbreDepth = 0.0;
+	private neighborVitalityWaveDepth = 0.0;
+	private neighborVitalitySign = 1.0;
 
 	constructor(device: GPUDevice) {
 		this.device = device;
@@ -79,7 +85,13 @@ export class AudioPipeline {
 	 * Update curve data from AudioConfig.
 	 */
 	updateCurves(config: AudioConfig): void {
-		if (this.curveBuffers.length < 5) return;
+		if (this.curveBuffers.length < 6) return;
+
+		const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+		this.neighborVitalityAmpDepth = clamp01(config.neighborVitalityAmpDepth);
+		this.neighborVitalityTimbreDepth = clamp01(config.neighborVitalityTimbreDepth);
+		this.neighborVitalityWaveDepth = clamp01(config.neighborVitalityWaveDepth);
+		this.neighborVitalitySign = config.neighborVitalityInvert ? -1.0 : 1.0;
 
 		const curves = [
 			config.pitchCurve,
@@ -87,9 +99,10 @@ export class AudioPipeline {
 			config.timbreCurve,
 			config.spatialCurve,
 			config.waveCurve,
+			config.neighborVitalityCurve,
 		];
 
-		for (let i = 0; i < 5; i++) {
+		for (let i = 0; i < 6; i++) {
 			const samples = this.sampleCurve(curves[i]);
 			this.device.queue.writeBuffer(this.curveBuffers[i], 0, samples.buffer as ArrayBuffer);
 		}
@@ -98,7 +111,7 @@ export class AudioPipeline {
 	/**
 	 * Sample a curve into 128 float values.
 	 */
-	private sampleCurve(points: CurvePoint[]): Float32Array {
+	private sampleCurve(points: CurvePoint[] | undefined): Float32Array {
 		// Reuse the vitality curve sampler from core
 		const samples = sampleVitalityCurve(points);
 		const result = new Float32Array(AUDIO_CURVE_SAMPLES);
@@ -166,8 +179,8 @@ export class AudioPipeline {
 		}
 	}
 
-	// Store last viewport size for normalization
-	private lastViewportCellCount = 1;
+	// Store viewport cell count for shader pre-normalization
+	private viewportCellCount = 1;
 
 	/**
 	 * Read spectrum data from GPU asynchronously.
@@ -202,15 +215,11 @@ export class AudioPipeline {
 			await buffer.mapAsync(GPUMapMode.READ);
 			const data = new Int32Array(buffer.getMappedRange());
 			
-			// Convert from fixed-point to float with normalization
-			// Normalize by expected cell count to prevent accumulation clipping
-			// Use sqrt for perceptual scaling (loudness is logarithmic)
-			const normFactor = Math.sqrt(Math.max(1, this.lastViewportCellCount)) * FP_SCALE;
-			
+			// Convert from fixed-point to float.
+			// Pre-normalization is done in the shader via inv_sqrt_cells, so we only need FP_SCALE here.
 			const result = new Float32Array(SPECTRUM_BINS * 4);
 			for (let i = 0; i < data.length; i++) {
-				// Divide by normalization factor to keep values in reasonable range
-				result[i] = data[i] / normFactor;
+				result[i] = data[i] / FP_SCALE;
 			}
 			
 			buffer.unmap();
@@ -225,10 +234,10 @@ export class AudioPipeline {
 	}
 
 	/**
-	 * Set the viewport cell count for normalization.
+	 * Set the viewport cell count for shader pre-normalization (prevents fixed-point overflow).
 	 */
 	setViewportCellCount(count: number): void {
-		this.lastViewportCellCount = Math.max(1, count);
+		this.viewportCellCount = Math.max(1, count);
 	}
 
 	/**
@@ -250,7 +259,8 @@ export class AudioPipeline {
 				{ binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
 				{ binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
 				{ binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
-				{ binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+				{ binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+				{ binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
 			],
 		});
 
@@ -293,8 +303,8 @@ export class AudioPipeline {
 			}));
 		}
 
-		// Curve buffers (5 curves)
-		const curveNames = ['Pitch', 'Amplitude', 'Timbre', 'Spatial', 'Wave'];
+		// Curve buffers (6 curves)
+		const curveNames = ['Pitch', 'Amplitude', 'Timbre', 'Spatial', 'Wave', 'NeighborVitality'];
 		for (const name of curveNames) {
 			this.curveBuffers.push(this.device.createBuffer({
 				label: `Audio ${name} Curve Buffer`,
@@ -323,7 +333,8 @@ export class AudioPipeline {
 				{ binding: 4, resource: { buffer: this.curveBuffers[2] } }, // timbre
 				{ binding: 5, resource: { buffer: this.curveBuffers[3] } }, // spatial
 				{ binding: 6, resource: { buffer: this.curveBuffers[4] } }, // wave
-				{ binding: 7, resource: { buffer: this.spectrumBuffer } },
+				{ binding: 7, resource: { buffer: this.curveBuffers[5] } }, // neighbor vitality
+				{ binding: 8, resource: { buffer: this.spectrumBuffer } },
 			],
 		});
 	}
@@ -359,7 +370,12 @@ export class AudioPipeline {
 		view.setFloat32(32, 80, true);    // min_freq
 		view.setFloat32(36, 2000, true);  // max_freq
 		view.setFloat32(40, masterVolume, true);
-		view.setUint32(44, 0, true); // padding
+		view.setFloat32(44, this.neighborVitalityAmpDepth, true);
+		view.setFloat32(48, this.neighborVitalityTimbreDepth, true);
+		view.setFloat32(52, this.neighborVitalityWaveDepth, true);
+		view.setFloat32(56, this.neighborVitalitySign, true);
+		// Pre-normalization factor: 1 / sqrt(cellCount) to prevent fixed-point overflow
+		view.setFloat32(60, 1.0 / Math.sqrt(this.viewportCellCount), true);
 
 		this.device.queue.writeBuffer(this.paramsBuffer, 0, data);
 	}

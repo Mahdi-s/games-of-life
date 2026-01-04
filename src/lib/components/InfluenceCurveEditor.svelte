@@ -6,6 +6,9 @@
 	interface Props {
 		width?: number;
 		height?: number;
+		title?: string;
+		compact?: boolean;
+		onChange?: (mode: string, points: { x: number; y: number }[]) => void;
 		/** 
 		 * If provided, the editor will use this state object instead of the global simState.
 		 * Should follow { vitalityMode, vitalityCurvePoints, setVitalitySettings, ... }
@@ -13,11 +16,21 @@
 		stateOverride?: any;
 	}
 	
-	let { width = 480, height = 140, stateOverride }: Props = $props();
+	let {
+		width = 480,
+		height = 140,
+		title = 'Neighborhood Vitality Influence',
+		compact = false,
+		onChange,
+		stateOverride
+	}: Props = $props();
 	
 	// Helper arrays for iteration (avoids unused variable warnings)
 	const gradientStops = Array.from({ length: 33 }, (_, i) => i);
 	const sampleIndicators = Array.from({ length: 16 }, (_, i) => i);
+	
+	// Unique instance ID for SVG gradient definitions (prevents collision when multiple editors exist)
+	const instanceId = Math.random().toString(36).slice(2, 8);
 	
 	const globalSimState = getSimulationState();
 	const targetState = $derived(stateOverride || globalSimState);
@@ -746,10 +759,13 @@
 			targetState.vitalityMode = 'none';
 			targetState.vitalityCurvePoints = [];
 			lastVitalityMode = 'none'; lastGhostFactor = 0; lastCurvePointsHash = '';
+			onChange?.('none', []);
 		} else {
+			const points = curvePoints.map(p => ({ x: p.x, y: p.y }));
 			targetState.vitalityMode = 'curve';
-			targetState.vitalityCurvePoints = curvePoints.map(p => ({ x: p.x, y: p.y }));
+			targetState.vitalityCurvePoints = points;
 			lastVitalityMode = 'curve'; lastCurvePointsHash = hashCurvePoints(curvePoints);
+			onChange?.('curve', points);
 		}
 	}
 	
@@ -796,20 +812,20 @@
 
 <div class="curve-editor">
 	<div class="header">
-		<span class="label">Neighborhood Vitality Influence</span>
+		<span class="label">{title}</span>
 	</div>
 	
-	<div class="main-content">
+	<div class="main-content" class:compact>
 		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-		<svg bind:this={svgElement} {width} {height} viewBox="0 0 {width} {height}" class="curve-svg" onmousedown={handleCurveMouseDown} ontouchstart={handleCurveTouchStart} role="application">
+		<svg bind:this={svgElement} {width} {height} viewBox="0 0 {width} {height}" class="curve-svg" class:full={compact} onmousedown={handleCurveMouseDown} ontouchstart={handleCurveTouchStart} role="application">
 			<defs>
-				<linearGradient id="vitalityGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+				<linearGradient id="vitalityGradient-{instanceId}" x1="0%" y1="0%" x2="100%" y2="0%">
 					{#each gradientStops as i (i)}
 						{@const v = i / 32}
 						<stop offset="{v * 100}%" stop-color={getVitalityColor(v)} />
 					{/each}
 				</linearGradient>
-				<linearGradient id="vitalityFillGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+				<linearGradient id="vitalityFillGradient-{instanceId}" x1="0%" y1="0%" x2="100%" y2="0%">
 					{#each gradientStops as i (i)}
 						{@const v = i / 32}
 						<stop offset="{v * 100}%" stop-color={getVitalityColor(v)} stop-opacity="0.25" />
@@ -823,9 +839,9 @@
 			<line x1={toSvgX(0.75)} y1={padding.top} x2={toSvgX(0.75)} y2={padding.top + plotHeight} stroke={gridColor} stroke-dasharray="2,2" />
 			<line x1={padding.left} y1={toSvgY(0)} x2={padding.left + plotWidth} y2={toSvgY(0)} stroke={zeroLineColor} stroke-width="1" />
 			<rect x={padding.left} y={padding.top} width={plotWidth} height={plotHeight} fill="none" stroke={gridColor} stroke-width="1" />
-			<path d={positiveFillPath} fill="url(#vitalityFillGradient)" />
-			<path d={negativeFillPath} fill="url(#vitalityFillGradient)" />
-			<path d={curvePath} fill="none" stroke="url(#vitalityGradient)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+			<path d={positiveFillPath} fill="url(#vitalityFillGradient-{instanceId})" />
+			<path d={negativeFillPath} fill="url(#vitalityFillGradient-{instanceId})" />
+			<path d={curvePath} fill="none" stroke="url(#vitalityGradient-{instanceId})" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
 			{#each sampleIndicators as i (i)}
 				{@const v = (i * 8) / 127}
 				<circle cx={toSvgX(v)} cy={toSvgY(sampleCurveAt(v))} r="1" fill={targetState.isLightTheme ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.2)'} />
@@ -852,47 +868,57 @@
 			<text x={padding.left + plotWidth} y={height - 5} font-size="8" fill={textColor} text-anchor="end">alive</text>
 		</svg>
 		
-		<div class="side-controls">
-			<div class="dropdown-wrapper">
-				<button class="select-btn" onclick={() => { profileDropdownOpen = true; profileSearchQuery = ''; }}>
-					<span class="select-label">Profile</span>
-					<span class="select-value">{currentProfileName}</span>
-					<svg class="chevron" class:open={profileDropdownOpen} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6" /></svg>
-				</button>
-				{#if profileDropdownOpen}
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div class="dropdown-backdrop" onclick={() => { profileDropdownOpen = false; profileSearchQuery = ''; }}></div>
-					<div class="dropdown-menu">
-						<div class="dropdown-list" bind:this={profileListRef}>
-							<div class="dropdown-section">Basic</div>
-							{#each PROFILES.filter(p => p.category === 'basic') as p (p.id)}
-								<button class="dropdown-item" class:selected={selectedProfileId === p.id} onclick={() => { applyProfile(p.id); profileDropdownOpen = false; }}>
-									<span class="item-name">{p.name}</span>
-									<span class="item-desc">{p.description}</span>
-								</button>
-							{/each}
-							<div class="dropdown-section">Advanced</div>
-							{#each PROFILES.filter(p => p.category === 'advanced') as p (p.id)}
-								<button class="dropdown-item" class:selected={selectedProfileId === p.id} onclick={() => { applyProfile(p.id); profileDropdownOpen = false; }}>
-									<span class="item-name">{p.name}</span>
-									<span class="item-desc">{p.description}</span>
-								</button>
-							{/each}
+		{#if !compact}
+			<div class="side-controls">
+				<div class="dropdown-wrapper">
+					<button class="select-btn" onclick={() => { profileDropdownOpen = true; profileSearchQuery = ''; }}>
+						<span class="select-label">Profile</span>
+						<span class="select-value">{currentProfileName}</span>
+						<svg class="chevron" class:open={profileDropdownOpen} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6" /></svg>
+					</button>
+					{#if profileDropdownOpen}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div class="dropdown-backdrop" onclick={() => { profileDropdownOpen = false; profileSearchQuery = ''; }}></div>
+						<div class="dropdown-menu">
+							<div class="dropdown-list" bind:this={profileListRef}>
+								<div class="dropdown-section">Basic</div>
+								{#each PROFILES.filter(p => p.category === 'basic') as p (p.id)}
+									<button class="dropdown-item" class:selected={selectedProfileId === p.id} onclick={() => { applyProfile(p.id); profileDropdownOpen = false; }}>
+										<span class="item-name">{p.name}</span>
+										<span class="item-desc">{p.description}</span>
+									</button>
+								{/each}
+								<div class="dropdown-section">Advanced</div>
+								{#each PROFILES.filter(p => p.category === 'advanced') as p (p.id)}
+									<button class="dropdown-item" class:selected={selectedProfileId === p.id} onclick={() => { applyProfile(p.id); profileDropdownOpen = false; }}>
+										<span class="item-name">{p.name}</span>
+										<span class="item-desc">{p.description}</span>
+									</button>
+								{/each}
+							</div>
 						</div>
+					{/if}
+				</div>
+				
+				<div class="buttons-row">
+					<div class="toggle-buttons">
+						<button class="toggle-btn" class:active={editMode === 'add'} onclick={() => editMode = 'add'} title="Add points"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="3" x2="8" y2="13" /><line x1="3" y1="8" x2="13" y2="8" /></svg></button>
+						<button class="toggle-btn delete" class:active={editMode === 'delete'} onclick={() => editMode = 'delete'} title="Delete points"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="8" x2="13" y2="8" /></svg></button>
 					</div>
-				{/if}
+					<button class="icon-btn" onclick={resetCurve} title="Reset"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 8a6 6 0 1 1 1.5 4" /><path d="M2 12V8h4" /></svg></button>
+					<button class="icon-btn" onclick={downloadCurve} title="Save"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v8M8 10l-3-3M8 10l3-3M3 12v2h10v-2" /></svg></button>
+				</div>
+				<div class="hint">{editMode === 'add' ? 'Click to add • Drag to adjust' : 'Click to delete'}</div>
 			</div>
-			
-			<div class="buttons-row">
+		{:else}
+			<div class="compact-controls">
 				<div class="toggle-buttons">
 					<button class="toggle-btn" class:active={editMode === 'add'} onclick={() => editMode = 'add'} title="Add points"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="3" x2="8" y2="13" /><line x1="3" y1="8" x2="13" y2="8" /></svg></button>
 					<button class="toggle-btn delete" class:active={editMode === 'delete'} onclick={() => editMode = 'delete'} title="Delete points"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="8" x2="13" y2="8" /></svg></button>
 				</div>
 				<button class="icon-btn" onclick={resetCurve} title="Reset"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 8a6 6 0 1 1 1.5 4" /><path d="M2 12V8h4" /></svg></button>
-				<button class="icon-btn" onclick={downloadCurve} title="Save"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v8M8 10l-3-3M8 10l3-3M3 12v2h10v-2" /></svg></button>
 			</div>
-			<div class="hint">{editMode === 'add' ? 'Click to add • Drag to adjust' : 'Click to delete'}</div>
-		</div>
+		{/if}
 	</div>
 </div>
 
@@ -909,7 +935,9 @@
 	.control-point.delete-mode:hover circle:not(.hit-area) { filter: brightness(0.8) saturate(1.2); }
 	.main-content { display: flex; gap: 0.6rem; align-items: stretch; }
 	.curve-svg { flex: 0 0 68%; max-width: 68%; height: auto; background: var(--ui-input-bg, rgba(0, 0, 0, 0.2)); border-radius: 6px; cursor: crosshair; touch-action: none; }
+	.curve-svg.full { flex: none; max-width: 100%; }
 	.side-controls { flex: 1; display: flex; flex-direction: column; gap: 0.35rem; justify-content: center; }
+	.compact-controls { display: flex; gap: 0.35rem; justify-content: space-between; align-items: center; margin-top: 0.25rem; }
 	.buttons-row { display: flex; gap: 0.3rem; align-items: center; justify-content: space-between; }
 	.dropdown-wrapper { position: relative; display: flex; width: 100%; }
 	.select-btn { display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.5rem; background: var(--ui-input-bg, rgba(0, 0, 0, 0.3)); border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.1)); border-radius: 4px; color: var(--ui-text-hover, #ccc); font-size: 0.6rem; cursor: pointer; width: 100%; text-align: left; }
@@ -945,4 +973,6 @@
 		.side-controls { flex-direction: row; flex-wrap: wrap; }
 		.dropdown-wrapper, .buttons-row { flex: 1; min-width: 120px; }
 	}
+
+	.main-content.compact { flex-direction: column; }
 </style>
