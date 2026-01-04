@@ -1242,6 +1242,65 @@ fn hex_boundary_distance(grid_x: f32, grid_y: f32, cell_x: i32, cell_y: i32) -> 
     return (min_neighbor_dist - dist_to_center) * 0.5;
 }
 
+// Get the grid boundary border color (used for plane boundary mode)
+fn get_border_color() -> vec3<f32> {
+    let accent = vec3<f32>(params.alive_r, params.alive_g, params.alive_b);
+    let accent_hsl = rgb_to_hsl(accent);
+    
+    if (params.is_light_theme > 0.5) {
+        // Light theme: darker version of accent
+        let border_hsl = vec3<f32>(accent_hsl.x, accent_hsl.y * 0.7, 0.25);
+        return hsl_to_rgb(border_hsl);
+    }
+    // Dark theme: brighter version of accent
+    let border_hsl = vec3<f32>(accent_hsl.x, accent_hsl.y * 0.8, 0.7);
+    return hsl_to_rgb(border_hsl);
+}
+
+// Check if a position is outside the grid bounds (for plane boundary mode)
+fn is_outside_grid(grid_x: f32, grid_y: f32) -> bool {
+    let mode = u32(params.boundary_mode);
+    // Only applies to plane mode (mode == 0)
+    if (mode != 0u) {
+        return false;
+    }
+    return grid_x < 0.0 || grid_x >= params.grid_width || grid_y < 0.0 || grid_y >= params.grid_height;
+}
+
+// Check if we're at the grid boundary edge (thin line at the edge)
+// Returns a value from 0 to 1 indicating if we should draw the border
+fn get_boundary_intensity(grid_x: f32, grid_y: f32, pixels_per_cell: f32) -> f32 {
+    let mode = u32(params.boundary_mode);
+    
+    // Only draw boundary for plane mode (mode == 0)
+    if (mode != 0u) {
+        return 0.0;
+    }
+    
+    let w = params.grid_width;
+    let h = params.grid_height;
+    
+    // Thin border line thickness (in grid units) - scales with zoom
+    let border_thickness = clamp(2.0 / pixels_per_cell, 0.02, 0.15);
+    
+    // Check if we're exactly at the edge (inside the grid but near border)
+    let near_left = grid_x >= 0.0 && grid_x < border_thickness;
+    let near_right = grid_x < w && grid_x >= w - border_thickness;
+    let near_top = grid_y >= 0.0 && grid_y < border_thickness;
+    let near_bottom = grid_y < h && grid_y >= h - border_thickness;
+    
+    // Only draw if inside the grid
+    if (grid_x < 0.0 || grid_x >= w || grid_y < 0.0 || grid_y >= h) {
+        return 0.0;
+    }
+    
+    if (near_left || near_right || near_top || near_bottom) {
+        return 0.8;
+    }
+    
+    return 0.0;
+}
+
 // Render square grid cells (default)
 fn render_square(input: VertexOutput) -> vec4<f32> {
     // Calculate aspect ratio correction
@@ -1254,6 +1313,11 @@ fn render_square(input: VertexOutput) -> vec4<f32> {
     
     let grid_x = input.uv.x * cells_visible_x + params.offset_x;
     let grid_y = input.uv.y * cells_visible_y + params.offset_y;
+    
+    // For plane boundary mode: return blank background if outside grid
+    if (is_outside_grid(grid_x, grid_y)) {
+        return vec4<f32>(get_bg_color(), 1.0);
+    }
     
     // Get integer cell coordinates
     let cell_x = i32(floor(grid_x));
@@ -1321,6 +1385,14 @@ fn render_square(input: VertexOutput) -> vec4<f32> {
         }
     }
     
+    // Draw grid boundary border for plane mode (no wrapping)
+    let pixels_per_cell_border = params.canvas_width / params.zoom;
+    let boundary_intensity = get_boundary_intensity(grid_x, grid_y, pixels_per_cell_border);
+    if (boundary_intensity > 0.0) {
+        let border_color = get_border_color();
+        color = mix(color, border_color, boundary_intensity * 0.7);
+    }
+    
     // Draw axis lines - rendered whenever axis_progress > 0 (allows animation even when grid hidden)
     if (params.axis_progress > 0.001) {
         let center_x = params.grid_width / 2.0;
@@ -1385,6 +1457,13 @@ fn render_hexagonal(input: VertexOutput) -> vec4<f32> {
     // Convert UV to visual coordinates
     let grid_x = input.uv.x * cells_visible_x + params.offset_x;
     let grid_y = input.uv.y * cells_visible_y + params.offset_y;
+    
+    // For plane boundary mode: return blank background if outside grid
+    // For hex grids, use a simple rectangular check (grid_y needs to be converted back to row space)
+    let row_y = grid_y / HEX_HEIGHT_RATIO;
+    if (is_outside_grid(grid_x, row_y)) {
+        return vec4<f32>(get_bg_color(), 1.0);
+    }
     
     // Convert screen position to hex cell coordinates
     let cell = screen_to_hex_cell(grid_x, grid_y);

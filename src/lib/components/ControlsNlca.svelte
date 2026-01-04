@@ -16,6 +16,7 @@
 		onsettings: () => void;
 		onnlcasettings: () => void;
 		onnlcaplayback: () => void;
+		onnlcabatchrun: () => void;
 		showHelp?: boolean;
 		showInitialize?: boolean;
 		showAbout?: boolean;
@@ -34,6 +35,7 @@
 		onsettings,
 		onnlcasettings,
 		onnlcaplayback,
+		onnlcabatchrun,
 		showHelp = false,
 		showInitialize = false,
 		showAbout = false,
@@ -63,26 +65,18 @@
 	let speedKnob = $state(0);
 	const derivedSpeedKnob = $derived(knobFromSpeed(simState.speed));
 
-	let showBrushSlider = $derived(uiState.showBrushPopup);
 	let historyUndoable = $state(false);
 	let historyRedoable = $state(false);
 	let unsubscribeHistory: (() => void) | null = null;
 
 	function closeAllPopups() {
 		showSpeedSlider = false;
-		uiState.showBrushPopup = false;
 	}
 
 	function toggleSpeed() {
 		const wasOpen = showSpeedSlider;
 		closeAllPopups();
 		showSpeedSlider = !wasOpen;
-	}
-
-	function toggleBrush() {
-		simState.toolMode = 'brush';
-		closeAllPopups();
-		openModal('brushEditor');
 	}
 
 	function openNlcaSettings() {
@@ -93,6 +87,11 @@
 	function openNlcaPlayback() {
 		closeAllPopups();
 		onnlcaplayback();
+	}
+
+	function openNlcaBatchRun() {
+		closeAllPopups();
+		onnlcabatchrun();
 	}
 
 	function openSettings() {
@@ -139,7 +138,7 @@
 	});
 </script>
 
-{#if showSpeedSlider || showBrushSlider}
+{#if showSpeedSlider}
 	<div class="popup-backdrop" role="presentation" onclick={closeAllPopups} onkeydown={() => {}}></div>
 {/if}
 
@@ -226,6 +225,13 @@
 			</svg>
 		</button>
 
+		<button class="control-btn" class:active={modalStates.nlcaBatchRun.isOpen} onclick={openNlcaBatchRun} data-tooltip="Batch Run" aria-label="Batch Run">
+			<svg viewBox="0 0 24 24" fill="currentColor">
+				<path d="M13 3v18l-10-9 10-9z"/>
+				<path d="M13 3v18l10-9-10-9z"/>
+			</svg>
+		</button>
+
 		<button class="control-btn" class:active={showInitialize} onclick={openInitialize} data-tooltip="Initialize (I)" aria-label="Initialize">
 			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 				<rect x="4" y="4" width="16" height="16" rx="2" />
@@ -237,16 +243,7 @@
 			</svg>
 		</button>
 
-		<div class="control-group">
-			<button class="control-btn" class:active={(simState.toolMode === 'brush' && !simState.isSpaceHeld) || showBrushSlider} onclick={toggleBrush} data-tooltip="Brush (B)" aria-label="Brush">
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-					<path d="M18.37 2.63L14 7l-1.59-1.59a2 2 0 00-2.82 0L8 7l9 9 1.59-1.59a2 2 0 000-2.82L17 10l4.37-4.37a2.12 2.12 0 10-3-3z" />
-					<path d="M9 8c-2 3-4 3.5-7 4l8 10c2-1 6-5 6-10" />
-				</svg>
-			</button>
-		</div>
-
-		<button class="control-btn" onclick={onclear} data-tooltip="Clear (D)" aria-label="Clear">
+		<button class="control-btn" onclick={onclear} data-tooltip="Clear Grid (D)" aria-label="Clear">
 			<svg viewBox="0 0 24 24" fill="currentColor">
 				<path d="M16 3H5a2 2 0 0 0-2 2v11h2V5h11V3zm3 4H9a2 2 0 0 0-2 2v13h12a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2zm0 15H9V9h10v13z" />
 			</svg>
@@ -377,6 +374,58 @@
 		z-index: 400;
 	}
 
+	/* Custom tooltips that appear above buttons */
+	.control-btn[data-tooltip] {
+		position: relative;
+	}
+
+	.control-btn[data-tooltip]::after {
+		content: attr(data-tooltip);
+		position: absolute;
+		bottom: calc(100% + 8px);
+		left: 50%;
+		transform: translateX(-50%);
+		background: rgba(12, 12, 18, 0.95);
+		color: #e0e0e0;
+		padding: 0.35rem 0.6rem;
+		border-radius: 5px;
+		font-size: 0.65rem;
+		white-space: nowrap;
+		opacity: 0;
+		visibility: hidden;
+		transition: opacity 0.15s, visibility 0.15s;
+		pointer-events: none;
+		z-index: 600;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+	}
+
+	.control-btn[data-tooltip]::before {
+		content: '';
+		position: absolute;
+		bottom: calc(100% + 3px);
+		left: 50%;
+		transform: translateX(-50%);
+		border: 5px solid transparent;
+		border-top-color: rgba(12, 12, 18, 0.95);
+		opacity: 0;
+		visibility: hidden;
+		transition: opacity 0.15s, visibility 0.15s;
+		pointer-events: none;
+		z-index: 601;
+	}
+
+	.control-btn[data-tooltip]:hover::after,
+	.control-btn[data-tooltip]:hover::before {
+		opacity: 1;
+		visibility: visible;
+	}
+
+	.control-btn[data-tooltip]:disabled::after,
+	.control-btn[data-tooltip]:disabled::before {
+		display: none;
+	}
+
 	@media (max-width: 900px) {
 		.controls {
 			left: 10px;
@@ -384,6 +433,12 @@
 			transform: none;
 			justify-content: center;
 			flex-wrap: wrap;
+		}
+
+		/* Hide tooltips on mobile */
+		.control-btn[data-tooltip]::after,
+		.control-btn[data-tooltip]::before {
+			display: none;
 		}
 	}
 </style>

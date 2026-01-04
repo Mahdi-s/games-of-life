@@ -3,48 +3,102 @@ import type { NlcaCellRequest, NlcaCellResponse, CellState01 } from './types.js'
 /**
  * Prompt strategy for NLCA (Neural-Linguistic Cellular Automata):
  * 
- * Goal: Cells collectively form an MNIST-style handwritten digit "3".
- * 
  * Each cell is a binary agent that outputs ONLY 0 or 1:
- * - 1 = ON (part of the digit stroke)
- * - 0 = OFF (background)
+ * - 1 = ON (active/alive)
+ * - 0 = OFF (inactive/dead)
  * 
- * The digit "3" shape reference (on a normalized grid):
- * - Two curved horizontal strokes stacked vertically
- * - Top curve: arc from top-left through top-center to middle-right
- * - Bottom curve: arc from middle-right through bottom-center to bottom-left
- * - Both curves meet at the right side, around mid-height
- * 
- * Cells decide based on:
- * 1. Their position (x,y) relative to where the "3" stroke should be
- * 2. Their neighbors' states (to maintain stroke continuity)
+ * The task and coordination rules are customizable via the prompt config store.
+ * System placeholders (cell position, grid size) are filled automatically.
  */
 
 /**
- * Build the system prompt for a cell agent.
- * Kept minimal for token efficiency - OpenRouter caches system prompts.
+ * Configuration for building cell prompts
  */
-export function buildCellSystemPrompt(cellId: number, x: number, y: number, width: number, height: number): string {
-	// Normalize position to 0-1 range for position-aware decisions
-	const nx = (x / (width - 1)).toFixed(2);
-	const ny = (y / (height - 1)).toFixed(2);
-	
-	return `You are cell (${x},${y}) on a ${width}x${height} grid. Normalized position: (${nx},${ny}).
+export interface PromptConfig {
+	/** The task description (what cells should accomplish) */
+	taskDescription: string;
+	/** Whether to use a custom template */
+	useAdvancedMode: boolean;
+	/** Custom template with placeholders (advanced mode only) */
+	advancedTemplate?: string;
+}
 
-TASK: Output 1 if you should be part of the digit "3" stroke, else 0.
-
-MNIST "3" shape guide (normalized coords):
-- Top arc: y≈0.1-0.3, curves from x≈0.3 to x≈0.7
-- Middle: y≈0.4-0.6, stroke at x≈0.5-0.7 (where curves meet)
-- Bottom arc: y≈0.7-0.9, curves from x≈0.7 to x≈0.3
-- Stroke width: ~2-3 cells
+// Default task description (forms a square border)
+const DEFAULT_TASK = `Work with your neighbors to form a square border around the grid.
 
 Rules:
-1. If your position is ON the "3" stroke path → output 1
-2. If neighbors form a continuous stroke and you connect them → output 1
-3. Otherwise → output 0
+1. If you are on an edge (x=0, x=max, y=0, or y=max) → output 1
+2. If you are in the interior (not on any edge) → output 0
+3. Coordinate with neighbors: if they're forming a continuous border and you connect them → output 1`;
+
+// Default template
+const DEFAULT_TEMPLATE = `You are cell ({{CELL_X}},{{CELL_Y}}) on a {{GRID_WIDTH}}x{{GRID_HEIGHT}} grid.
+
+TASK: {{TASK}}
 
 OUTPUT FORMAT: {"state":0} or {"state":1} — nothing else.`;
+
+/**
+ * Replace all placeholders in a template string
+ */
+function replacePlaceholders(
+	template: string,
+	x: number,
+	y: number,
+	width: number,
+	height: number,
+	task: string
+): string {
+	return template
+		.replace(/\{\{CELL_X\}\}/g, String(x))
+		.replace(/\{\{CELL_Y\}\}/g, String(y))
+		.replace(/\{\{GRID_WIDTH\}\}/g, String(width))
+		.replace(/\{\{GRID_HEIGHT\}\}/g, String(height))
+		.replace(/\{\{MAX_X\}\}/g, String(width - 1))
+		.replace(/\{\{MAX_Y\}\}/g, String(height - 1))
+		.replace(/\{\{TASK\}\}/g, task);
+}
+
+/**
+ * Build the system prompt for a cell agent.
+ * Uses the provided config or falls back to defaults.
+ * 
+ * @param cellId - Unique cell identifier
+ * @param x - Cell X coordinate
+ * @param y - Cell Y coordinate  
+ * @param width - Grid width
+ * @param height - Grid height
+ * @param config - Optional prompt configuration
+ */
+export function buildCellSystemPrompt(
+	cellId: number,
+	x: number,
+	y: number,
+	width: number,
+	height: number,
+	config?: PromptConfig
+): string {
+	// Use config if provided, otherwise use defaults
+	const task = config?.taskDescription ?? DEFAULT_TASK;
+	const template = (config?.useAdvancedMode && config?.advancedTemplate) 
+		? config.advancedTemplate 
+		: DEFAULT_TEMPLATE;
+	
+	return replacePlaceholders(template, x, y, width, height, task);
+}
+
+/**
+ * Legacy function signature for backwards compatibility
+ * @deprecated Use buildCellSystemPrompt with config parameter
+ */
+export function buildCellSystemPromptLegacy(
+	cellId: number,
+	x: number,
+	y: number,
+	width: number,
+	height: number
+): string {
+	return buildCellSystemPrompt(cellId, x, y, width, height);
 }
 
 /**

@@ -14,7 +14,8 @@ export type ModalId =
 	| 'audio'
 	| 'nlcaSettings'
 	| 'nlcaPlayback'
-	| 'nlcaPrompt';
+	| 'nlcaPrompt'
+	| 'nlcaBatchRun';
 
 export interface ModalState {
 	isOpen: boolean;
@@ -37,7 +38,8 @@ const modalStates = $state<Record<ModalId, ModalState>>({
 	audio: { isOpen: false, position: null, zIndex: BASE_Z_INDEX },
 	nlcaSettings: { isOpen: false, position: null, zIndex: BASE_Z_INDEX },
 	nlcaPlayback: { isOpen: false, position: null, zIndex: BASE_Z_INDEX },
-	nlcaPrompt: { isOpen: false, position: null, zIndex: BASE_Z_INDEX }
+	nlcaPrompt: { isOpen: false, position: null, zIndex: BASE_Z_INDEX },
+	nlcaBatchRun: { isOpen: false, position: null, zIndex: BASE_Z_INDEX }
 });
 
 // Track the highest z-index used

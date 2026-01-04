@@ -15,6 +15,10 @@
 	import { NlcaTape, encodeMetrics, pack01ToBitset } from '$lib/nlca/tape.js';
 	import { CellAgentManager } from '$lib/nlca/agentManager.js';
 	import type { NlcaNeighborhood } from '$lib/nlca/types.js';
+	import { getNlcaPromptState } from '$lib/stores/nlcaPrompt.svelte.js';
+	import type { PromptConfig } from '$lib/nlca/prompt.js';
+	import { NlcaFrameBuffer, type BufferStatus, type BufferedFrame } from '$lib/nlca/frameBuffer.js';
+	import NlcaTimeline from '$lib/components/NlcaTimeline.svelte';
 
 	// Props
 	interface Props {
@@ -77,6 +81,19 @@
 	// Debug panel state
 	let nlcaShowDebug = $state(false);
 	let nlcaDebugEntries = $state<Array<{ timestamp: number; cellId: number; x: number; y: number; generation: number; input: string; output: string; latencyMs: number; success: boolean; cost?: number }>>([]);
+
+	// Frame buffer state for buffered playback
+	let nlcaFrameBuffer: NlcaFrameBuffer | null = null;
+	let nlcaBufferStatus = $state<BufferStatus | null>(null);
+	let nlcaIsBuffering = $state(false); // True when waiting for min buffer
+	let nlcaBatchRunTarget = $state(0); // Target generations for batch run (0 = disabled)
+	let nlcaBatchRunCompleted = $state(0); // Completed generations in batch run
+	
+	// Computed: buffered frames for timeline display
+	const nlcaBufferedFrames = $derived.by(() => {
+		if (!nlcaFrameBuffer) return [];
+		return nlcaFrameBuffer.getAllFrames();
+	});
 
 	let nlcaStepper: NlcaStepper | null = null;
 	let nlcaTape: NlcaTape | null = null;
@@ -155,6 +172,154 @@
 				: null;
 	}
 
+	/**
+	 * Initialize the frame buffer for NLCA playback
+	 */
+	async function initNlcaFrameBuffer() {
+		if (!simulation || !nlcaStepper) return;
+		
+		// Create buffer if needed
+		if (!nlcaFrameBuffer) {
+			nlcaFrameBuffer = new NlcaFrameBuffer(5, 10);
+		}
+		
+		// Get current grid state
+		const currentGrid = await simulation.getCellDataAsync();
+		
+		// Build prompt config
+		const nlcaPromptState = getNlcaPromptState();
+		const promptConfig: PromptConfig = {
+			taskDescription: nlcaPromptState.taskDescription,
+			useAdvancedMode: nlcaPromptState.useAdvancedMode,
+			advancedTemplate: nlcaPromptState.advancedTemplate
+		};
+		
+		// Initialize and configure buffer
+		nlcaFrameBuffer.initialize(currentGrid, simState.generation);
+		nlcaFrameBuffer.setConfig({
+			stepper: nlcaStepper,
+			width: simState.gridWidth,
+			height: simState.gridHeight,
+			promptConfig,
+			onProgress: {
+				onBatchProgress: (completed, total, partialGrid) => {
+					nlcaProgress = { completed, total };
+				}
+			},
+			onFrameComplete: (frame: BufferedFrame) => {
+				// Update cost stats from stepper
+				if (nlcaStepper) {
+					const costStats = nlcaStepper.getCostStats();
+					nlcaTotalCost = costStats.totalCost;
+					nlcaTotalInputTokens = costStats.totalInputTokens;
+					nlcaTotalOutputTokens = costStats.totalOutputTokens;
+					nlcaTotalCalls = costStats.callCount;
+					nlcaDebugEntries = nlcaStepper.getDebugLog().slice(-100);
+				}
+				
+				// Update batch run progress
+				if (nlcaBatchRunTarget > 0) {
+					nlcaBatchRunCompleted++;
+				}
+			},
+			onStatusChange: (status: BufferStatus) => {
+				nlcaBufferStatus = status;
+			}
+		});
+	}
+
+	/**
+	 * Start a batch run of N generations
+	 */
+	export async function startNlcaBatchRun(targetGenerations: number) {
+		if (!simulation || !nlcaStepper || !nlcaTape) return;
+		if (nlcaStepInFlight) return;
+		
+		nlcaBatchRunTarget = targetGenerations;
+		nlcaBatchRunCompleted = 0;
+		nlcaLastError = null;
+		
+		// Initialize buffer if needed
+		await initNlcaFrameBuffer();
+		if (!nlcaFrameBuffer) return;
+		
+		// Set target buffer size to match batch run
+		nlcaFrameBuffer.setBufferSizes(5, targetGenerations);
+		
+		// Start computing
+		nlcaIsBuffering = true;
+		simState.isPlaying = true; // This will start consuming frames
+		
+		try {
+			await nlcaFrameBuffer.startComputing();
+		} catch (err) {
+			nlcaLastError = err instanceof Error ? err.message : String(err);
+			simState.isPlaying = false;
+		} finally {
+			nlcaBatchRunTarget = 0;
+		}
+	}
+
+	/**
+	 * Cancel the current batch run
+	 */
+	export function cancelNlcaBatchRun() {
+		nlcaFrameBuffer?.stopComputing();
+		nlcaBatchRunTarget = 0;
+		nlcaBatchRunCompleted = 0;
+		nlcaIsBuffering = false;
+	}
+
+	/**
+	 * Get estimated time for N generations
+	 */
+	export function estimateNlcaTime(generations: number): number {
+		if (nlcaFrameBuffer) {
+			return nlcaFrameBuffer.estimateTime(generations);
+		}
+		// Default estimate: ~5s per frame for a 10x10 grid
+		const cellCount = simState.gridWidth * simState.gridHeight;
+		const avgTimePerCell = 50; // ms
+		return (cellCount * avgTimePerCell * generations) / Math.max(1, nlcaMaxConcurrency);
+	}
+
+	/**
+	 * Consume a frame from the buffer and display it
+	 */
+	async function consumeBufferedFrame() {
+		if (!simulation || !nlcaFrameBuffer || !nlcaTape) return false;
+		
+		const frame = nlcaFrameBuffer.popNextFrame();
+		if (!frame) return false;
+		
+		// Apply the frame
+		simulation.setCellData(frame.grid);
+		simState.setGeneration(frame.generation);
+		
+		// Update metrics
+		if (frame.metrics) {
+			let sum = 0;
+			for (let i = 0; i < frame.metrics.latency8.length; i++) sum += frame.metrics.latency8[i] ?? 0;
+			nlcaAvgLatencyMs = (sum / Math.max(1, frame.metrics.latency8.length)) * 10;
+			simulation.setAgentMetrics(frame.metrics.latency8, frame.metrics.changed01);
+		}
+		
+		// Store to tape
+		await nlcaTape.appendFrame({
+			runId: nlcaRunId,
+			generation: frame.generation,
+			createdAt: frame.computedAt,
+			stateBits: pack01ToBitset(frame.grid),
+			metrics: frame.metrics ? encodeMetrics(frame.metrics) : undefined
+		});
+		nlcaLastStoredGen = frame.generation;
+		
+		return true;
+	}
+
+	/**
+	 * Legacy single-step function (used when not in buffered mode)
+	 */
 	async function startNlcaStep() {
 		if (!simulation) return;
 		if (!nlcaStepper) return;
@@ -177,6 +342,14 @@
 
 				const prev = await simulation.getCellDataAsync();
 				
+				// Build prompt config from user settings
+				const nlcaPromptState = getNlcaPromptState();
+				const promptConfig: PromptConfig = {
+					taskDescription: nlcaPromptState.taskDescription,
+					useAdvancedMode: nlcaPromptState.useAdvancedMode,
+					advancedTemplate: nlcaPromptState.advancedTemplate
+				};
+				
 				// Step with progress callbacks for streaming visualization
 				const { next, metrics } = await nlcaStepper.step(prev, width, height, gen, {
 					onBatchProgress: (completed, total, partialGrid) => {
@@ -184,7 +357,7 @@
 						// Update grid in real-time as results stream in
 						simulation?.setCellData(partialGrid);
 					}
-				});
+				}, promptConfig);
 				
 				simulation.setCellData(next);
 				simState.incrementGeneration();
@@ -310,6 +483,103 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 			width: window.innerWidth,
 			height: window.innerHeight
 		};
+	}
+
+	/**
+	 * Constrain view to keep the grid reasonably centered (NLCA mode only).
+	 * Allows panning around but not so far that the grid disappears entirely.
+	 * The grid should always be at least partially visible.
+	 */
+	function constrainViewToGrid(): void {
+		if (!simulation || !nlcaMode) return;
+		
+		const w = simState.gridWidth;
+		const h = simState.gridHeight;
+		const aspect = canvasWidth / canvasHeight;
+		const viewState = simulation.getViewState();
+		const zoom = viewState.zoom;
+		
+		// Calculate how many cells are visible
+		const cellsVisibleX = zoom;
+		const cellsVisibleY = zoom / aspect;
+		
+		// Allow panning within a generous range - the grid should stay at least 
+		// partially visible (within 30% of the view from center)
+		const padding = 0.3; // 30% of view size
+		
+		// Calculate the center of the grid
+		const gridCenterX = w / 2;
+		const gridCenterY = h / 2;
+		
+		// Calculate the visible area center based on current offset
+		const viewCenterX = viewState.offsetX + cellsVisibleX / 2;
+		const viewCenterY = viewState.offsetY + cellsVisibleY / 2;
+		
+		// Calculate the maximum allowed distance from grid center
+		const maxOffsetFromGridX = cellsVisibleX * (0.5 + padding) + w / 2;
+		const maxOffsetFromGridY = cellsVisibleY * (0.5 + padding) + h / 2;
+		
+		// Clamp the offset to keep grid at least partially in view
+		let newOffsetX = viewState.offsetX;
+		let newOffsetY = viewState.offsetY;
+		
+		// If view center is too far from grid center, pull it back
+		if (viewCenterX < gridCenterX - maxOffsetFromGridX) {
+			newOffsetX = gridCenterX - maxOffsetFromGridX - cellsVisibleX / 2;
+		} else if (viewCenterX > gridCenterX + maxOffsetFromGridX) {
+			newOffsetX = gridCenterX + maxOffsetFromGridX - cellsVisibleX / 2;
+		}
+		
+		if (viewCenterY < gridCenterY - maxOffsetFromGridY) {
+			newOffsetY = gridCenterY - maxOffsetFromGridY - cellsVisibleY / 2;
+		} else if (viewCenterY > gridCenterY + maxOffsetFromGridY) {
+			newOffsetY = gridCenterY + maxOffsetFromGridY - cellsVisibleY / 2;
+		}
+		
+		// Apply constraints if needed
+		if (newOffsetX !== viewState.offsetX || newOffsetY !== viewState.offsetY) {
+			simulation.setView({
+				offsetX: newOffsetX,
+				offsetY: newOffsetY
+			});
+		}
+	}
+	
+	/**
+	 * Constrain zoom level for NLCA mode.
+	 * Allows zooming out to see the entire grid with padding, and zooming in to cell level.
+	 * Returns clamped zoom factor.
+	 */
+	function constrainNlcaZoom(factor: number): number {
+		if (!simulation || !nlcaMode) return factor;
+		
+		const viewState = simulation.getViewState();
+		const newZoom = viewState.zoom * factor;
+		const w = simState.gridWidth;
+		const h = simState.gridHeight;
+		const aspect = canvasWidth / canvasHeight;
+		
+		// Minimum zoom: show the whole grid with 50% padding around it
+		// This allows seeing the grid boundaries clearly with space around it
+		const gridVisualWidth = w;
+		const gridVisualHeight = h;
+		const minZoomForWidth = gridVisualWidth * 2.5; // 2.5x padding for width
+		const minZoomForHeight = gridVisualHeight * aspect * 2.5; // 2.5x padding for height
+		const minZoom = Math.max(minZoomForWidth, minZoomForHeight);
+		
+		// Maximum zoom: don't zoom in more than 1 cell per 20 pixels
+		const maxZoom = 3;
+		
+		if (newZoom > minZoom) {
+			// Would zoom out too far - limit the factor
+			return minZoom / viewState.zoom;
+		}
+		if (newZoom < maxZoom) {
+			// Would zoom in too much - limit the factor
+			return maxZoom / viewState.zoom;
+		}
+		
+		return factor;
 	}
 
 	/**
@@ -446,15 +716,17 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 		let height: number;
 
 		if (nlcaMode) {
-			// NLCA mode uses fixed 25x25 grid by default
+			// NLCA mode uses fixed 10x10 grid by default
 			// Override any store defaults - NLCA is a special mode with small grids
-			width = 25;
-			height = 25;
+			width = 10;
+			height = 10;
 			simState.gridWidth = width;
 			simState.gridHeight = height;
 			// NLCA mode starts paused - user must manually step or play
 			simState.pause();
-			console.log(`[NLCA] Initialized grid: ${width}x${height} (paused)`);
+			// Use plane boundary (no wrapping) for NLCA - edges see dead neighbors
+			simState.boundaryMode = 'plane';
+			console.log(`[NLCA] Initialized grid: ${width}x${height} (paused, plane boundary)`);
 			
 			// Force square-grid neighborhoods only for NLCA mode
 			if (simState.currentRule.neighborhood === 'hexagonal' || simState.currentRule.neighborhood === 'extendedHexagonal') {
@@ -482,6 +754,8 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 
 		// Initialize NLCA components if in NLCA mode
 		if (nlcaMode) {
+			// Set plane boundary mode on the simulation (no edge wrapping)
+			simulation.setView({ boundaryMode: 'plane' });
 			await ensureNlcaReady(width, height);
 		}
 
@@ -506,6 +780,25 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 		
 		// Set view to fit the grid (no zoom animation)
 		simulation.resetView(initialCanvasWidth, initialCanvasHeight, false);
+		
+		// For NLCA mode, zoom out to show padding around the grid
+		// This makes the grid boundaries clearly visible against the background
+		if (nlcaMode) {
+			const viewState = simulation.getViewState();
+			// Zoom out to show 2x the grid size (50% padding on each side)
+			const paddedZoom = viewState.zoom * 2;
+			// Center the view so grid is in the middle
+			const cellsVisibleX = paddedZoom;
+			const cellsVisibleY = paddedZoom / (canvasWidth / canvasHeight || 1.5);
+			const offsetX = (width - cellsVisibleX) / 2;
+			const offsetY = (height - cellsVisibleY) / 2;
+			simulation.setView({ 
+				zoom: paddedZoom,
+				offsetX,
+				offsetY
+			});
+			constrainViewToGrid();
+		}
 		
 		// Start animation loop
 		animationLoop(performance.now());
@@ -569,8 +862,32 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 			simAccMs += frameDt;
 
 			if (nlcaMode) {
-				// NLCA mode: async LLM stepping, one step at a time
-				if (!nlcaStepInFlight && simAccMs >= stepMs) {
+				// NLCA mode: buffered playback or direct stepping
+				if (nlcaFrameBuffer && nlcaFrameBuffer.getBufferedCount() > 0) {
+					// Buffered playback mode - consume frames from buffer
+					if (simAccMs >= stepMs) {
+						simAccMs = Math.min(simAccMs, stepMs);
+						simAccMs -= stepMs;
+						
+						// Check if we have enough frames to play smoothly
+						if (!nlcaFrameBuffer.hasMinBuffer() && !nlcaIsBuffering) {
+							// Need more frames - wait for buffer to fill
+							nlcaIsBuffering = true;
+						} else if (nlcaFrameBuffer.hasMinBuffer()) {
+							nlcaIsBuffering = false;
+							// Consume a frame
+							consumeBufferedFrame();
+						}
+						
+						// Keep buffer full by continuing to compute
+						if (!nlcaBufferStatus?.isComputing && !nlcaFrameBuffer.isBufferFull() && nlcaBatchRunTarget > 0) {
+							nlcaFrameBuffer.startComputing().catch(err => {
+								nlcaLastError = err instanceof Error ? err.message : String(err);
+							});
+						}
+					}
+				} else if (!nlcaStepInFlight && simAccMs >= stepMs) {
+					// Legacy single-step mode (no buffer)
 					simAccMs = Math.min(simAccMs, stepMs);
 					simAccMs -= stepMs;
 					startNlcaStep();
@@ -604,8 +921,9 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 
 		// Sync view state including brush preview
 		// Hide brush during recording for clean video capture
+		// Also hide brush in NLCA mode (no drawing interaction)
 		const brushEditorOpen = isModalOpen('brushEditor');
-		const showBrush = !isRecording && ((mouseInCanvas && effectiveToolMode === 'brush' && !isPanning) || uiState.showBrushPopup || brushEditorOpen);
+		const showBrush = !nlcaMode && !isRecording && ((mouseInCanvas && effectiveToolMode === 'brush' && !isPanning) || uiState.showBrushPopup || brushEditorOpen);
 		// When brush popup/modal is open and mouse not in canvas, show brush at center of grid
 		const brushPopupOrModalOpen = uiState.showBrushPopup || brushEditorOpen;
 		const brushX = brushPopupOrModalOpen && !mouseInCanvas 
@@ -753,6 +1071,15 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 			return;
 		}
 
+		// NLCA mode: left click = pan, no drawing
+		if (nlcaMode) {
+			if (e.button === 0) {
+				isPanning = true;
+				e.preventDefault();
+			}
+			return;
+		}
+
 		// Left click behavior depends on tool mode
 		if (e.button === 0) {
 			if (effectiveToolMode === 'pan') {
@@ -822,6 +1149,8 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 			const deltaX = e.clientX - lastMouseX;
 			const deltaY = e.clientY - lastMouseY;
 			simulation.pan(deltaX, deltaY, rect.width, rect.height);
+			// Constrain view to grid bounds in NLCA mode
+			constrainViewToGrid();
 			lastMouseX = e.clientX;
 			lastMouseY = e.clientY;
 			return;
@@ -882,8 +1211,15 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 		// Normalize to a comfortable range and use exponential for smooth feel
 		const normalizedDelta = Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY), 100);
 		const zoomSpeed = 0.002; // Lower = smoother/slower
-		const factor = Math.exp(normalizedDelta * zoomSpeed);
+		let factor = Math.exp(normalizedDelta * zoomSpeed);
+		
+		// Constrain zoom level in NLCA mode
+		factor = constrainNlcaZoom(factor);
+		
 		simulation.zoomAt(x, y, canvasWidth, canvasHeight, factor);
+		
+		// Constrain view to grid bounds in NLCA mode
+		constrainViewToGrid();
 	}
 
 	function handleContextMenu(e: MouseEvent) {
@@ -934,6 +1270,12 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 			
 			lastTouchX = touch.clientX;
 			lastTouchY = touch.clientY;
+
+			// NLCA mode: single touch = pan, no drawing
+			if (nlcaMode) {
+				touchMode = 'pan';
+				return;
+			}
 
 			// Single touch behavior depends on tool mode
 			if (effectiveToolMode === 'pan') {
@@ -995,6 +1337,8 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 			const deltaX = touch.clientX - lastTouchX;
 			const deltaY = touch.clientY - lastTouchY;
 			simulation.pan(deltaX, deltaY, rect.width, rect.height);
+			// Constrain view to grid bounds in NLCA mode
+			constrainViewToGrid();
 			lastTouchX = touch.clientX;
 			lastTouchY = touch.clientY;
 		} else if (touches.length === 2 && touchMode === 'pinch') {
@@ -1004,7 +1348,9 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 
 			// Zoom
 			if (lastPinchDistance > 0) {
-				const zoomFactor = lastPinchDistance / currentDistance;
+				let zoomFactor = lastPinchDistance / currentDistance;
+				// Constrain zoom level in NLCA mode
+				zoomFactor = constrainNlcaZoom(zoomFactor);
 				const screenX = (center.x - rect.left) * (canvasWidth / rect.width);
 				const screenY = (center.y - rect.top) * (canvasHeight / rect.height);
 				simulation.zoomAt(screenX, screenY, canvasWidth, canvasHeight, zoomFactor);
@@ -1014,6 +1360,8 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 			const deltaX = center.x - lastTouchX;
 			const deltaY = center.y - lastTouchY;
 			simulation.pan(deltaX, deltaY, rect.width, rect.height);
+			// Constrain view to grid bounds in NLCA mode
+			constrainViewToGrid();
 
 			lastPinchDistance = currentDistance;
 			lastTouchX = center.x;
@@ -1622,12 +1970,22 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 				<div><span class="k">Cost</span> <span class="v cost">${nlcaTotalCost.toFixed(4)}</span></div>
 			</div>
 
-			<div class="row">
-				<button class="debug-btn" onclick={() => nlcaShowDebug = !nlcaShowDebug}>
+			<div class="row hud-actions">
+				<button class="debug-btn" onclick={() => nlcaShowDebug = !nlcaShowDebug} data-tooltip="View LLM input/output logs">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+						<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+						<polyline points="14,2 14,8 20,8"/>
+						<line x1="16" y1="13" x2="8" y2="13"/>
+						<line x1="16" y1="17" x2="8" y2="17"/>
+						<line x1="10" y1="9" x2="8" y2="9"/>
+					</svg>
 					{nlcaShowDebug ? 'Hide Debug' : 'Show Debug'}
 				</button>
-				<button class="debug-btn" onclick={() => openModal('nlcaPrompt')}>
-					View Prompts
+				<button class="debug-btn" onclick={() => openModal('nlcaPrompt')} data-tooltip="View system & user prompts">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+						<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+					</svg>
+					View Prompt
 				</button>
 			</div>
 
@@ -1635,6 +1993,20 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 				<div class="err">{nlcaLastError}</div>
 			{/if}
 		</div>
+
+		<!-- Timeline for frame visualization -->
+		{#if nlcaBatchRunTarget > 0 || nlcaBufferedFrames.length > 0}
+			<div class="nlca-timeline-wrapper">
+				<NlcaTimeline
+					currentGeneration={simState.generation}
+					bufferedFrames={nlcaBufferedFrames}
+					bufferStatus={nlcaBufferStatus}
+					batchRunActive={nlcaBatchRunTarget > 0}
+					batchRunTarget={nlcaBatchRunTarget}
+					batchRunCompleted={nlcaBatchRunCompleted}
+				/>
+			</div>
+		{/if}
 
 		{#if nlcaShowDebug}
 			<div class="nlca-debug">
@@ -1824,18 +2196,77 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 		transition: width 0.15s ease-out;
 		border-radius: 2px;
 	}
+	.nlca-hud .hud-actions {
+		gap: 8px;
+	}
 	.nlca-hud .debug-btn {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
 		background: rgba(255, 255, 255, 0.08);
 		border: 1px solid rgba(255, 255, 255, 0.15);
 		border-radius: 8px;
 		color: #eaeaf2;
-		padding: 4px 10px;
+		padding: 5px 10px;
 		font-size: 0.75rem;
 		cursor: pointer;
 		transition: background 0.15s;
 	}
 	.nlca-hud .debug-btn:hover {
 		background: rgba(255, 255, 255, 0.15);
+	}
+	.nlca-hud .debug-btn svg {
+		flex-shrink: 0;
+	}
+	/* Tooltip for HUD buttons */
+	.nlca-hud .debug-btn[data-tooltip]::after {
+		content: attr(data-tooltip);
+		position: absolute;
+		top: calc(100% + 8px);
+		left: 50%;
+		transform: translateX(-50%);
+		background: rgba(12, 12, 18, 0.95);
+		color: #e0e0e0;
+		padding: 0.35rem 0.6rem;
+		border-radius: 5px;
+		font-size: 0.65rem;
+		white-space: nowrap;
+		opacity: 0;
+		visibility: hidden;
+		transition: opacity 0.15s, visibility 0.15s;
+		pointer-events: none;
+		z-index: 200;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+	}
+	.nlca-hud .debug-btn[data-tooltip]::before {
+		content: '';
+		position: absolute;
+		top: calc(100% + 3px);
+		left: 50%;
+		transform: translateX(-50%);
+		border: 5px solid transparent;
+		border-bottom-color: rgba(12, 12, 18, 0.95);
+		opacity: 0;
+		visibility: hidden;
+		transition: opacity 0.15s, visibility 0.15s;
+		pointer-events: none;
+		z-index: 201;
+	}
+	.nlca-hud .debug-btn[data-tooltip]:hover::after,
+	.nlca-hud .debug-btn[data-tooltip]:hover::before {
+		opacity: 1;
+		visibility: visible;
+	}
+
+	/* NLCA Timeline wrapper */
+	.nlca-timeline-wrapper {
+		position: absolute;
+		left: 12px;
+		top: 230px;
+		pointer-events: auto;
+		z-index: 100;
 	}
 
 	/* NLCA Debug Panel */

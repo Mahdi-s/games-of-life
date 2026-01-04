@@ -25,6 +25,7 @@
 	let isPlayingTape = $state(false);
 	let playInterval: ReturnType<typeof setInterval> | null = null;
 	let status = $state<string | null>(null);
+	let playbackFps = $state(10); // Playback speed in frames per second
 
 	function handleModalClick() {
 		bringToFront('nlcaPlayback');
@@ -74,8 +75,8 @@
 		if (!selectedRunId) return;
 		stopTape();
 		isPlayingTape = true;
-		// Playback speed: tie to UI speed, but clamp for sanity.
-		const ms = 1000 / Math.max(1, Math.min(60, simState.speed));
+		// Playback speed: use dedicated FPS slider
+		const ms = 1000 / Math.max(1, Math.min(60, playbackFps));
 		playInterval = setInterval(async () => {
 			if (!selectedRunId) return;
 			if (currentGen >= latestGen) {
@@ -85,6 +86,24 @@
 			currentGen += 1;
 			await loadFrame(currentGen);
 		}, ms);
+	}
+	
+	// Step to previous frame
+	async function prevFrame() {
+		if (currentGen > 0) {
+			stopTape();
+			currentGen -= 1;
+			await loadFrame(currentGen);
+		}
+	}
+	
+	// Step to next frame
+	async function nextFrame() {
+		if (currentGen < latestGen) {
+			stopTape();
+			currentGen += 1;
+			await loadFrame(currentGen);
+		}
 	}
 
 	onMount(async () => {
@@ -153,17 +172,25 @@
 				<div class="slider">
 					<div class="meta">
 						<span>Generation: {currentGen} / {latestGen}</span>
-						<button
-							class="btn small"
-							onclick={async () => {
-								stopTape();
-								currentGen = latestGen;
-								if (latestGen > 0) await loadFrame(latestGen);
-							}}
-							disabled={!selectedRunId || latestGen === 0}
-						>
-							Latest
-						</button>
+						<div class="step-controls">
+							<button class="btn small" onclick={prevFrame} disabled={currentGen <= 0} aria-label="Previous frame">
+								◀
+							</button>
+							<button class="btn small" onclick={nextFrame} disabled={currentGen >= latestGen} aria-label="Next frame">
+								▶
+							</button>
+							<button
+								class="btn small"
+								onclick={async () => {
+									stopTape();
+									currentGen = latestGen;
+									if (latestGen > 0) await loadFrame(latestGen);
+								}}
+								disabled={!selectedRunId || latestGen === 0}
+							>
+								Latest
+							</button>
+						</div>
 					</div>
 					<input
 						type="range"
@@ -177,6 +204,25 @@
 							await loadFrame(currentGen);
 						}}
 					/>
+				</div>
+				
+				<div class="speed-control">
+					<label>
+						<span>Playback Speed: {playbackFps} fps</span>
+						<input
+							type="range"
+							min="1"
+							max="60"
+							step="1"
+							bind:value={playbackFps}
+							onchange={() => {
+								// If playing, restart with new speed
+								if (isPlayingTape) {
+									startTape();
+								}
+							}}
+						/>
+					</label>
 				</div>
 			{:else}
 				<p class="muted">No NLCA runs found yet — generate a few frames in the NLCA canvas first.</p>
@@ -246,7 +292,11 @@
 
 	.slider { margin-top: 14px; display: grid; gap: 10px; }
 	.slider input[type='range'] { width: 100%; }
-	.meta { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+	.meta { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+	.step-controls { display: flex; gap: 6px; }
+	.speed-control { margin-top: 14px; }
+	.speed-control label { display: grid; gap: 6px; }
+	.speed-control input[type='range'] { width: 100%; }
 	.muted { color: var(--ui-text); }
 	.status { margin-top: 10px; color: var(--ui-text-hover); }
 </style>

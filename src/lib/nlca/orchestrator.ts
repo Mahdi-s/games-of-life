@@ -1,7 +1,7 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
 import type { NlcaCellRequest, NlcaCellResponse, NlcaOrchestratorConfig, CellState01 } from './types.js';
-import { buildCellSystemPrompt, buildCellUserPrompt, parseCellResponse } from './prompt.js';
+import { buildCellSystemPrompt, buildCellUserPrompt, parseCellResponse, type PromptConfig } from './prompt.js';
 import { CellAgent } from './agentManager.js';
 
 export interface CellDecisionResult {
@@ -125,8 +125,11 @@ export class NlcaOrchestrator {
 	/**
 	 * Execute a single cell's decision.
 	 * Uses the agent's conversation history for context.
+	 * @param agent - The cell agent making the decision
+	 * @param req - The cell request with context
+	 * @param promptConfig - Optional custom prompt configuration
 	 */
-	async decideCell(agent: CellAgent, req: NlcaCellRequest): Promise<CellDecisionResult> {
+	async decideCell(agent: CellAgent, req: NlcaCellRequest, promptConfig?: PromptConfig): Promise<CellDecisionResult> {
 		this.callCount++;
 
 		// Build system prompt if not already in history
@@ -136,7 +139,8 @@ export class NlcaOrchestrator {
 				agent.x,
 				agent.y,
 				req.width,
-				req.height
+				req.height,
+				promptConfig
 			);
 			agent.addMessage({ role: 'system', content: systemPrompt });
 		}

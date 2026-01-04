@@ -35,10 +35,10 @@
 			// ignore
 		}
 
-		// Default to 25x25 for NLCA, or current sim dimensions if already set
+		// Default to 10x10 for NLCA, or current sim dimensions if already set
 		if (simState.gridWidth === 0 || simState.gridHeight === 0) {
-			gridWidth = 25;
-			gridHeight = 25;
+			gridWidth = 10;
+			gridHeight = 10;
 		} else {
 			gridWidth = simState.gridWidth;
 			gridHeight = simState.gridHeight;

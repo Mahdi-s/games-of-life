@@ -3,6 +3,7 @@ import type { CellContext, NlcaCellMetricsFrame, NlcaCellRequest, NlcaOrchestrat
 import { extractCellContext } from './neighborhood.js';
 import { NlcaOrchestrator, type CellDecisionResult, type NlcaCostStats, type DebugLogEntry } from './orchestrator.js';
 import { CellAgentManager } from './agentManager.js';
+import type { PromptConfig } from './prompt.js';
 
 export interface NlcaStepperConfig {
 	runId: string;
@@ -125,7 +126,8 @@ export class NlcaStepper {
 		generation: number,
 		latency8: Uint8Array,
 		prev: Uint32Array,
-		callbacks?: NlcaProgressCallback
+		callbacks?: NlcaProgressCallback,
+		promptConfig?: PromptConfig
 	): Promise<Map<number, CellState01>> {
 		const maxConcurrency = Math.max(1, this.cfg.orchestrator.maxConcurrency);
 		const decisions = new Map<number, CellState01>();
@@ -163,7 +165,7 @@ export class NlcaStepper {
 					height
 				};
 
-				const result = await this.orchestrator.decideCell(agent, req);
+				const result = await this.orchestrator.decideCell(agent, req, promptConfig);
 
 				decisions.set(cell.id, result.state);
 				workingGrid[cell.id] = result.state;
@@ -219,7 +221,8 @@ export class NlcaStepper {
 		width: number,
 		height: number,
 		generation: number,
-		callbacks?: NlcaProgressCallback
+		callbacks?: NlcaProgressCallback,
+		promptConfig?: PromptConfig
 	): Promise<NlcaStepResult> {
 		const expected = width * height;
 		if (prev.length !== expected) {
@@ -237,7 +240,7 @@ export class NlcaStepper {
 		const latency8 = new Uint8Array(expected);
 		const changed01 = new Uint8Array(expected);
 
-		const decisionMap = await this.decideCells(contexts, width, height, generation, latency8, prev, callbacks);
+		const decisionMap = await this.decideCells(contexts, width, height, generation, latency8, prev, callbacks, promptConfig);
 
 		const next = new Uint32Array(expected);
 		let changedCount = 0;
