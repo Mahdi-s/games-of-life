@@ -198,11 +198,11 @@
 	/>
 
 	{#if showHelp}
-		<HelpOverlay onclose={() => closeModal('help')} />
+		<HelpOverlay onclose={() => closeModal('help')} onstarttour={() => {}} />
 	{/if}
 
 	{#if showAbout}
-		<AboutModal onclose={() => closeModal('about')} />
+		<AboutModal onclose={() => closeModal('about')} onstarttour={() => {}} />
 	{/if}
 
 	{#if showSettings}

@@ -83,7 +83,7 @@
 		role="dialog"
 		aria-label="NLCA Settings"
 		tabindex="0"
-		use:draggable={{ id: 'nlcaSettings', onDragEnd: handleDragEnd }}
+		use:draggable={{ onDragEnd: handleDragEnd }}
 		onclick={handleModalClick}
 		onkeydown={() => {}}
 		style={modalState.position ? `transform: translate(${modalState.position.x}px, ${modalState.position.y}px);` : ''}

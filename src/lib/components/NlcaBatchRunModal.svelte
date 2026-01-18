@@ -103,7 +103,7 @@
 		role="dialog"
 		aria-label="Batch Run"
 		tabindex="0"
-		use:draggable={{ id: 'nlcaBatchRun', onDragEnd: handleDragEnd }}
+		use:draggable={{ onDragEnd: handleDragEnd }}
 		onclick={handleModalClick}
 		onkeydown={() => {}}
 		style={modalState.position ? `transform: translate(${modalState.position.x}px, ${modalState.position.y}px);` : ''}

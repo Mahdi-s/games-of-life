@@ -1,4 +1,4 @@
-import type { NlcaCellRequest, NlcaCellResponse, CellState01 } from './types.js';
+import type { NlcaCellRequest, NlcaCellResponse, CellColorStatus, CellState01 } from './types.js';
 
 /**
  * Prompt strategy for NLCA (Neural-Linguistic Cellular Automata):
@@ -21,6 +21,8 @@ export interface PromptConfig {
 	useAdvancedMode: boolean;
 	/** Custom template with placeholders (advanced mode only) */
 	advancedTemplate?: string;
+	/** If true, require a deterministic per-cell hex color output */
+	cellColorHexEnabled?: boolean;
 }
 
 // Default task description (forms a filled square in the center)
@@ -30,6 +32,25 @@ Rules:
 1. If your x coordinate is between 3 and 7 (inclusive) AND your y coordinate is between 3 and 7 (inclusive) → output 1
 2. Otherwise → output 0
 3. Your previous state does not matter - only your position determines your state`;
+
+function buildOutputContract(cfg?: PromptConfig): string {
+	const wantColor = cfg?.cellColorHexEnabled === true;
+	if (wantColor) {
+		return [
+			'Return ONLY JSON (no markdown, no prose, no extra keys).',
+			'Format: {"state":0|1,"color":"#RRGGBB"}',
+			'- "color" must be exactly 7 chars, leading "#", 6 uppercase hex digits (0-9, A-F).'
+		].join('\n');
+	}
+	return [
+		'Return ONLY JSON (no markdown, no prose).',
+		'Format: {"state":0} or {"state":1}'
+	].join('\n');
+}
+
+export function buildOutputContractText(cfg?: PromptConfig): string {
+	return buildOutputContract(cfg);
+}
 
 // Default template - provides full context about cellular automata
 const DEFAULT_TEMPLATE = `You are an autonomous cell agent in a cellular automaton simulation.
@@ -60,8 +81,7 @@ You will receive a JSON object with:
   - state: that neighbor's current state (0 or 1)
 
 == OUTPUT FORMAT ==
-Respond with ONLY: {"state":0} or {"state":1}
-No explanation. No other text.`;
+{{OUTPUT_CONTRACT}}`;
 
 /**
  * Replace all placeholders in a template string
@@ -72,7 +92,8 @@ function replacePlaceholders(
 	y: number,
 	width: number,
 	height: number,
-	task: string
+	task: string,
+	outputContract: string
 ): string {
 	return template
 		.replace(/\{\{CELL_X\}\}/g, String(x))
@@ -81,7 +102,8 @@ function replacePlaceholders(
 		.replace(/\{\{GRID_HEIGHT\}\}/g, String(height))
 		.replace(/\{\{MAX_X\}\}/g, String(width - 1))
 		.replace(/\{\{MAX_Y\}\}/g, String(height - 1))
-		.replace(/\{\{TASK\}\}/g, task);
+		.replace(/\{\{TASK\}\}/g, task)
+		.replace(/\{\{OUTPUT_CONTRACT\}\}/g, outputContract);
 }
 
 /**
@@ -108,8 +130,14 @@ export function buildCellSystemPrompt(
 	const template = (config?.useAdvancedMode && config?.advancedTemplate) 
 		? config.advancedTemplate 
 		: DEFAULT_TEMPLATE;
-	
-	return replacePlaceholders(template, x, y, width, height, task);
+
+	const outputContract = buildOutputContract(config);
+	const filled = replacePlaceholders(template, x, y, width, height, task, outputContract);
+
+	// Ensure the output contract is always explicit and easy to audit, even if a custom template omits it.
+	return /\{\{OUTPUT_CONTRACT\}\}/.test(template)
+		? filled
+		: `${filled}\n\n== OUTPUT CONTRACT ==\n${outputContract}`;
 }
 
 /**
@@ -180,7 +208,26 @@ export function parseCellResponse(text: string): NlcaCellResponse | null {
 				? Math.max(0, Math.min(1, confidenceRaw))
 				: undefined;
 
-		return confidence === undefined ? { state } : { state, confidence };
+		const colorRaw = obj.color;
+		let colorHex: string | undefined;
+		let colorStatus: CellColorStatus | undefined;
+		if (typeof colorRaw === 'string') {
+			const normalized = normalizeHexColor(colorRaw);
+			if (normalized) {
+				colorHex = normalized;
+				colorStatus = 'valid';
+			} else {
+				colorStatus = 'invalid';
+			}
+		} else if (colorRaw === undefined) {
+			colorStatus = 'missing';
+		}
+
+		const base: NlcaCellResponse = { state };
+		if (confidence !== undefined) base.confidence = confidence;
+		if (colorHex !== undefined) base.colorHex = colorHex;
+		if (colorStatus !== undefined) base.colorStatus = colorStatus;
+		return base;
 	} catch {
 		// Fallback: try to find just 0 or 1 in the response
 		if (/\b1\b/.test(trimmed) && !/\b0\b/.test(trimmed)) {
@@ -191,6 +238,45 @@ export function parseCellResponse(text: string): NlcaCellResponse | null {
 		}
 		return null;
 	}
+}
+
+export function normalizeHexColor(input: string): string | null {
+	const s = input.trim();
+	if (!/^#[0-9a-fA-F]{6}$/.test(s)) return null;
+	return s.toUpperCase();
+}
+
+/**
+ * Pack a per-cell color into a u32 for the WebGPU render pipeline.
+ *
+ * Packed format (u32):
+ * - bits 0..7: B
+ * - bits 8..15: G
+ * - bits 16..23: R
+ * - bits 24..25: status (0=missing, 1=valid, 2=invalid)
+ */
+export function packCellColorHexToU32(
+	colorHex: string | null | undefined,
+	colorStatus: CellColorStatus | undefined
+): number {
+	let statusBits: number = colorStatus === 'valid' ? 1 : colorStatus === 'invalid' ? 2 : 0;
+	let r = 0;
+	let g = 0;
+	let b = 0;
+
+	if (statusBits === 1 && typeof colorHex === 'string') {
+		const normalized = normalizeHexColor(colorHex);
+		if (normalized) {
+			r = Number.parseInt(normalized.slice(1, 3), 16) & 0xff;
+			g = Number.parseInt(normalized.slice(3, 5), 16) & 0xff;
+			b = Number.parseInt(normalized.slice(5, 7), 16) & 0xff;
+		} else {
+			// Defensive: if a caller marks it valid but it doesn't parse, treat as invalid.
+			statusBits = 2;
+		}
+	}
+
+	return ((((statusBits & 0x3) << 24) | (r << 16) | (g << 8) | b) >>> 0) >>> 0;
 }
 
 

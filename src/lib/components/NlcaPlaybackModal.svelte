@@ -126,7 +126,7 @@
 		role="dialog"
 		aria-label="NLCA Playback"
 		tabindex="0"
-		use:draggable={{ id: 'nlcaPlayback', onDragEnd: handleDragEnd }}
+		use:draggable={{ onDragEnd: handleDragEnd }}
 		onclick={handleModalClick}
 		onkeydown={() => {}}
 		style={modalState.position ? `transform: translate(${modalState.position.x}px, ${modalState.position.y}px);` : ''}

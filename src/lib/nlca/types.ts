@@ -4,6 +4,8 @@ export type NlcaNeighborhood = Extract<NeighborhoodId, 'moore' | 'vonNeumann' | 
 
 export type CellState01 = 0 | 1;
 
+export type CellColorStatus = 'valid' | 'invalid' | 'missing';
+
 export interface NeighborSample {
 	/** Relative X offset (dx) */
 	dx: number;
@@ -39,6 +41,10 @@ export interface NlcaCellRequest {
 export interface NlcaCellResponse {
 	state: CellState01;
 	confidence?: number;
+	/** Normalized hex color (\"#RRGGBB\") if provided and valid */
+	colorHex?: string;
+	/** Status for color parsing if color output is enabled */
+	colorStatus?: CellColorStatus;
 }
 
 /** Conversation message for agent history */
@@ -61,6 +67,8 @@ export interface NlcaOrchestratorConfig {
 	model: NlcaModelConfig;
 	/** Max concurrent LLM calls (one per cell) */
 	maxConcurrency: number;
+	/** Cells per proxy request (higher amortizes overhead, but reduces UI streaming granularity). */
+	batchSize: number;
 	/** Abort a cell call if it exceeds this */
 	cellTimeoutMs: number;
 }
@@ -93,6 +101,13 @@ export interface NlcaCellMetricsFrame {
 export interface NlcaStepResult {
 	next: Uint32Array;
 	metrics?: NlcaCellMetricsFrame;
+	/** Optional per-cell color hex outputs (length = width*height) */
+	colorsHex?: Array<string | null>;
+	/**
+	 * Optional per-cell color status (length = width*height).
+	 * Encoding: 0=missing, 1=valid, 2=invalid
+	 */
+	colorStatus8?: Uint8Array;
 }
 
 

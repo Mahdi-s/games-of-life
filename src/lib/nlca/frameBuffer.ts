@@ -5,7 +5,7 @@
  * The buffer computes frames ahead while playback consumes them.
  */
 
-import type { NlcaCellMetricsFrame, CellState01 } from './types.js';
+import type { NlcaCellMetricsFrame } from './types.js';
 import type { PromptConfig } from './prompt.js';
 import type { NlcaStepper, NlcaProgressCallback } from './stepper.js';
 
@@ -16,6 +16,10 @@ export interface BufferedFrame {
 	grid: Uint32Array;
 	/** Cell metrics (latency, changed state) */
 	metrics: NlcaCellMetricsFrame;
+	/** Optional per-cell color hex outputs (length = width*height) */
+	colorsHex?: Array<string | null>;
+	/** Optional per-cell color status (0=missing,1=valid,2=invalid) */
+	colorStatus8?: Uint8Array;
 	/** Timestamp when computation completed */
 	computedAt: number;
 	/** Time taken to compute this frame in ms */
@@ -248,7 +252,7 @@ export class NlcaFrameBuffer {
 				}
 			};
 
-			const { next, metrics } = await stepper.step(
+			const { next, metrics, colorsHex, colorStatus8 } = await stepper.step(
 				this.lastGrid,
 				width,
 				height,
@@ -267,6 +271,8 @@ export class NlcaFrameBuffer {
 					latency8: new Uint8Array(width * height),
 					changed01: new Uint8Array(width * height)
 				},
+				colorsHex: colorsHex ? [...colorsHex] : undefined,
+				colorStatus8: colorStatus8 ? new Uint8Array(colorStatus8) : undefined,
 				computedAt: Date.now(),
 				computeTimeMs
 			};

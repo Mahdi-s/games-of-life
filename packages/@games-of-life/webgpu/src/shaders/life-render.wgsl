@@ -40,6 +40,7 @@ struct RenderParams {
 @group(0) @binding(1) var<storage, read> cell_state: array<u32>;
 @group(0) @binding(2) var<storage, read> text_bitmap: array<u32>;
 @group(0) @binding(3) var<storage, read> agent_metrics: array<u32>;
+@group(0) @binding(4) var<storage, read> cell_color: array<u32>;
 
 // Full-screen triangle vertices (oversized triangle that covers entire viewport)
 @vertex
@@ -193,6 +194,83 @@ fn get_cell_metric(grid_x: i32, grid_y: i32) -> u32 {
     }
     
     return agent_metrics[u32(fx) + u32(fy) * u32(params.grid_width)];
+}
+
+// Get per-cell packed color (u32). Matches boundary transform behavior of get_cell_state().
+// Packed format:
+// - bits 0..7: B
+// - bits 8..15: G
+// - bits 16..23: R
+// - bits 24..25: status (0=missing, 1=valid, 2=invalid)
+fn get_cell_color_packed(grid_x: i32, grid_y: i32) -> u32 {
+    let w = i32(params.grid_width);
+    let h = i32(params.grid_height);
+    let mode = u32(params.boundary_mode);
+    
+    var fx = grid_x;
+    var fy = grid_y;
+    
+    let wraps_x = mode == 1u || mode == 3u || mode == 4u || mode == 6u || mode == 7u || mode == 8u;
+    let wraps_y = mode == 2u || mode == 3u || mode == 5u || mode == 6u || mode == 7u || mode == 8u;
+    let flips_x = mode == 4u || mode == 6u || mode == 8u;
+    let flips_y = mode == 5u || mode == 7u || mode == 8u;
+    
+    var x_wraps = 0;
+    var y_wraps = 0;
+    
+    if (fx < 0 || fx >= w) {
+        if (!wraps_x) {
+            return 0u;
+        }
+        if (fx < 0) {
+            x_wraps = (-fx - 1) / w + 1;
+            fx = ((fx % w) + w) % w;
+        } else {
+            x_wraps = fx / w;
+            fx = fx % w;
+        }
+    }
+    
+    if (fy < 0 || fy >= h) {
+        if (!wraps_y) {
+            return 0u;
+        }
+        if (fy < 0) {
+            y_wraps = (-fy - 1) / h + 1;
+            fy = ((fy % h) + h) % h;
+        } else {
+            y_wraps = fy / h;
+            fy = fy % h;
+        }
+    }
+    
+    if (flips_x && (x_wraps & 1) == 1) {
+        fy = h - 1 - fy;
+    }
+    if (flips_y && (y_wraps & 1) == 1) {
+        fx = w - 1 - fx;
+    }
+    
+    if (fx < 0 || fx >= w || fy < 0 || fy >= h) {
+        return 0u;
+    }
+    
+    return cell_color[u32(fx) + u32(fy) * u32(params.grid_width)];
+}
+
+fn unpack_cell_color_rgb(packed: u32) -> vec3<f32> {
+    let b = f32(packed & 255u) / 255.0;
+    let g = f32((packed >> 8u) & 255u) / 255.0;
+    let r = f32((packed >> 16u) & 255u) / 255.0;
+    return vec3<f32>(r, g, b);
+}
+
+fn cell_color_status(packed: u32) -> u32 {
+    return (packed >> 24u) & 3u;
+}
+
+fn cell_color_has_rgb(packed: u32) -> bool {
+    return (packed & 0x00ffffffu) != 0u;
 }
 
 // Check if a cell is "alive" (state == 1)
@@ -1326,8 +1404,18 @@ fn render_square(input: VertexOutput) -> vec4<f32> {
     // Get cell state
     let state = get_cell_state(cell_x, cell_y);
     
-    // Base color from state
+    // Base color from state (optionally overridden by per-cell color when alive)
     var color = state_to_color(state, u32(params.num_states));
+    var color_status: u32 = 0u;
+    if (state == 1u) {
+        let packed = get_cell_color_packed(cell_x, cell_y);
+        color_status = cell_color_status(packed);
+        // Prefer per-cell RGB when available, even if status is missing/invalid.
+        // This allows preserving the last known RGB across frames while still tinting with an indicator.
+        if (color_status == 1u || cell_color_has_rgb(packed)) {
+            color = unpack_cell_color_rgb(packed);
+        }
+    }
     
     // Apply neighbor shading if enabled (only for non-dead cells)
     if (state > 0u) {
@@ -1351,6 +1439,21 @@ fn render_square(input: VertexOutput) -> vec4<f32> {
                 color = mix(color, tint, 0.12);
             }
         }
+    }
+
+    // Subtle per-cell status indicator (missing/invalid), render-only.
+    // Applied only for alive cells to avoid tinting the background.
+    if (state == 1u && (color_status == 0u || color_status == 2u)) {
+        let pixels_per_cell = params.canvas_width / params.zoom;
+        let indicator_thickness = clamp(1.5 / pixels_per_cell, 0.02, 0.12);
+        let frac_x = fract(grid_x);
+        let frac_y = fract(grid_y);
+        let edge = min(min(frac_x, 1.0 - frac_x), min(frac_y, 1.0 - frac_y));
+        let edge_mask = 1.0 - smoothstep(indicator_thickness * 0.5, indicator_thickness, edge);
+
+        let indicator = select(vec3<f32>(0.98, 0.55, 0.55), vec3<f32>(0.98, 0.76, 0.35), color_status == 0u);
+        color = mix(color, indicator, 0.08);
+        color = mix(color, indicator, edge_mask * 0.22);
     }
     
     // Brush preview highlight - subtle semi-transparent overlay
@@ -1473,8 +1576,16 @@ fn render_hexagonal(input: VertexOutput) -> vec4<f32> {
     // Get cell state
     let state = get_cell_state(cell_x, cell_y);
     
-    // Base color from state
+    // Base color from state (optionally overridden by per-cell color when alive)
     var color = state_to_color(state, u32(params.num_states));
+    var color_status: u32 = 0u;
+    if (state == 1u) {
+        let packed = get_cell_color_packed(cell_x, cell_y);
+        color_status = cell_color_status(packed);
+        if (color_status == 1u || cell_color_has_rgb(packed)) {
+            color = unpack_cell_color_rgb(packed);
+        }
+    }
     
     // Apply neighbor shading if enabled (only for non-dead cells)
     if (state > 0u) {
@@ -1495,6 +1606,18 @@ fn render_hexagonal(input: VertexOutput) -> vec4<f32> {
                 color = mix(color, tint, 0.12);
             }
         }
+    }
+
+    // Subtle per-cell status indicator (missing/invalid), render-only.
+    if (state == 1u && (color_status == 0u || color_status == 2u)) {
+        let pixels_per_cell = params.canvas_width / params.zoom;
+        let indicator_thickness = clamp(1.5 / pixels_per_cell, 0.02, 0.12);
+        let boundary_dist = hex_boundary_distance(grid_x, grid_y, cell_x, cell_y);
+        let edge_mask = 1.0 - smoothstep(indicator_thickness * 0.5, indicator_thickness, boundary_dist);
+
+        let indicator = select(vec3<f32>(0.98, 0.55, 0.55), vec3<f32>(0.98, 0.76, 0.35), color_status == 0u);
+        color = mix(color, indicator, 0.08);
+        color = mix(color, indicator, edge_mask * 0.22);
     }
     
     // Brush preview highlight

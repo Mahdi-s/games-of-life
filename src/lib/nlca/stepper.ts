@@ -19,30 +19,6 @@ export interface NlcaProgressCallback {
 	onBatchProgress?: (completed: number, total: number, partialGrid: Uint32Array) => void;
 }
 
-async function asyncPool<T, R>(
-	concurrency: number,
-	items: readonly T[],
-	fn: (item: T, idx: number) => Promise<R>,
-	onProgress?: (completed: number, total: number) => void
-): Promise<R[]> {
-	const results = new Array<R>(items.length);
-	let nextIndex = 0;
-	let completedCount = 0;
-
-	const workers = new Array(Math.max(1, concurrency)).fill(0).map(async () => {
-		while (true) {
-			const i = nextIndex++;
-			if (i >= items.length) return;
-			results[i] = await fn(items[i]!, i);
-			completedCount++;
-			onProgress?.(completedCount, items.length);
-		}
-	});
-
-	await Promise.all(workers);
-	return results;
-}
-
 function latencyToU8(ms: number): number {
 	// 0..255 where each unit is ~10ms (cap at 2550ms).
 	if (!Number.isFinite(ms) || ms <= 0) return 0;
@@ -82,6 +58,16 @@ export class NlcaStepper {
 		this.agentManager.clearAllHistory();
 		this.orchestrator.resetCallCount();
 		console.log(`[NLCA] New run started: ${runId}`);
+	}
+
+	/**
+	 * Reset agent sessions when prompt configuration changes.
+	 * This clears all agent history so the new prompt takes effect.
+	 */
+	resetAgentSessions(): void {
+		this.agentManager.clearAllHistory();
+		this.orchestrator.clearDebugLog();
+		console.log(`[NLCA] Agent sessions reset - new prompt will take effect`);
 	}
 
 	/** Get cost statistics from orchestrator */
@@ -128,31 +114,44 @@ export class NlcaStepper {
 		prev: Uint32Array,
 		callbacks?: NlcaProgressCallback,
 		promptConfig?: PromptConfig
-	): Promise<Map<number, CellState01>> {
-		const maxConcurrency = Math.max(1, this.cfg.orchestrator.maxConcurrency);
+	): Promise<{
+		decisionMap: Map<number, CellState01>;
+		colorsHex?: Array<string | null>;
+		colorStatus8?: Uint8Array;
+	}> {
 		const decisions = new Map<number, CellState01>();
 		const totalCells = cells.length;
+
+		const wantColor = promptConfig?.cellColorHexEnabled === true;
+		const colorsHex = wantColor ? new Array<string | null>(totalCells).fill(null) : undefined;
+		const colorStatus8 = wantColor ? new Uint8Array(totalCells) : undefined; // 0=missing, 1=valid, 2=invalid
 
 		let successCount = 0;
 		let failCount = 0;
 		let totalLatency = 0;
 		let lastLogTime = Date.now();
 		let lastBatchTime = Date.now();
+		let completedCount = 0;
 		const logInterval = 2000; // Log progress every 2 seconds
 		const batchUpdateInterval = 500; // Update UI every 500ms
 
-		console.log(`[NLCA] Generation ${generation} starting - ${totalCells} cells, concurrency: ${maxConcurrency}`);
+		const maxConcurrency = Math.max(1, this.cfg.orchestrator.maxConcurrency);
+		const batchSize = Math.max(1, Math.floor(this.cfg.orchestrator.batchSize || totalCells));
+
+		console.log(
+			`[NLCA] Generation ${generation} starting - ${totalCells} cells, ` +
+				`batchSize: ${batchSize}, upstream concurrency: ${maxConcurrency}`
+		);
 		const genStartTime = performance.now();
 
 		// Create a working grid for streaming updates
 		const workingGrid = new Uint32Array(prev);
 
-		await asyncPool(
-			maxConcurrency,
-			cells,
-			async (cell, idx) => {
-				const agent = this.agentManager.getAgent(cell.id);
+		for (let start = 0; start < cells.length; start += batchSize) {
+			const chunk = cells.slice(start, Math.min(cells.length, start + batchSize));
 
+			const items = chunk.map((cell) => {
+				const agent = this.agentManager.getAgent(cell.id);
 				const req: NlcaCellRequest = {
 					cellId: cell.id,
 					x: cell.x,
@@ -164,41 +163,57 @@ export class NlcaStepper {
 					width,
 					height
 				};
+				return { agent, req };
+			});
 
-				const result = await this.orchestrator.decideCell(agent, req, promptConfig);
+			const resultMap = await this.orchestrator.decideCellsBatch(items, promptConfig);
+
+			for (const cell of chunk) {
+				const result = resultMap.get(cell.id);
+				if (!result) continue;
 
 				decisions.set(cell.id, result.state);
 				workingGrid[cell.id] = result.state;
 				latency8[cell.id] = latencyToU8(result.latencyMs);
 				totalLatency += result.latencyMs;
 
-				if (result.success) {
-					successCount++;
-				} else {
-					failCount++;
+				if (wantColor && colorsHex && colorStatus8) {
+					if (result.colorHex) colorsHex[cell.id] = result.colorHex;
+					switch (result.colorStatus) {
+						case 'valid':
+							colorStatus8[cell.id] = 1;
+							break;
+						case 'invalid':
+							colorStatus8[cell.id] = 2;
+							break;
+						case 'missing':
+						default:
+							colorStatus8[cell.id] = 0;
+							break;
+					}
 				}
 
-				// Notify per-cell callback
-				callbacks?.onCellComplete?.(cell.id, result, successCount + failCount, totalCells);
+				if (result.success) successCount++;
+				else failCount++;
 
-				return result;
-			},
-			(completed, total) => {
-				// Log progress periodically
-				const now = Date.now();
-				if (now - lastLogTime >= logInterval) {
-					const pct = ((completed / total) * 100).toFixed(1);
-					console.log(`[NLCA] Progress: ${completed}/${total} cells (${pct}%)`);
-					lastLogTime = now;
-				}
-
-				// Send batch progress for UI updates
-				if (callbacks?.onBatchProgress && now - lastBatchTime >= batchUpdateInterval) {
-					callbacks.onBatchProgress(completed, total, workingGrid);
-					lastBatchTime = now;
-				}
+				completedCount++;
+				callbacks?.onCellComplete?.(cell.id, result, completedCount, totalCells);
 			}
-		);
+
+			// Log progress periodically
+			const now = Date.now();
+			if (now - lastLogTime >= logInterval) {
+				const pct = ((completedCount / totalCells) * 100).toFixed(1);
+				console.log(`[NLCA] Progress: ${completedCount}/${totalCells} cells (${pct}%)`);
+				lastLogTime = now;
+			}
+
+			// Send batch progress for UI updates (streaming grid)
+			if (callbacks?.onBatchProgress && now - lastBatchTime >= batchUpdateInterval) {
+				callbacks.onBatchProgress(completedCount, totalCells, workingGrid);
+				lastBatchTime = now;
+			}
+		}
 
 		// Final batch progress update
 		callbacks?.onBatchProgress?.(totalCells, totalCells, workingGrid);
@@ -213,7 +228,7 @@ export class NlcaStepper {
 			`total time: ${(genDuration / 1000).toFixed(1)}s`
 		);
 
-		return decisions;
+		return { decisionMap: decisions, colorsHex, colorStatus8 };
 	}
 
 	async step(
@@ -240,7 +255,16 @@ export class NlcaStepper {
 		const latency8 = new Uint8Array(expected);
 		const changed01 = new Uint8Array(expected);
 
-		const decisionMap = await this.decideCells(contexts, width, height, generation, latency8, prev, callbacks, promptConfig);
+		const { decisionMap, colorsHex, colorStatus8 } = await this.decideCells(
+			contexts,
+			width,
+			height,
+			generation,
+			latency8,
+			prev,
+			callbacks,
+			promptConfig
+		);
 
 		const next = new Uint32Array(expected);
 		let changedCount = 0;
@@ -260,7 +284,7 @@ export class NlcaStepper {
 		console.log(`[NLCA] Generation ${generation}: ${changedCount} cells changed state`);
 
 		const metrics: NlcaCellMetricsFrame = { latency8, changed01 };
-		return { next, metrics };
+		return { next, metrics, colorsHex, colorStatus8 };
 	}
 }
 

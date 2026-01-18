@@ -2,7 +2,17 @@
 	import { draggable } from '$lib/utils/draggable.js';
 	import { bringToFront, setModalPosition, getModalState } from '$lib/stores/modalManager.svelte.js';
 	import { getSimulationState } from '$lib/stores/simulation.svelte.js';
-	import { getNlcaPromptState, SYSTEM_PLACEHOLDERS, USER_PLACEHOLDERS, DEFAULT_TASK, DEFAULT_TEMPLATE } from '$lib/stores/nlcaPrompt.svelte.js';
+	import { buildCellSystemPrompt, buildOutputContractText, type PromptConfig } from '$lib/nlca/prompt.js';
+	import { 
+		getNlcaPromptState, 
+		SYSTEM_PLACEHOLDERS, 
+		USER_PLACEHOLDERS, 
+		DEFAULT_TEMPLATE,
+		PROMPT_PRESETS,
+		getPresetsByCategory,
+		getPresetById,
+		type PresetCategory
+	} from '$lib/stores/nlcaPrompt.svelte.js';
 
 	interface Props {
 		onclose: () => void;
@@ -13,15 +23,43 @@
 	const simState = getSimulationState();
 	const promptState = getNlcaPromptState();
 
+	// Preset categories for UI tabs
+	const PRESET_CATEGORIES: { id: PresetCategory; label: string }[] = [
+		{ id: 'basic', label: 'Basic' },
+		{ id: 'complex', label: 'Complex' },
+		{ id: 'patterns', label: 'Patterns' },
+		{ id: 'scenes', label: 'Scenes' },
+		{ id: 'meta', label: 'Custom' }
+	];
+
 	// Local editing state (saved on explicit save)
 	let localTask = $state(promptState.taskDescription);
 	let localAdvancedMode = $state(promptState.useAdvancedMode);
 	let localTemplate = $state(promptState.advancedTemplate);
+	let localCellColorHexEnabled = $state(promptState.cellColorHexEnabled);
+	let localSelectedPresetId = $state<string | null>(promptState.selectedPresetId);
+	let selectedCategory = $state<PresetCategory>(
+		promptState.currentPreset?.category ?? 'basic'
+	);
+
+	// Track if the task has been modified from the selected preset
+	const isModifiedFromPreset = $derived.by(() => {
+		if (!localSelectedPresetId) return false;
+		const preset = getPresetById(localSelectedPresetId);
+		if (!preset) return false;
+		return localTask !== preset.task;
+	});
+
 	let hasUnsavedChanges = $derived(
 		localTask !== promptState.taskDescription ||
 		localAdvancedMode !== promptState.useAdvancedMode ||
-		localTemplate !== promptState.advancedTemplate
+		localTemplate !== promptState.advancedTemplate ||
+		localCellColorHexEnabled !== promptState.cellColorHexEnabled ||
+		localSelectedPresetId !== promptState.selectedPresetId
 	);
+
+	// Get presets for the currently selected category
+	const currentCategoryPresets = $derived(getPresetsByCategory(selectedCategory));
 
 	// Sample cell position for preview
 	let sampleX = $state(5);
@@ -29,19 +67,29 @@
 
 	// Generate preview based on local editing state
 	const previewPrompt = $derived.by(() => {
-		const template = localAdvancedMode ? localTemplate : DEFAULT_TEMPLATE;
 		const width = simState.gridWidth || 10;
 		const height = simState.gridHeight || 10;
 		
-		return template
-			.replace(/\{\{CELL_X\}\}/g, String(sampleX))
-			.replace(/\{\{CELL_Y\}\}/g, String(sampleY))
-			.replace(/\{\{GRID_WIDTH\}\}/g, String(width))
-			.replace(/\{\{GRID_HEIGHT\}\}/g, String(height))
-			.replace(/\{\{MAX_X\}\}/g, String(width - 1))
-			.replace(/\{\{MAX_Y\}\}/g, String(height - 1))
-			.replace(/\{\{TASK\}\}/g, localTask);
+		const cfg: PromptConfig = {
+			taskDescription: localTask,
+			useAdvancedMode: localAdvancedMode,
+			advancedTemplate: localTemplate,
+			cellColorHexEnabled: localCellColorHexEnabled
+		};
+		
+		return buildCellSystemPrompt(0, sampleX, sampleY, width, height, cfg);
 	});
+
+	const outputContractText = $derived.by(() => buildOutputContractText({
+		taskDescription: localTask,
+		useAdvancedMode: localAdvancedMode,
+		advancedTemplate: localTemplate,
+		cellColorHexEnabled: localCellColorHexEnabled
+	}));
+
+	const templateHasOutputContractPlaceholder = $derived.by(() =>
+		(localTemplate ?? '').includes('{{OUTPUT_CONTRACT}}')
+	);
 
 	function handleModalClick() {
 		bringToFront('nlcaPrompt');
@@ -51,19 +99,57 @@
 	}
 
 	function saveChanges() {
+		// Check if the prompt content actually changed (not just preset selection)
+		const promptContentChanged = 
+			localTask !== promptState.taskDescription ||
+			localAdvancedMode !== promptState.useAdvancedMode ||
+			localTemplate !== promptState.advancedTemplate ||
+			localCellColorHexEnabled !== promptState.cellColorHexEnabled;
+
 		promptState.taskDescription = localTask;
 		promptState.useAdvancedMode = localAdvancedMode;
 		promptState.advancedTemplate = localTemplate;
+		promptState.cellColorHexEnabled = localCellColorHexEnabled;
+		promptState.selectedPresetId = localSelectedPresetId;
+
+		// Dispatch event to reset agent sessions when prompt changes
+		if (promptContentChanged) {
+			window.dispatchEvent(new CustomEvent('nlca-prompt-changed'));
+		}
 	}
 
 	function discardChanges() {
 		localTask = promptState.taskDescription;
 		localAdvancedMode = promptState.useAdvancedMode;
 		localTemplate = promptState.advancedTemplate;
+		localCellColorHexEnabled = promptState.cellColorHexEnabled;
+		localSelectedPresetId = promptState.selectedPresetId;
+		// Reset category to match the preset
+		if (localSelectedPresetId) {
+			const preset = getPresetById(localSelectedPresetId);
+			if (preset) selectedCategory = preset.category;
+		}
+	}
+
+	function selectPreset(presetId: string) {
+		const preset = getPresetById(presetId);
+		if (preset) {
+			localSelectedPresetId = presetId;
+			localTask = preset.task;
+		}
 	}
 
 	function resetTask() {
-		localTask = DEFAULT_TASK;
+		// Reset to current preset's task if one is selected
+		if (localSelectedPresetId) {
+			const preset = getPresetById(localSelectedPresetId);
+			if (preset) {
+				localTask = preset.task;
+				return;
+			}
+		}
+		// Fallback to first preset
+		localTask = PROMPT_PRESETS[0].task;
 	}
 
 	function resetTemplate() {
@@ -71,25 +157,22 @@
 	}
 
 	function resetAll() {
-		localTask = DEFAULT_TASK;
+		localSelectedPresetId = 'filled-square';
+		localTask = PROMPT_PRESETS[0].task;
 		localAdvancedMode = false;
 		localTemplate = DEFAULT_TEMPLATE;
+		localCellColorHexEnabled = false;
+		selectedCategory = 'basic';
 	}
 
-	// Highlight placeholders in template for visual clarity
-	function highlightPlaceholders(text: string): string {
-		// System placeholders (gray)
-		let result = text.replace(
-			/\{\{(CELL_X|CELL_Y|GRID_WIDTH|GRID_HEIGHT|MAX_X|MAX_Y)\}\}/g,
-			'<span class="placeholder system">{{$1}}</span>'
-		);
-		// User placeholders (green)
-		result = result.replace(
-			/\{\{(TASK)\}\}/g,
-			'<span class="placeholder user">{{$1}}</span>'
-		);
-		return result;
+	const DEFAULT_SCENE_PRESET_ID = 'scene-landscape-tree';
+	function enableColorModeWithDefaultScene() {
+		localCellColorHexEnabled = true;
+		selectedCategory = 'scenes';
+		selectPreset(DEFAULT_SCENE_PRESET_ID);
 	}
+
+	// (Placeholder highlighting removed; preview shows the canonical prompt directly.)
 </script>
 
 <div class="modal-backdrop" role="presentation" style="z-index: {modalState.zIndex};">
@@ -98,7 +181,7 @@
 		role="dialog"
 		aria-label="NLCA Prompt Editor"
 		tabindex="0"
-		use:draggable={{ id: 'nlcaPrompt', onDragEnd: handleDragEnd }}
+		use:draggable={{ onDragEnd: handleDragEnd }}
 		onclick={handleModalClick}
 		onkeydown={() => {}}
 		style={modalState.position ? `transform: translate(${modalState.position.x}px, ${modalState.position.y}px);` : ''}
@@ -114,6 +197,43 @@
 		</div>
 
 		<div class="content">
+			<!-- Preset Selector -->
+			<div class="preset-section">
+				<div class="preset-header">
+					<h4>Preset Tasks</h4>
+					{#if isModifiedFromPreset}
+						<span class="modified-badge">Modified</span>
+					{/if}
+				</div>
+				
+				<!-- Category Tabs -->
+				<div class="category-tabs">
+					{#each PRESET_CATEGORIES as cat (cat.id)}
+						<button 
+							class="category-tab"
+							class:active={selectedCategory === cat.id}
+							onclick={() => selectedCategory = cat.id}
+						>
+							{cat.label}
+						</button>
+					{/each}
+				</div>
+
+				<!-- Preset Grid -->
+				<div class="preset-grid">
+					{#each currentCategoryPresets as preset (preset.id)}
+						<button 
+							class="preset-btn"
+							class:selected={localSelectedPresetId === preset.id}
+							onclick={() => selectPreset(preset.id)}
+						>
+							<span class="preset-name">{preset.name}</span>
+							<span class="preset-desc">{preset.description}</span>
+						</button>
+					{/each}
+				</div>
+			</div>
+
 			<!-- Mode Toggle -->
 			<div class="mode-toggle">
 				<button 
@@ -130,6 +250,47 @@
 				>
 					Advanced Mode
 				</button>
+			</div>
+
+			<!-- Output Options -->
+			<div class="section output-section">
+				<div class="section-header">
+					<h4>Output</h4>
+				</div>
+				<label class="toggle-row">
+					<input
+						type="checkbox"
+						checked={localCellColorHexEnabled}
+						onchange={(e) => {
+							const next = (e.currentTarget as HTMLInputElement).checked;
+							if (next) {
+								enableColorModeWithDefaultScene();
+							} else {
+								localCellColorHexEnabled = false;
+								// Return to a simple default for deterministic UX
+								selectedCategory = 'basic';
+								selectPreset('filled-square');
+							}
+						}}
+					/>
+					<span class="toggle-title">Cell color (hex)</span>
+				</label>
+				<p class="hint">
+					When enabled, each cell agent must output a deterministic hex color in addition to its state.
+				</p>
+				<div class="contract-panel">
+					<div class="contract-title">Output contract (enforced)</div>
+					<pre class="example-code">{outputContractText}</pre>
+					{#if localAdvancedMode}
+						<p class="hint">
+							{#if templateHasOutputContractPlaceholder}
+								This template includes <code>{'{{OUTPUT_CONTRACT}}'}</code> — the contract will be inserted there.
+							{:else}
+								This template does not include <code>{'{{OUTPUT_CONTRACT}}'}</code> — the contract will be appended automatically as <code>== OUTPUT CONTRACT ==</code>.
+							{/if}
+						</p>
+					{/if}
+				</div>
 			</div>
 
 			<!-- Simple Mode: Task Description Only -->
@@ -300,6 +461,98 @@
 		padding: 14px 16px;
 		display: grid;
 		gap: 16px;
+	}
+
+	/* Preset Section */
+	.preset-section {
+		display: grid;
+		gap: 10px;
+	}
+	.preset-header {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+	.preset-header h4 {
+		margin: 0;
+		font-size: 0.95rem;
+	}
+	.modified-badge {
+		font-size: 0.65rem;
+		padding: 2px 8px;
+		background: rgba(255, 180, 100, 0.15);
+		border: 1px solid rgba(255, 180, 100, 0.3);
+		border-radius: 6px;
+		color: #ffb464;
+	}
+
+	/* Category Tabs */
+	.category-tabs {
+		display: flex;
+		gap: 4px;
+		padding: 3px;
+		background: rgba(0, 0, 0, 0.2);
+		border-radius: 10px;
+	}
+	.category-tab {
+		flex: 1;
+		padding: 8px 12px;
+		border: none;
+		border-radius: 8px;
+		background: transparent;
+		color: var(--ui-text);
+		font-size: 0.8rem;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+	.category-tab.active {
+		background: var(--ui-accent);
+		color: #000;
+	}
+	.category-tab:hover:not(.active) {
+		background: rgba(255, 255, 255, 0.08);
+	}
+
+	/* Preset Grid */
+	.preset-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+		gap: 8px;
+	}
+	.preset-btn {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 4px;
+		padding: 10px 12px;
+		background: rgba(0, 0, 0, 0.2);
+		border: 1px solid var(--ui-border);
+		border-radius: 10px;
+		cursor: pointer;
+		transition: all 0.15s;
+		text-align: left;
+	}
+	.preset-btn:hover {
+		background: rgba(255, 255, 255, 0.05);
+		border-color: rgba(255, 255, 255, 0.15);
+	}
+	.preset-btn.selected {
+		background: rgba(45, 212, 191, 0.15);
+		border-color: var(--ui-accent);
+		box-shadow: 0 0 0 1px rgba(45, 212, 191, 0.2);
+	}
+	.preset-name {
+		font-size: 0.85rem;
+		font-weight: 600;
+		color: var(--ui-text-hover);
+	}
+	.preset-btn.selected .preset-name {
+		color: var(--ui-accent);
+	}
+	.preset-desc {
+		font-size: 0.7rem;
+		color: var(--ui-text);
+		line-height: 1.3;
 	}
 	
 	/* Mode Toggle */
@@ -502,6 +755,42 @@
 		padding: 1px 5px;
 		border-radius: 4px;
 		font-family: 'SF Mono', 'Fira Code', monospace;
+	}
+
+	/* Toggle row */
+	.toggle-row {
+		display: inline-flex;
+		align-items: center;
+		gap: 10px;
+		padding: 8px 10px;
+		background: rgba(0, 0, 0, 0.2);
+		border: 1px solid var(--ui-border);
+		border-radius: 10px;
+		width: fit-content;
+		cursor: pointer;
+	}
+	.toggle-row input {
+		width: 16px;
+		height: 16px;
+		accent-color: var(--ui-accent);
+	}
+	.toggle-title {
+		font-size: 0.85rem;
+		color: var(--ui-text-hover);
+		font-weight: 600;
+	}
+
+	.contract-panel {
+		display: grid;
+		gap: 8px;
+		margin-top: 8px;
+	}
+	.contract-title {
+		font-size: 0.75rem;
+		color: var(--ui-text);
+		font-weight: 700;
+		letter-spacing: 0.02em;
+		text-transform: uppercase;
 	}
 
 	/* Footer */

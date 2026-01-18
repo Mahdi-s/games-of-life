@@ -16,7 +16,7 @@
 	import { CellAgentManager } from '$lib/nlca/agentManager.js';
 	import type { NlcaNeighborhood } from '$lib/nlca/types.js';
 	import { getNlcaPromptState } from '$lib/stores/nlcaPrompt.svelte.js';
-	import type { PromptConfig } from '$lib/nlca/prompt.js';
+	import { packCellColorHexToU32, type PromptConfig } from '$lib/nlca/prompt.js';
 	import { NlcaFrameBuffer, type BufferStatus, type BufferedFrame } from '$lib/nlca/frameBuffer.js';
 	import NlcaTimeline from '$lib/components/NlcaTimeline.svelte';
 
@@ -55,6 +55,13 @@
 	let simulation: Simulation | null = null;
 	let error = $state<WebGPUError | null>(null);
 
+	function attachCanvas(node: HTMLCanvasElement) {
+		canvas = node;
+	}
+	function attachContainer(node: HTMLDivElement) {
+		container = node;
+	}
+
 	let canvasWidth = $state(0);
 	let canvasHeight = $state(0);
 
@@ -62,6 +69,7 @@
 	let nlcaApiKey = $state('');
 	let nlcaModel = $state('openai/gpt-4.1-mini');
 	let nlcaMaxConcurrency = $state(50);
+	let nlcaBatchSize = $state(200);
 	let nlcaNeighborhood = $state<NlcaNeighborhood>('moore');
 	let nlcaRunId = $state('');
 	let nlcaStepInFlight = $state(false);
@@ -81,6 +89,55 @@
 	// Debug panel state
 	let nlcaShowDebug = $state(false);
 	let nlcaDebugEntries = $state<Array<{ timestamp: number; cellId: number; x: number; y: number; generation: number; input: string; fullPrompt?: string; output: string; latencyMs: number; success: boolean; cost?: number }>>([]);
+
+	// Prompt state (includes output options)
+	const nlcaPromptState = getNlcaPromptState();
+	const nlcaUseCellColors = $derived.by(() => nlcaMode && nlcaPromptState.cellColorHexEnabled);
+	let nlcaCellColorsPacked: Uint32Array | null = null;
+
+	function setPackedColorStatus(packed: number, status: 'missing' | 'valid' | 'invalid'): number {
+		const statusBits = status === 'valid' ? 1 : status === 'invalid' ? 2 : 0;
+		// Preserve RGB (low 24 bits), overwrite status (high bits).
+		return (((packed & 0x00ffffff) | ((statusBits & 0x3) << 24)) >>> 0) >>> 0;
+	}
+
+	function mergePackedColors(
+		target: Uint32Array,
+		grid01: Uint32Array,
+		colorsHex?: Array<string | null>,
+		colorStatus8?: Uint8Array
+	): void {
+		const expected = simState.gridWidth * simState.gridHeight;
+		if (target.length !== expected) return;
+		if (grid01.length !== expected) return;
+
+		// If we don't have any color metadata, just clear colors for dead cells and keep RGB/status for alive cells.
+		const hasColorMeta = !!colorsHex && !!colorStatus8;
+
+		for (let i = 0; i < expected; i++) {
+			const alive = (grid01[i] ?? 0) === 0 ? 0 : 1;
+
+			if (alive === 0) {
+				// Dead cells: clear packed color so we don't carry confusing indicators.
+				target[i] = 0;
+				continue;
+			}
+
+			if (!hasColorMeta) continue;
+
+			const status8 = colorStatus8![i] ?? 0;
+			const status = status8 === 1 ? 'valid' : status8 === 2 ? 'invalid' : 'missing';
+
+			if (status === 'valid') {
+				const hex = colorsHex![i] ?? null;
+				target[i] = packCellColorHexToU32(hex, 'valid');
+			} else {
+				// Missing/invalid: keep last RGB to avoid collapsing back to default alive color,
+				// but still mark the status for shader indicators.
+				target[i] = setPackedColorStatus(target[i] ?? 0, status);
+			}
+		}
+	}
 
 	// Frame buffer state for buffered playback
 	let nlcaFrameBuffer: NlcaFrameBuffer | null = null;
@@ -105,6 +162,7 @@
 			nlcaApiKey = localStorage.getItem('nlca_openrouter_api_key') ?? '';
 			nlcaModel = localStorage.getItem('nlca_model') ?? 'openai/gpt-4.1-mini';
 			nlcaMaxConcurrency = Number(localStorage.getItem('nlca_max_concurrency') ?? '50') || 50;
+			nlcaBatchSize = Number(localStorage.getItem('nlca_batch_size') ?? '200') || 200;
 			const nbh = (localStorage.getItem('nlca_neighborhood') ?? 'moore') as NlcaNeighborhood;
 			nlcaNeighborhood = nbh === 'vonNeumann' || nbh === 'extendedMoore' || nbh === 'moore' ? nbh : 'moore';
 		} catch {
@@ -164,6 +222,7 @@
 								apiKey: nlcaApiKey.trim(),
 								model: { model: nlcaModel, temperature: 0, maxOutputTokens: 64 },
 								maxConcurrency: nlcaMaxConcurrency,
+								batchSize: nlcaBatchSize,
 								cellTimeoutMs: 30_000
 							}
 						},
@@ -187,12 +246,9 @@
 		const currentGrid = await simulation.getCellDataAsync();
 		
 		// Build prompt config
-		const nlcaPromptState = getNlcaPromptState();
-		const promptConfig: PromptConfig = {
-			taskDescription: nlcaPromptState.taskDescription,
-			useAdvancedMode: nlcaPromptState.useAdvancedMode,
-			advancedTemplate: nlcaPromptState.advancedTemplate
-		};
+		const promptConfig: PromptConfig = nlcaPromptState.toPromptConfig();
+		// Clear any previous per-cell colors; they'll be applied per buffered frame as needed.
+		simulation.clearCellColors();
 		
 		// Initialize and configure buffer
 		nlcaFrameBuffer.initialize(currentGrid, simState.generation);
@@ -202,11 +258,11 @@
 			height: simState.gridHeight,
 			promptConfig,
 			onProgress: {
-				onBatchProgress: (completed, total, partialGrid) => {
+				onBatchProgress: (completed, total, _partialGrid) => {
 					nlcaProgress = { completed, total };
 				}
 			},
-			onFrameComplete: (frame: BufferedFrame) => {
+			onFrameComplete: (_frame: BufferedFrame) => {
 				// Update cost stats from stepper
 				if (nlcaStepper) {
 					const costStats = nlcaStepper.getCostStats();
@@ -294,7 +350,19 @@
 		
 		// Apply the frame
 		simulation.setCellData(frame.grid);
-		simState.setGeneration(frame.generation);
+		simState.generation = frame.generation;
+
+		// Apply cell colors for this frame (NLCA WebGPU render-only buffer)
+		if (nlcaUseCellColors && frame.colorsHex && frame.colorStatus8) {
+			if (!nlcaCellColorsPacked || nlcaCellColorsPacked.length !== simState.gridWidth * simState.gridHeight) {
+				nlcaCellColorsPacked = new Uint32Array(simState.gridWidth * simState.gridHeight);
+			}
+			mergePackedColors(nlcaCellColorsPacked, frame.grid, frame.colorsHex, frame.colorStatus8);
+			simulation.setCellColorsPacked(nlcaCellColorsPacked);
+		} else {
+			nlcaCellColorsPacked = null;
+			simulation.clearCellColors();
+		}
 		
 		// Update metrics
 		if (frame.metrics) {
@@ -343,24 +411,65 @@
 				const prev = await simulation.getCellDataAsync();
 				
 				// Build prompt config from user settings
-				const nlcaPromptState = getNlcaPromptState();
-				const promptConfig: PromptConfig = {
-					taskDescription: nlcaPromptState.taskDescription,
-					useAdvancedMode: nlcaPromptState.useAdvancedMode,
-					advancedTemplate: nlcaPromptState.advancedTemplate
-				};
+				const promptConfig: PromptConfig = nlcaPromptState.toPromptConfig();
+				const wantColors = promptConfig.cellColorHexEnabled === true;
+				if (wantColors) {
+					if (!nlcaCellColorsPacked || nlcaCellColorsPacked.length !== width * height) {
+						nlcaCellColorsPacked = new Uint32Array(width * height);
+					}
+					// Don't wipe colors at the start of a step; keep last RGB as a stable baseline.
+					simulation.setCellColorsPacked(nlcaCellColorsPacked);
+				} else {
+					nlcaCellColorsPacked = null;
+					simulation.clearCellColors();
+				}
 				
 				// Step with progress callbacks for streaming visualization
-				const { next, metrics } = await nlcaStepper.step(prev, width, height, gen, {
+				const { next, metrics, colorsHex, colorStatus8 } = await nlcaStepper.step(prev, width, height, gen, {
+					onCellComplete: (cellId, result) => {
+						if (!wantColors || !nlcaCellColorsPacked) return;
+						// Clear for dead cells.
+						if (result.state === 0) {
+							nlcaCellColorsPacked[cellId] = 0;
+							return;
+						}
+
+						const status = result.colorStatus ?? 'missing';
+						if (status === 'valid' && result.colorHex) {
+							nlcaCellColorsPacked[cellId] = packCellColorHexToU32(result.colorHex, 'valid');
+						} else {
+							// Preserve last RGB while updating status (so we don't fall back to default alive color).
+							nlcaCellColorsPacked[cellId] = setPackedColorStatus(nlcaCellColorsPacked[cellId] ?? 0, status);
+						}
+					},
 					onBatchProgress: (completed, total, partialGrid) => {
 						nlcaProgress = { completed, total };
 						// Update grid in real-time as results stream in
 						simulation?.setCellData(partialGrid);
+						// Upload colors at the same cadence as batch UI updates
+						if (wantColors && nlcaCellColorsPacked) {
+							simulation?.setCellColorsPacked(nlcaCellColorsPacked);
+						}
 					}
 				}, promptConfig);
 				
 				simulation.setCellData(next);
 				simState.incrementGeneration();
+
+				if (wantColors) {
+					if (!nlcaCellColorsPacked || nlcaCellColorsPacked.length !== width * height) {
+						nlcaCellColorsPacked = new Uint32Array(width * height);
+					}
+					if (colorsHex && colorStatus8) {
+						mergePackedColors(nlcaCellColorsPacked, next, colorsHex, colorStatus8);
+						let validCount = 0;
+						for (let i = 0; i < colorStatus8.length; i++) if ((colorStatus8[i] ?? 0) === 1) validCount++;
+						console.log(`[NLCA] Color outputs: ${validCount}/${colorStatus8.length} valid`);
+					} else {
+						mergePackedColors(nlcaCellColorsPacked, next);
+					}
+					simulation.setCellColorsPacked(nlcaCellColorsPacked);
+				}
 
 				// Update cost stats from stepper
 				const costStats = nlcaStepper.getCostStats();
@@ -409,8 +518,8 @@
 	let lastMouseY = 0;
 	let drawingState = 1; // 1 = draw, 0 = erase
 	let continuousDrawInterval: ReturnType<typeof setInterval> | null = null;
-let strokeTracked = false;
-let pendingStrokeBefore: Promise<Uint32Array> | null = null;
+	let strokeTracked = false;
+	let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 	function capturePreStroke() {
 		if (!simulation) return;
 		if (!pendingStrokeBefore) {
@@ -450,8 +559,7 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 	let lastTouchX = 0;
 	let lastTouchY = 0;
 	let lastPinchDistance = 0;
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for long-press detection
-	let touchStartTime = 0;
+	// (Long-press detection removed; touch logic doesn't currently use it.)
 
 	// Animation
 	let animationId: number | null = null;
@@ -621,6 +729,7 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 						apiKey?: string;
 						model?: string;
 						maxConcurrency?: number;
+							batchSize?: number;
 						neighborhood?: NlcaNeighborhood;
 						gridWidth?: number;
 						gridHeight?: number;
@@ -631,6 +740,7 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 			if (typeof detail.apiKey === 'string') nlcaApiKey = detail.apiKey;
 			if (typeof detail.model === 'string') nlcaModel = detail.model;
 			if (typeof detail.maxConcurrency === 'number' && Number.isFinite(detail.maxConcurrency)) nlcaMaxConcurrency = detail.maxConcurrency;
+			if (typeof detail.batchSize === 'number' && Number.isFinite(detail.batchSize)) nlcaBatchSize = detail.batchSize;
 			if (
 				detail.neighborhood === 'moore' ||
 				detail.neighborhood === 'vonNeumann' ||
@@ -662,8 +772,19 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 				}
 			}
 		};
+		// Handle NLCA prompt changes (reset agent sessions)
+		const onNlcaPromptChanged = () => {
+			if (!nlcaMode) return;
+			console.log('[NLCA] Prompt changed - resetting agent sessions');
+			nlcaStepper?.resetAgentSessions();
+			nlcaAgentManager?.clearAllHistory();
+			nlcaCellColorsPacked = null;
+			simulation?.clearCellColors();
+		};
+
 		if (nlcaMode) {
 			window.addEventListener('nlca-config-changed', onNlcaConfigChanged as EventListener);
+			window.addEventListener('nlca-prompt-changed', onNlcaPromptChanged);
 		}
 
 		// Handle resize
@@ -685,6 +806,7 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 		return () => {
 			if (nlcaMode) {
 				window.removeEventListener('nlca-config-changed', onNlcaConfigChanged as EventListener);
+				window.removeEventListener('nlca-prompt-changed', onNlcaPromptChanged);
 			}
 			resizeObserver.disconnect();
 			if (animationId !== null) {
@@ -919,6 +1041,17 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 			simAccMs = 0;
 		}
 
+		// Trigger pause side-effects exactly once on transition to paused
+		if (wasPlaying && !simState.isPlaying) {
+			// Just paused - get accurate count from GPU
+			simulation.countAliveCellsAsync().then(count => {
+				simState.aliveCells = count;
+			});
+			// Silence audio when paused to avoid repeating the same sound
+			if (audioState.isEnabled) silenceAudio();
+		}
+		wasPlaying = simState.isPlaying;
+
 		// Sync view state including brush preview
 		// Hide brush during recording for clean video capture
 		// Also hide brush in NLCA mode (no drawing interaction)
@@ -969,7 +1102,7 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 
 		// Always render
 		simulation.render(canvasWidth, canvasHeight);
-		
+
 		// Also render to recording canvas if recording
 		if (isRecording && recordingCanvas) {
 			simulation.renderToRecordingCanvas();
@@ -990,19 +1123,6 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 
 	// Track previous playing state to trigger count update when paused
 	let wasPlaying = false;
-	$effect(() => {
-		if (wasPlaying && !simState.isPlaying && simulation) {
-			// Just paused - get accurate count from GPU
-			simulation.countAliveCellsAsync().then(count => {
-				simState.aliveCells = count;
-			});
-			// Silence audio when paused to avoid repeating the same sound
-			if (audioState.isEnabled) {
-				silenceAudio();
-			}
-		}
-		wasPlaying = simState.isPlaying;
-	});
 
 	// Keyboard handlers for shift key
 	function handleKeyDown(e: KeyboardEvent) {
@@ -1260,7 +1380,6 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 		simState.hasInteracted = true;
 
 		const touches = e.touches;
-		touchStartTime = performance.now();
 
 		if (touches.length === 1) {
 			const touch = touches[0];
@@ -1676,8 +1795,6 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 	let mediaRecorder: MediaRecorder | null = null;
 	let recordedChunks: Blob[] = [];
 	let recordingCanvas: HTMLCanvasElement | null = null;
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for recording feature
-	let preRecordingAxisProgress = 0;
 
 	export function getIsRecording() {
 		return isRecording;
@@ -1724,9 +1841,6 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 				recordingCanvas = null;
 				return;
 			}
-
-			// Store current axis progress (axes are hidden in recording canvas anyway)
-			preRecordingAxisProgress = simulation.getViewState().axisProgress;
 
 			recordedChunks = [];
 			mediaRecorder = new MediaRecorder(stream, {
@@ -1914,7 +2028,7 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 
 <svelte:window onkeydown={handleKeyDown} onkeyup={handleKeyUp} />
 
-<div class="canvas-container" bind:this={container}>
+<div class="canvas-container" {@attach attachContainer}>
 	{#if error}
 		<div class="error">
 			<div class="error-icon">⚠️</div>
@@ -1926,7 +2040,7 @@ let pendingStrokeBefore: Promise<Uint32Array> | null = null;
 		</div>
 	{/if}
 	<canvas
-		bind:this={canvas}
+		{@attach attachCanvas}
 		onmousedown={handleMouseDown}
 		onmousemove={handleMouseMove}
 		onmouseup={handleMouseUp}
